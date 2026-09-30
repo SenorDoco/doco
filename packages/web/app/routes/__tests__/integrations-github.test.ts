@@ -35,8 +35,8 @@ vi.mock("~/lib/doco-access.server", () => ({
   listAccessibleDocoIdsForPrincipal: mocks.listAccessibleDocoIdsForPrincipal,
 }));
 vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
-  pickRepositories: (await importOriginal<typeof import("~/lib/github-connection.server")>())
-    .pickRepositories,
+  pickConnections: (await importOriginal<typeof import("~/lib/github-connection.server")>())
+    .pickConnections,
   listGitHubInstallationChoicesForDocos: mocks.listGitHubInstallationChoicesForDocos,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   buildInstallUrl: mocks.buildInstallUrl,
@@ -235,6 +235,10 @@ describe("/integrations/github action", () => {
   });
 
   it("connects the picked repositories to every chosen Doco and starts each import", async () => {
+    mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
+      choice,
+      { ...choice, installation_id: 7, account: "zeta", repositories: ["zeta/docs"] },
+    ]);
     mocks.listImportDocos.mockResolvedValue({
       workspace_acme: {
         "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" },
@@ -244,22 +248,20 @@ describe("/integrations/github action", () => {
     const res = await thrown(
       action({
         request: post({
-          intent: "connect-existing-repos",
+          intent: "connect",
           workspace: "acme",
           bring: ["pull-requests", "github-bugs"],
-          installation_id: "42",
-          repo: ["acme/web", "acme/api"],
+          repo: ["acme/web", "zeta/docs"],
         }),
       }),
     );
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_prs", 42, [
-      "acme/web",
-      "acme/api",
-    ]);
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_bugs", 42, [
-      "acme/web",
-      "acme/api",
-    ]);
+    // One pick spans organizations: each repository keeps its own installation.
+    const picked = [
+      { repo: "acme/web", installation_id: 42 },
+      { repo: "zeta/docs", installation_id: 7 },
+    ];
+    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_prs", picked);
+    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_bugs", picked);
     expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", "doco_prs");
     expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", "doco_bugs");
     expect(res.headers.get("Location")).toBe(
@@ -274,14 +276,13 @@ describe("/integrations/github action", () => {
     expect(
       await action({
         request: post({
-          intent: "connect-existing-repos",
+          intent: "connect",
           workspace: "acme",
           bring: "github-bugs",
-          installation_id: "42",
           repo: "evil/repo",
         }),
       }),
-    ).toEqual({ error: "evil/repo is not available from the selected GitHub connection." });
+    ).toEqual({ error: "evil/repo is not available from your GitHub connections." });
     expect(mocks.connectRepositories).not.toHaveBeenCalled();
   });
 });

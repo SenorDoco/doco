@@ -254,53 +254,75 @@ export async function addConnection(
   return next;
 }
 
+type PickableInstallation = Pick<
+  GitHubInstallationChoice,
+  "installation_id" | "account" | "repository_selection" | "repositories"
+>;
+
 /**
- * The repositories a user asked to connect, when the installation they chose
- * offers every one: normalized ("owner/name"), de-duplicated, in the order
- * asked. A posted repo list is never trusted beyond what the installation
- * shows. Pure.
+ * What a user picked to connect, checked against the GitHub installations they
+ * can use: each repository through the installation that offers it (whatever
+ * organization it is in), normalized ("owner/name") and de-duplicated in the
+ * order picked, and each organization GitHub lists no repositories for (an
+ * all-repositories installation) as a whole. Nothing posted is trusted beyond
+ * what those installations show. Pure.
  */
-export function pickRepositories(
-  choice: Pick<GitHubInstallationChoice, "repositories">,
-  requested: string[],
-): { repos: string[] } | { error: string } {
-  const offered = new Set(choice.repositories);
-  const repos: string[] = [];
-  for (const input of requested.map((r) => r.trim()).filter(Boolean)) {
+export function pickConnections<C extends PickableInstallation>(
+  choices: C[],
+  picked: { repos: string[]; installations: string[] },
+):
+  | { connections: Array<Pick<GitHubConnection, "repo" | "installation_id">>; installations: C[] }
+  | { error: string } {
+  const installations: C[] = [];
+  for (const id of new Set(picked.installations.map(Number))) {
+    const choice = choices.find((c) => c.installation_id === id);
+    if (!choice) return { error: "That GitHub connection is not available to your account." };
+    if (choice.repository_selection !== "all") {
+      return { error: `Pick the repositories to connect from ${choice.account}.` };
+    }
+    installations.push(choice);
+  }
+  const connections: Array<Pick<GitHubConnection, "repo" | "installation_id">> = [];
+  for (const input of picked.repos.map((r) => r.trim()).filter(Boolean)) {
     const parsed = parseRepoSlug(input);
     if (!parsed) return { error: `Invalid repo: ${input}` };
     const repo = `${parsed.owner}/${parsed.name}`;
-    if (!offered.has(repo)) {
-      return { error: `${repo} is not available from the selected GitHub connection.` };
+    const choice = choices.find((c) => c.repositories.includes(repo));
+    if (!choice) return { error: `${repo} is not available from your GitHub connections.` };
+    if (!connections.some((c) => c.repo === repo)) {
+      connections.push({ repo, installation_id: choice.installation_id });
     }
-    if (!repos.includes(repo)) repos.push(repo);
   }
-  return repos.length > 0 ? { repos } : { error: "Pick at least one repository." };
+  return connections.length + installations.length > 0
+    ? { connections, installations }
+    : { error: "Pick at least one repository." };
 }
 
 /**
- * Connect `repos` (all under one installation) to a Doco and queue their
- * import from the start. The caller kicks the backfill worker
- * (`kickBackfillRun`) to run it.
+ * Connect repositories to a Doco and queue their import. An import already
+ * under way keeps its place and takes them at the end of its queue, so adding
+ * a repository never abandons the ones still importing. The caller kicks the
+ * backfill worker (`kickBackfillRun`) to run it.
  */
 export async function connectRepositories(
   docoId: string,
-  installationId: number,
-  repos: string[],
+  connections: Array<Pick<GitHubConnection, "repo" | "installation_id">>,
 ): Promise<void> {
   const connectedAt = new Date().toISOString();
-  for (const repo of repos) {
-    await addConnection(docoId, {
-      repo,
-      installation_id: installationId,
-      connected_at: connectedAt,
-    });
+  for (const connection of connections) {
+    await addConnection(docoId, { ...connection, connected_at: connectedAt });
+  }
+  const repos = connections.map((c) => c.repo);
+  const running = (await getDocoConnectionsContext(docoId))?.backfill;
+  if (running?.status === "running" && running.queue?.length) {
+    const queue = [...running.queue, ...repos.filter((r) => !running.queue?.includes(r))];
+    await setBackfillState(docoId, { ...running, queue, repos: queue.length });
+    return;
   }
   await setBackfillState(docoId, {
     status: "running",
     started_at: connectedAt,
     repos: repos.length,
-    installation_id: installationId,
     queue: repos,
     repo_index: 0,
     page: 1,
@@ -348,8 +370,6 @@ export interface GitHubBackfillState {
   // The worker processes a time-budgeted slice per invocation, persists this
   // cursor, and re-triggers itself until the queue is exhausted — so an org
   // with tens of thousands of PRs never hits the function timeout in one run.
-  /** App installation whose repos are being imported. */
-  installation_id?: number;
   /** Repo full-names still to walk (the work queue). */
   queue?: string[];
   /** Index into `queue` of the repo currently importing. */
@@ -395,7 +415,6 @@ export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null
     ...(typeof e.finished_at === "string" ? { finished_at: e.finished_at } : {}),
     ...num("repos"),
     ...num("imported"),
-    ...num("installation_id"),
     ...(Array.isArray(e.queue)
       ? { queue: e.queue.filter((x): x is string => typeof x === "string") }
       : {}),
@@ -548,7 +567,6 @@ export function resumeCursorFromConnections(
     status: "running",
     started_at: prev?.started_at ?? new Date().toISOString(),
     repos: queue.length,
-    installation_id: prev?.installation_id ?? connections[0]?.installation_id,
     queue,
     repo_index: 0,
     page: 1,

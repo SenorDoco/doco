@@ -39,9 +39,10 @@ export async function loader({
     ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
     : [];
   // The sources this Doco mirrors (Slack, Notion): each gets a status card
-  // with a Manage link. GitHub keeps its own card below.
+  // with a Manage link. GitHub keeps its own card below, and a source not
+  // connected yet is in the catalog to connect.
   const mirrors = (await withClient((c) => loadIntegrationStatuses(c, meta.docoId))).filter(
-    (status) => status.integration !== "github",
+    (status) => status.integration !== "github" && status.state !== "unconnected",
   );
   return {
     me,

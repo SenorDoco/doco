@@ -1,7 +1,8 @@
 // The GitHub repository picker and the "import started" screen, shared by a
 // Doco's own GitHub page and the GitHub setup page (which brings several
 // things into several Docos at once).
-import { Fragment, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
+import { Fragment, type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
 import { SiteHeader } from "~/components/site-header";
 import type { GitHubInstallationChoice } from "~/lib/github-connection.server";
@@ -57,91 +58,140 @@ export function addableInstallationChoices(
   );
 }
 
+/** What the connect button says for what is picked. Pure. */
+export function connectLabel(repos: number, wholeAccounts: string[]): string {
+  const parts = [
+    ...(repos > 0 ? [`${repos} ${repos === 1 ? "repository" : "repositories"}`] : []),
+    ...wholeAccounts.map((account) => `every repository in ${account}`),
+  ];
+  return parts.length === 0
+    ? "Connect repositories"
+    : `Connect ${new Intl.ListFormat("en", { type: "conjunction" }).format(parts)}`;
+}
+
 /**
- * One GitHub org's repositories as checkboxes, posting `connect-existing-repos`
- * with the picked `repo`s, or `connect-installation` for an all-repositories
- * org GitHub lists no names for. `fields` rides along as hidden inputs.
+ * Every repository the user can connect, grouped by GitHub organization, in
+ * one form with one button: it posts `intent=connect` with the picked `repo`s,
+ * and the `installation` of each organization GitHub lists no repository
+ * names for, picked as a whole. `fields` ride along as hidden inputs, and
+ * `aside` sits next to the button (a way to skip the step, say).
  */
-export function InstallationChoiceForm({
-  choice,
+export function RepositoryPicker({
+  choices,
+  installUrl,
   fields = [],
+  aside,
 }: {
-  choice: InstallationPickerChoice;
+  choices: InstallationPickerChoice[];
+  installUrl: string | null;
   fields?: Array<[name: string, value: string]>;
+  aside?: ReactNode;
 }) {
-  const [selectedCount, setSelectedCount] = useState(0);
+  const [picked, setPicked] = useState({ repos: 0, accounts: [] as string[] });
+  const grantMore = installUrl ? (
+    <a href={installUrl} className="inline-flex items-center gap-1 font-semibold text-primary">
+      Give Doco access to it in GitHub
+      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+    </a>
+  ) : null;
+
+  if (choices.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Every repository Doco can see is already connected.{" "}
+        {grantMore ? <>Missing one? {grantMore}</> : null}
+      </p>
+    );
+  }
 
   return (
     <Form
       method="post"
-      className="space-y-3"
+      className="space-y-4"
       onChange={(event) => {
-        setSelectedCount(event.currentTarget.querySelectorAll('input[name="repo"]:checked').length);
+        const form = event.currentTarget;
+        setPicked({
+          repos: form.querySelectorAll('input[name="repo"]:checked').length,
+          accounts: [
+            ...form.querySelectorAll<HTMLInputElement>('input[name="installation"]:checked'),
+          ].map((input) => input.dataset.account ?? ""),
+        });
       }}
     >
+      <input type="hidden" name="intent" value="connect" />
       {fields.map(([name, value]) => (
         <input key={`${name}=${value}`} type="hidden" name={name} value={value} />
       ))}
-      <input type="hidden" name="installation_id" value={choice.installation_id} />
-      <div className="space-y-2 rounded-md border border-border p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="font-mono text-sm font-semibold text-foreground">{choice.account}</p>
-            {choice.repositories_unavailable ? (
-              <p className="text-[11px] text-muted-foreground">Showing known repositories only.</p>
-            ) : null}
-          </div>
-          {choice.hasSelectableRepositories ? (
-            <button
-              type="submit"
-              name="intent"
-              value="connect-existing-repos"
-              className={PRIMARY_BTN}
-              disabled={selectedCount === 0}
-            >
-              {selectedCount > 0
-                ? `Add ${selectedCount} ${selectedCount === 1 ? "repo" : "repos"}`
-                : "Select repos"}
-            </button>
-          ) : choice.canConnectInstallation ? (
-            <button
-              type="submit"
-              name="intent"
-              value="connect-installation"
-              className={PRIMARY_BTN}
-            >
-              Add all repositories
-            </button>
+      {choices.map((choice) => (
+        <fieldset key={choice.installation_id} className="space-y-2">
+          <legend className="font-mono text-sm font-semibold text-foreground">
+            {choice.account}
+          </legend>
+          {choice.repositories_unavailable ? (
+            <p className="text-[11px] text-muted-foreground">
+              GitHub didn&apos;t answer, so only the repositories Doco already knows are listed.
+            </p>
           ) : null}
-        </div>
-        {choice.selectableRepositories.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {choice.selectableRepositories.map((repo) => (
-              <label
-                key={repo}
-                className="flex min-w-0 items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs"
-              >
-                <input
-                  type="checkbox"
-                  name="repo"
-                  value={repo}
-                  className="h-3.5 w-3.5 shrink-0 accent-primary"
-                />
-                <span className="min-w-0 flex-1 truncate font-mono" title={repo}>
-                  {repo}
-                </span>
-              </label>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            {choice.canConnectInstallation
-              ? "All repositories are allowed for this GitHub account."
-              : "No repositories are available from this GitHub organization yet."}
-          </p>
-        )}
+          {choice.canConnectInstallation ? (
+            <RepositoryCheckbox
+              name="installation"
+              value={String(choice.installation_id)}
+              account={choice.account}
+              label={`Every repository in ${choice.account}, including ones added later`}
+            />
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {choice.selectableRepositories.map((repo) => (
+                <RepositoryCheckbox key={repo} name="repo" value={repo} label={repo} />
+              ))}
+            </div>
+          )}
+        </fieldset>
+      ))}
+      {grantMore ? (
+        <p className="text-xs text-muted-foreground">Don&apos;t see a repository? {grantMore}</p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+        <button
+          type="submit"
+          className={PRIMARY_BTN}
+          disabled={picked.repos + picked.accounts.length === 0}
+        >
+          {connectLabel(picked.repos, picked.accounts)}
+        </button>
+        {aside}
       </div>
     </Form>
+  );
+}
+
+function RepositoryCheckbox({
+  name,
+  value,
+  label,
+  account,
+}: {
+  name: string;
+  value: string;
+  label: string;
+  account?: string;
+}) {
+  return (
+    <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs hover:bg-input">
+      <input
+        type="checkbox"
+        name={name}
+        value={value}
+        data-account={account}
+        className="h-3.5 w-3.5 shrink-0 accent-primary"
+      />
+      <span
+        className={name === "repo" ? "min-w-0 flex-1 truncate font-mono" : "min-w-0 flex-1"}
+        title={label}
+      >
+        {label}
+      </span>
+    </label>
   );
 }
 

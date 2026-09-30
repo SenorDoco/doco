@@ -2,7 +2,10 @@
 // GitHub connection. The Integrations page lists *what* is connected ("Connected
 // to <org>" + a Manage button); the per-integration detail (covered repos,
 // import progress, re-import / disconnect) lives here so the
-// Integrations page stays a clean index. What the Doco brings from its repos
+// Integrations page stays a clean index. Until a repository is connected the
+// page is the step that connects one (New Doco lands here for a GitHub Doco):
+// pick repositories, or skip to the Doco. Connecting returns to the Doco,
+// whose home shows the import filling it. What the Doco brings from its repos
 // (pull requests, bugs for a GitHub bugs Doco, or code for a codebase Doco)
 // follows its template (github-imports); the GitHub setup page picks it for a
 // workspace.
@@ -10,18 +13,15 @@
 // Writer-gated mutations (the connection model is a managed list).
 import { roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
-import { ArrowUpRight, Github, Plus } from "lucide-react";
-import { Form, redirect, useActionData, useLoaderData, useSearchParams } from "react-router";
+import { Form, Link, redirect, useActionData, useLoaderData, useSearchParams } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import {
   ActionNotice,
-  GitHubImportStarted,
   GitHubSetupNotice,
-  InstallationChoiceForm,
-  type InstallationPickerChoice,
   NEUTRAL_BTN,
   PRIMARY_BTN,
+  RepositoryPicker,
   addableInstallationChoices,
   buildInstallationPickerChoices,
 } from "~/components/github-repo-picker";
@@ -43,7 +43,7 @@ import {
   githubOrgAccounts,
   listGitHubInstallationChoicesForDocos,
   parseRepoSlug,
-  pickRepositories,
+  pickConnections,
   reconcileInstallationConnections,
   removeConnection,
   resumeCursorFromConnections,
@@ -130,55 +130,29 @@ export async function action({
     return { ok: true, message: `Disconnected ${parsed.owner}/${parsed.name}.` };
   }
 
-  if (intent === "connect-existing-repos") {
-    const installationId = Number(form.get("installation_id"));
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      return { error: "Choose a GitHub organization first." };
-    }
-    const choices = await listGitHubInstallationChoicesForDocos(
-      await listAccessibleDocoIdsForPrincipal(me.id),
-    );
-    const choice = choices.find((c) => c.installation_id === installationId);
-    if (!choice) return { error: "That GitHub connection is not available to your account." };
-    const picked = pickRepositories(
-      choice,
-      form.getAll("repo").map((repo) => String(repo)),
+  if (intent === "connect") {
+    const picked = pickConnections(
+      await listGitHubInstallationChoicesForDocos(await listAccessibleDocoIdsForPrincipal(me.id)),
+      {
+        repos: form.getAll("repo").map(String),
+        installations: form.getAll("installation").map(String),
+      },
     );
     if ("error" in picked) return picked;
-    const { repos } = picked;
-
-    await connectRepositories(meta.docoId, installationId, repos);
-    waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
-    // Hand the user a standalone "import started" screen (PRG redirect) rather
-    // than an inline banner — one clear confirmation, one way forward.
-    throw redirect(`/${meta.handle}/integrations/github?github=importing&count=${repos.length}`);
-  }
-
-  if (intent === "connect-installation") {
-    const installationId = Number(form.get("installation_id"));
-    if (!Number.isInteger(installationId) || installationId <= 0) {
-      return { error: "Choose a GitHub organization first." };
+    const connectedAt = new Date().toISOString();
+    for (const choice of picked.installations) {
+      await subscribeInstallation(meta.docoId, {
+        installation_id: choice.installation_id,
+        account: choice.account,
+        connected_at: connectedAt,
+      });
     }
-
-    const choices = await listGitHubInstallationChoicesForDocos(
-      await listAccessibleDocoIdsForPrincipal(me.id),
-    );
-    const choice = choices.find((c) => c.installation_id === installationId);
-    if (!choice) return { error: "That GitHub connection is not available to your account." };
-    if (choice.repository_selection !== "all") {
-      return { error: "Choose at least one repository from this GitHub connection." };
+    if (picked.connections.length > 0) {
+      await connectRepositories(meta.docoId, picked.connections);
+      waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
     }
-
-    await subscribeInstallation(meta.docoId, {
-      installation_id: installationId,
-      account: choice.account,
-      connected_at: new Date().toISOString(),
-    });
-    const { item } = githubImportFor((await getDocoConnectionsContext(meta.docoId))?.template);
-    return {
-      ok: true,
-      message: `Connected ${choice.account}. New ${item} activity will sync automatically.`,
-    };
+    // Back to the Doco, which shows the import's progress as it fills.
+    throw redirect(`/${meta.handle}`);
   }
 
   if (intent === "backfill") {
@@ -344,7 +318,6 @@ export default function DocoGitHubIntegration() {
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
-  const flash = searchParams.get("github");
   const importing = backfill?.status === "running";
   const resync = resyncButton(backfill, brings);
   const skipped = skippedReposNote(backfill);
@@ -353,7 +326,7 @@ export default function DocoGitHubIntegration() {
     installations.map((installation) => installation.installation_id),
   );
   const subscribedAccounts = [...new Set(installations.map((i) => i.account))].sort();
-  // Section 2 lists only what's still addable.
+  const connected = connections.length > 0 || installations.length > 0;
   const addableChoices = addableInstallationChoices(
     buildInstallationPickerChoices(installationChoices, connectedRepoSet, connectedInstallationIds),
   );
@@ -361,16 +334,6 @@ export default function DocoGitHubIntegration() {
     installationChoices,
     connectedInstallationIds,
   );
-
-  if (flash === "importing") {
-    return (
-      <GitHubImportStarted
-        me={me}
-        count={Number(searchParams.get("count") ?? 0)}
-        docos={[{ handle, items: brings.items }]}
-      />
-    );
-  }
 
   return (
     <div>
@@ -383,14 +346,17 @@ export default function DocoGitHubIntegration() {
             parent: { label: "App integrations", to: `/${handle}/integrations` },
             pageLabel: "GitHub",
           })}
-          title="GitHub"
+          title={connected ? "GitHub" : "Pick repositories"}
         >
           <p className="text-sm text-muted-foreground">
-            {brings.label} from connected repositories come into {handle}: {brings.description}
+            <span className="font-mono text-foreground">{handle}</span> brings {brings.items} from{" "}
+            {connected ? "these GitHub repositories" : "the GitHub repositories you pick"}.{" "}
+            {brings.description}
+            {connected ? null : " Nothing comes in until you connect at least one."}
           </p>
         </PageHeader>
 
-        <GitHubSetupNotice outcome={flash} />
+        <GitHubSetupNotice outcome={searchParams.get("github")} />
         <ActionNotice
           data={
             actionData && ("error" in actionData || "message" in actionData) ? actionData : null
@@ -402,164 +368,139 @@ export default function DocoGitHubIntegration() {
           </p>
         ) : null}
 
-        {/* Section 1 — the repositories this doco is connected to on GitHub. */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Connected repositories</CardTitle>
-            <CardDescription>
-              Repositories on GitHub this doco brings {brings.items} from.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {importing ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span
-                  aria-hidden
-                  className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-                />
-                <span>
-                  Importing {brings.items}…
-                  {backfill?.imported ? (
-                    <>
-                      {" "}
-                      <span className="font-mono font-semibold tabular-nums">
-                        {backfill.imported}
-                      </span>{" "}
-                      imported so far.
-                    </>
-                  ) : null}
-                </span>
-              </p>
-            ) : null}
-            {subscribedAccounts.length > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Connected to{" "}
-                {subscribedAccounts.map((a, i) => (
-                  <span key={a}>
-                    {i > 0 ? ", " : ""}
-                    <span className="font-mono font-semibold text-foreground">{a}</span>
-                  </span>
-                ))}{" "}
-                — all repositories sync automatically, including ones added later.
-              </p>
-            ) : null}
-            {connections.length > 0 ? (
-              <ul className="divide-y divide-border rounded border border-border">
-                {connections.map((c) => (
-                  <li key={c.repo} className="flex items-center justify-between gap-2 px-3 py-2">
-                    <span className="font-mono text-sm">{c.repo}</span>
-                    {canManage ? (
-                      <span className="flex gap-2">
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="backfill" />
-                          <input type="hidden" name="repo" value={c.repo} />
-                          <button type="submit" className={NEUTRAL_BTN}>
-                            Re-import
-                          </button>
-                        </Form>
-                        <Form method="post">
-                          <input type="hidden" name="intent" value="disconnect" />
-                          <input type="hidden" name="repo" value={c.repo} />
-                          <button type="submit" className={DESTRUCTIVE_BTN}>
-                            Disconnect
-                          </button>
-                        </Form>
-                      </span>
+        {connected ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Connected repositories</CardTitle>
+              <CardDescription>
+                Repositories on GitHub this doco brings {brings.items} from.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {importing ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span
+                    aria-hidden
+                    className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+                  />
+                  <span>
+                    Importing {brings.items}…
+                    {backfill?.imported ? (
+                      <>
+                        {" "}
+                        <span className="font-mono font-semibold tabular-nums">
+                          {backfill.imported}
+                        </span>{" "}
+                        imported so far.
+                      </>
                     ) : null}
-                  </li>
-                ))}
-              </ul>
-            ) : coveredOrgRepositories.length > 0 ? (
-              <ul className="grid gap-1.5 sm:grid-cols-2">
-                {coveredOrgRepositories.map((repo) => (
-                  <li
-                    key={repo}
-                    className="min-w-0 truncate rounded border border-border bg-card px-2 py-1 font-mono text-xs"
-                    title={repo}
-                  >
-                    {repo}
-                  </li>
-                ))}
-              </ul>
-            ) : subscribedAccounts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No repositories connected yet.</p>
-            ) : null}
-            {skipped ? <p className="text-xs text-destructive">{skipped}</p> : null}
-            {canManage && connections.length > 0 ? (
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-muted-foreground">
-                  Import stuck or incomplete? Re-import walks every connected repo from the start —
-                  already-imported {brings.items} are skipped.
+                  </span>
                 </p>
-                <Form method="post">
-                  <input type="hidden" name="intent" value="resync-all" />
-                  <button
-                    type="submit"
-                    className={`shrink-0 ${PRIMARY_BTN}`}
-                    disabled={resync.disabled}
-                  >
-                    {resync.label}
-                  </button>
-                </Form>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        {/* Section 2 — every repo Doco can see, to add more (writers only). */}
-        {canManage ? (
-          <AddMoreRepositories choices={addableChoices} docoInstallUrl={docoInstallUrl} />
+              ) : null}
+              {subscribedAccounts.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Connected to{" "}
+                  {subscribedAccounts.map((a, i) => (
+                    <span key={a}>
+                      {i > 0 ? ", " : ""}
+                      <span className="font-mono font-semibold text-foreground">{a}</span>
+                    </span>
+                  ))}{" "}
+                  — all repositories sync automatically, including ones added later.
+                </p>
+              ) : null}
+              {connections.length > 0 ? (
+                <ul className="divide-y divide-border rounded border border-border">
+                  {connections.map((c) => (
+                    <li key={c.repo} className="flex items-center justify-between gap-2 px-3 py-2">
+                      <span className="font-mono text-sm">{c.repo}</span>
+                      {canManage ? (
+                        <span className="flex gap-2">
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="backfill" />
+                            <input type="hidden" name="repo" value={c.repo} />
+                            <button type="submit" className={NEUTRAL_BTN}>
+                              Re-import
+                            </button>
+                          </Form>
+                          <Form method="post">
+                            <input type="hidden" name="intent" value="disconnect" />
+                            <input type="hidden" name="repo" value={c.repo} />
+                            <button type="submit" className={DESTRUCTIVE_BTN}>
+                              Disconnect
+                            </button>
+                          </Form>
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : coveredOrgRepositories.length > 0 ? (
+                <ul className="grid gap-1.5 sm:grid-cols-2">
+                  {coveredOrgRepositories.map((repo) => (
+                    <li
+                      key={repo}
+                      className="min-w-0 truncate rounded border border-border bg-card px-2 py-1 font-mono text-xs"
+                      title={repo}
+                    >
+                      {repo}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {skipped ? <p className="text-xs text-destructive">{skipped}</p> : null}
+              {canManage && connections.length > 0 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Import stuck or incomplete? Re-import walks every connected repo from the start
+                    — already-imported {brings.items} are skipped.
+                  </p>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="resync-all" />
+                    <button
+                      type="submit"
+                      className={`shrink-0 ${PRIMARY_BTN}`}
+                      disabled={resync.disabled}
+                    >
+                      {resync.label}
+                    </button>
+                  </Form>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
         ) : null}
-      </main>
-    </div>
-  );
-}
 
-function AddMoreRepositories({
-  choices,
-  docoInstallUrl,
-}: {
-  choices: InstallationPickerChoice[];
-  docoInstallUrl: string | null;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Github className="h-4 w-4 text-primary" aria-hidden="true" />
-              Add more repositories
-            </CardTitle>
-            <CardDescription>
-              Repositories you&apos;ve granted Doco access to. Pick the ones to track on this doco.
-            </CardDescription>
-          </div>
-          {docoInstallUrl ? (
-            <a
-              href={docoInstallUrl}
-              className="neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-foreground hover:text-primary"
-            >
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-              Add organizations or repositories in GitHub
-              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </a>
-          ) : null}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {choices.length > 0 ? (
-          choices.map((choice) => (
-            <InstallationChoiceForm key={choice.installation_id} choice={choice} />
-          ))
-        ) : (
+        {canManage ? (
+          <Card>
+            {connected ? (
+              <CardHeader>
+                <CardTitle className="text-base">Add repositories</CardTitle>
+              </CardHeader>
+            ) : null}
+            <CardContent className={connected ? undefined : "pt-5"}>
+              <RepositoryPicker
+                choices={addableChoices}
+                installUrl={docoInstallUrl}
+                aside={
+                  connected ? null : (
+                    <Link
+                      to={`/${handle}`}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Skip for now
+                    </Link>
+                  )
+                }
+              />
+            </CardContent>
+          </Card>
+        ) : connected ? null : (
           <p className="text-sm text-muted-foreground">
-            {docoInstallUrl
-              ? "Every repository Doco can see is already connected. Grant access to more organizations or repositories in GitHub to track additional ones."
-              : "No additional repositories are available to add."}
+            No repositories are connected yet. A writer on this doco can connect them.
           </p>
         )}
-      </CardContent>
-    </Card>
+      </main>
+    </div>
   );
 }

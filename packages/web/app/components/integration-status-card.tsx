@@ -1,6 +1,9 @@
 import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import type { IntegrationStatus } from "~/lib/integration-status.server";
+import type {
+  ConnectedIntegrationStatus,
+  IntegrationStatus,
+} from "~/lib/integration-status.server";
 import { timeAgo } from "~/lib/time-ago";
 
 // "Manage" CTA — mirrors the primary button on the Integrations index so the
@@ -9,6 +12,12 @@ const MANAGE_BTN =
   "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 
 const NAMES = { github: "GitHub", slack: "Slack", notion: "Notion" } as const;
+/** What connecting each source takes, for a Doco whose source isn't connected. */
+const CONNECT = {
+  github: "Pick repositories",
+  slack: "Connect Slack",
+  notion: "Connect Notion",
+} as const;
 
 function monthYear(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -28,7 +37,7 @@ function Spinner() {
 }
 
 /** The live half: when the newest item copied from the source appeared. */
-function liveLine(status: IntegrationStatus, now: Date): string {
+function liveLine(status: ConnectedIntegrationStatus, now: Date): string {
   if (status.integration === "github") {
     return status.latestAt
       ? `Latest ${status.item} update ${timeAgo(status.latestAt, now)}`
@@ -45,7 +54,7 @@ function liveLine(status: IntegrationStatus, now: Date): string {
 }
 
 /** The history half: how far the import of older items has got. */
-function historyLine(status: IntegrationStatus): string {
+function historyLine(status: ConnectedIntegrationStatus): string {
   if (status.integration === "github") {
     const repos = `${status.reposDone} of ${status.repos} repos`;
     if (status.state === "done") return `All ${status.items} imported`;
@@ -86,7 +95,8 @@ function historyLine(status: IntegrationStatus): string {
  * Box atop the activity column of a Doco that copies from a source (GitHub
  * pull requests or bugs, a Slack or Notion workspace): how live the copy is, how far the import
  * of older items has got — flagged when it stopped advancing — and a link to
- * manage the integration.
+ * manage the integration. A Doco made to fill from a source nobody connected
+ * yet says so, with the way to connect it.
  */
 export function IntegrationStatusCard({
   handle,
@@ -97,6 +107,27 @@ export function IntegrationStatusCard({
   status: IntegrationStatus;
   now?: Date;
 }) {
+  if (status.state === "unconnected") {
+    return (
+      <Card>
+        <CardHeader className="space-y-1 px-4 py-3">
+          <CardTitle className="text-sm">{NAMES[status.integration]} integration</CardTitle>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span aria-hidden>⚪</span>
+            <span>
+              <span className="font-medium text-foreground">Not connected</span> · Nothing comes
+              into this doco until it is.
+            </span>
+          </p>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          <Link to={`/${handle}/integrations/${status.integration}`} className={MANAGE_BTN}>
+            {CONNECT[status.integration]}
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
   return (
     <Card>
       <CardHeader className="space-y-1 px-4 py-3">

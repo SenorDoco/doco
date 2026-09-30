@@ -13,6 +13,7 @@ import { ExternalLink, FileText, Folder, Search } from "lucide-react";
 import { Form, Link } from "react-router";
 import { cn } from "~/lib/cn";
 import type { CodeFile, CodePerspectiveData, CodeSearchHit } from "~/lib/codebase-read.server";
+import type { IntegrationStatus } from "~/lib/integration-status.server";
 import { timeAgo } from "~/lib/time-ago";
 
 function codeHref(repo: string, path = ""): string {
@@ -27,17 +28,62 @@ const OMITTED: Record<NonNullable<CodeFile["omitted"]>, string> = {
   unavailable: "GitHub didn't return this file's text: the copy keeps its name only.",
 };
 
-export function CodePerspective({ data, handle }: { data: CodePerspectiveData; handle: string }) {
+const CONNECT_BTN =
+  "neu-button inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
+
+/** Before any file is copied: whether code is on its way, and if not, why. */
+function NoCodeYet({ handle, source }: { handle: string; source?: IntegrationStatus }) {
+  const manage = `/${handle}/integrations/github`;
+  if (!source || source.state === "unconnected") {
+    return (
+      <>
+        <p>No repositories are connected, so no code is coming in yet.</p>
+        <Link to={manage} className={CONNECT_BTN}>
+          Pick repositories
+        </Link>
+      </>
+    );
+  }
+  if (source.state === "importing" && source.integration === "github") {
+    return (
+      <p className="flex max-w-md items-center gap-2 text-left">
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+        />
+        <span>
+          Copying the code of {source.repos} {source.repos === 1 ? "repository" : "repositories"}{" "}
+          from GitHub. Files appear here as they are copied.
+        </span>
+      </p>
+    );
+  }
+  return (
+    <p>
+      {source.state === "stalled"
+        ? "Copying the code stalled."
+        : "No files came from the connected repositories."}{" "}
+      <Link to={manage} className="font-semibold text-primary">
+        Manage GitHub
+      </Link>
+    </p>
+  );
+}
+
+export function CodePerspective({
+  data,
+  handle,
+  source,
+}: {
+  data: CodePerspectiveData;
+  handle: string;
+  /** How the GitHub copy is doing, for the empty state. */
+  source?: IntegrationStatus;
+}) {
   if (!data.repo) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-        <p>
-          No code copied yet. The files of the repositories this Doco brings from GitHub appear here
-          as they are copied.{" "}
-          <Link to={`/${handle}/integrations/github`} className="font-semibold text-primary">
-            Pick the repositories
-          </Link>
-        </p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
+        <NoCodeYet handle={handle} source={source} />
       </div>
     );
   }

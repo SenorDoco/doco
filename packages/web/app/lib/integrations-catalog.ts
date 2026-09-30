@@ -6,6 +6,8 @@
 // and fills a Doco per choice), or else a picker that asks which Doco to set
 // it up on.
 
+import { GITHUB_IMPORTS } from "./github-imports";
+
 export type IntegrationScope = "account" | "workspace" | "doco";
 
 export interface IntegrationDefinition {
@@ -70,4 +72,20 @@ export function connectHrefFor(opts: {
   const query = new URLSearchParams({ integration: integration.id }).toString();
   if (workspaceHandle) return `/workspaces/${workspaceHandle}/integrations?${query}`;
   return `/integrations?${query}`;
+}
+
+/** An integration a Doco can fill from. */
+export type SourceIntegration = "github" | "slack" | "notion";
+
+/**
+ * The integration a Doco made from `template` fills from, or null for a Doco
+ * people and agents fill themselves. Such a Doco stays empty until that
+ * integration is connected, so creating one continues into connecting it.
+ * Pure.
+ */
+export function sourceIntegrationFor(
+  template: string | null | undefined,
+): SourceIntegration | null {
+  if (GITHUB_IMPORTS.some((i) => i.template === template)) return "github";
+  return template === "slack" || template === "notion" ? template : null;
 }

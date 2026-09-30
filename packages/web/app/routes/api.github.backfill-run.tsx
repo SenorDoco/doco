@@ -91,8 +91,6 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ done: true, skipped: true });
   }
 
-  const installationId = working.installation_id ?? ctx.connections[0]?.installation_id ?? 0;
-
   // A slice that paused on a rate limit stamped `retry_after`. Until it passes,
   // running again would just re-hit the limit, so decline cheaply (no slice, no
   // re-kick) and let the sweep resume once the window clears.
@@ -113,7 +111,9 @@ export async function action({ request }: { request: Request }) {
       ownerSlug: ctx.workspaceHandle,
       docoSlug: ctx.handle,
       template: ctx.template,
-      installationId,
+      installationByRepo: Object.fromEntries(
+        ctx.connections.map((c) => [c.repo, c.installation_id]),
+      ),
     }));
   } catch (err) {
     console.error("[github backfill-run] slice failed; leaving recovery to the sweep:", err);
