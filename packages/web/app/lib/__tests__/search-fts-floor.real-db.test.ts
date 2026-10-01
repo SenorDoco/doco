@@ -9,25 +9,17 @@
 // reliable floor. These tests pin that the floor surfaces such nodes, against
 // real Postgres full-text semantics (PGlite), not a mock.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
 import { describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import type { SearchFilters } from "../search-filters.server";
 import { type SearchHit, hybridSearch, mergeSearchHits, rankSearchFts } from "../search.server";
 
 type Client = Parameters<typeof rankSearchFts>[0];
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 const ALL: SearchFilters = { lifecycle: null, nodeType: null, limit: 100 };
 
 async function seed(): Promise<Client> {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",

@@ -5,22 +5,15 @@
 // semantics. Every node alteration writes an audit_events row, so the latest
 // event id is a complete "has anything changed?" signal for a Doco.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { readChangeCursor } from "../change-cursor.server";
 
 type Client = Parameters<typeof readChangeCursor>[0];
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 async function seed(): Promise<PGlite> {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'ws', 'WS')");
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','workspace_1','workspace_1','{}'::jsonb)",

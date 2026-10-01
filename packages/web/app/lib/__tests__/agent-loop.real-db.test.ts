@@ -10,15 +10,8 @@
 // matter (text-only finish, and a tool-use turn followed by text), so the
 // upcoming extraction of a shared driver can be proven behavior-preserving.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 const runtime = vi.hoisted(() => ({ stream: vi.fn() }));
@@ -53,6 +46,7 @@ vi.mock("../internal-fetch.server", () => ({ internalFetch: vi.fn(async () => nu
 vi.mock("../dotenv.server", () => ({ ensureEnvLoaded: vi.fn() }));
 vi.mock("../telemetry.server", () => ({ upsertAgentTurn: vi.fn(async () => {}) }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { TURN_TIME_BUDGET_MS, runAssistantTurn, saveAttachment } from "../agent-chat.server";
 import type { ChatConversationRow, ChatStreamContext } from "../agent-chat.server";
 
@@ -165,8 +159,7 @@ async function persistedMessages(): Promise<Array<{ role: string; content: unkno
 
 describe("agent loop against a real database", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite({ extensions: { vector } });
-    await dbm.db.exec(schemaSql);
+    dbm.db = await freshDb();
     await seed();
     runtime.stream.mockReset();
     tool.run.mockReset();

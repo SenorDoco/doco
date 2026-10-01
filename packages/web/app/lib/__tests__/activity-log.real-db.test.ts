@@ -4,16 +4,10 @@
 // one person can appear once per agent; the Activity calendars count each
 // log per day.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { countByDay, listTopActors } from "../activity-log.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 let db: InstanceType<typeof PGlite>;
 
@@ -62,8 +56,7 @@ async function query(
 }
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   await db.query(
     `INSERT INTO users (id, github_login, data) VALUES
        ('user_alice', 'alice', '{}'::jsonb),

@@ -1,11 +1,7 @@
 // What a Doco brings from GitHub decides which repo events reach it and which
 // other Docos a repo moves away from. PGlite runs the real schema and the
 // real connection + routing SQL.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ db: null as unknown as PGlite }));
@@ -13,6 +9,7 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(state.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   addConnection,
   connectPicked,
@@ -30,15 +27,11 @@ import {
 } from "../github-connection.server";
 import { findDocoByInstallation, findDocoTargetsForGitHubRepo } from "../github-webhook.server";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 const REPO = "acme/app";
 const conn = { repo: REPO, installation_id: 9 };
 
 beforeEach(async () => {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   state.db = db;
   await db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('workspace_acme', 'acme', 'Acme');

@@ -1,11 +1,8 @@
 // Reading a codebase Doco's copy: the reader's tree, folders and files, finding
 // a file by name, and searching paths and contents. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   codeTreeAt,
   findCodeFiles,
@@ -14,14 +11,10 @@ import {
   searchCodebase,
 } from "../codebase-read.server";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 let db: PGlite;
 
 beforeAll(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   const data = JSON.stringify({
     template_handle: "codebase",
     github_integration: {

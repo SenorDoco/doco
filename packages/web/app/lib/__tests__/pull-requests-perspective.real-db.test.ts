@@ -6,11 +6,6 @@
 // rather than a hand-rolled mock. The only stubbed boundary is the GitHub
 // connection lookup, which is orthogonal to the query under test.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../github-connection.server", () => ({
@@ -19,12 +14,10 @@ vi.mock("../github-connection.server", () => ({
   })),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { loadPullRequestsPerspective } from "../pull-requests-perspective.server";
 
 type Client = Parameters<typeof loadPullRequestsPerspective>[0];
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 // PR reference nodes, newest first (updated_at = now − i minutes). The
 // `drafting` row is an off-canonical lifecycle that must still read as Open.
@@ -36,8 +29,7 @@ const PR_NODES: Array<{ id: string; lifecycle: string; prose: string }> = [
 ];
 
 async function seed(): Promise<Client> {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'ws', 'WS')");
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','workspace_1','workspace_1','{}'::jsonb)",

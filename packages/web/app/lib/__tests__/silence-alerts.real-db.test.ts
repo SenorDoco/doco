@@ -1,17 +1,11 @@
 // Silence alerts open when a source goes quiet for longer than its own
 // history makes expected, close when it speaks again, and are emailed once to
 // the owners of the Docos they concern. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import type { Email } from "../email.server";
 import { checkSilences, emailNewAlerts, loadSilenceAlerts } from "../silence-alerts.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 type Client = Parameters<typeof checkSilences>[0];
 let db: PGlite;
@@ -23,8 +17,7 @@ const NOW = new Date("2026-09-30T11:00:00.000Z");
 const CLAUDE_CODE = '{"auth": "oauth", "client_name": "Claude Code"}';
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   c = db as unknown as Client;
   await db.exec(`
     INSERT INTO users (id, github_login, email, data) VALUES

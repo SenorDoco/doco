@@ -1,16 +1,10 @@
 // A Doco's activity, as its home's side column shows it: its writes (with what
 // it copied from its source) and queries each day, the latest recorded writes,
 // and who wrote and queried it most. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { loadDocoActivity } from "../doco-activity.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 let db: PGlite;
 
@@ -24,8 +18,7 @@ const daysAgo = (n: number) => {
 const day = (iso: string) => iso.slice(0, 10);
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   await db.exec(
     `INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'torre', 'Torre');
      INSERT INTO users (id, github_login, data) VALUES ('user_ana', 'ana', '{}');

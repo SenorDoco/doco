@@ -15,9 +15,6 @@
 // orphan run, off-topic node types), implements the drafting exemption, guards
 // the edge-type allowlist, and wires the probabilistic checks end-to-end.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   type CandidateFields,
   type EdgeCandidate,
@@ -29,12 +26,8 @@ import {
   evaluatePolicies,
   isDeterministicPredicate,
 } from "@doco/shared";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 const judge = vi.hoisted(() => ({ run: vi.fn() }));
@@ -46,6 +39,7 @@ vi.mock("@doco/db", async () => {
 vi.mock("../llm-judge.server", () => ({ judgeProbabilisticPredicate: judge.run }));
 
 import { createDocoInWorkspace } from "@doco/host";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { runAuthoringPolicies } from "../authoring-runner.server";
 
 const WORKSPACE_ID = "workspace_01EVALTEST00000000000001";
@@ -100,8 +94,7 @@ async function loadSeededPolicies(id: string): Promise<LoadedPolicy[]> {
 }
 
 beforeAll(async () => {
-  dbm.db = new PGlite({ extensions: { vector } });
-  await dbm.db.exec(schemaSql);
+  dbm.db = await freshDb();
   await seedWorkspaceAndUser();
   const created = await createDocoInWorkspace({
     workspaceId: WORKSPACE_ID,

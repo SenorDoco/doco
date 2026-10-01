@@ -3,15 +3,8 @@
 // a database dump alone must not yield a working token. PGlite backs the real
 // install + read SQL.
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -29,6 +22,7 @@ vi.mock("../doco-access.server", () => ({
   getDocoLevelRole: vi.fn(),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { getSlackBotToken, upsertSlackInstallation } from "../slack.server";
 
 async function storedToken(team: string): Promise<string | null> {
@@ -41,8 +35,7 @@ async function storedToken(team: string): Promise<string | null> {
 
 beforeEach(async () => {
   process.env.DOCO_ENCRYPTION_KEY = randomBytes(32).toString("base64");
-  dbm.db = new PGlite({ extensions: { vector } });
-  await dbm.db.exec(schemaSql);
+  dbm.db = await freshDb();
 });
 afterEach(() => {
   process.env.DOCO_ENCRYPTION_KEY = undefined;
