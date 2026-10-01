@@ -5,6 +5,7 @@
 import { ListTree, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
+import { ActivityColumn } from "~/components/doco-activity";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import {
   CONNECT,
@@ -18,6 +19,7 @@ import { PageHeader } from "~/components/page-header";
 import { SilenceAlertList } from "~/components/silence-alerts";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { cn } from "~/lib/cn";
+import type { DocoActivity } from "~/lib/doco-activity.server";
 import { findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import type { IntegrationStatus } from "~/lib/integration-status.server";
 import { type ReaderKind, type ReaderListing, readerHref } from "~/lib/reader";
@@ -42,6 +44,8 @@ export interface ReaderShell {
   alerts: SilenceAlert[];
   /** The tree's first listings: the top (""), and the open item's place. */
   tree: Record<string, ReaderListing>;
+  /** The Doco's activity column. */
+  activity: DocoActivity;
 }
 
 const OUTLINE_BTN =
@@ -208,7 +212,7 @@ export function ReaderLayout({
             </Link>
           ) : null}
         </div>
-        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
           {drawer ? (
             <button
               type="button"
@@ -248,6 +252,14 @@ export function ReaderLayout({
             />
           </aside>
           <div className="min-h-0 min-w-0 overflow-auto">{children}</div>
+          {/* The Doco's activity, as every Doco home has it: only where it
+              fits beside what is open. */}
+          <aside
+            aria-label="Doco activity"
+            className="hidden min-h-0 overflow-auto border-l border-border p-4 xl:block"
+          >
+            <ActivityColumn activity={shell.activity} handle={handle} />
+          </aside>
         </div>
       </section>
     </main>

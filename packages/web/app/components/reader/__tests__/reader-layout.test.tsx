@@ -74,6 +74,25 @@ const codeShell: ReaderShell = {
   status: github,
   alerts: [],
   tree: codeTree,
+  activity: {
+    byDay: { "2026-09-30": 4 },
+    items: [
+      {
+        event_id: "ev_1",
+        id: "decision_1",
+        entity_type: "decision",
+        summary: "Keep the API in its own repository",
+        at: "2026-09-30T10:00:00.000Z",
+        op: "entity.create",
+        lifecycle: "active",
+        before: null,
+        after: null,
+      },
+    ],
+    topContributors: [
+      { userId: "user_ana", username: "ana", lastAt: "2026-09-30T10:00:00.000Z", eventCount: 1 },
+    ],
+  },
 };
 
 function render(
@@ -178,5 +197,24 @@ describe("ReaderLayout search and tree", () => {
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain("3 more");
     expect(html).toContain("the open file");
+  });
+});
+
+// Like every other Doco, the reader shows the Doco's activity beside whatever
+// is open: the Activity chart, who contributed most, and the latest writes.
+describe("ReaderLayout activity column", () => {
+  it("shows the Doco's activity beside an open file", () => {
+    const html = render(codeShell, { url: "/acme-codebase/code/acme/app/README.md" });
+    expect(html).toContain("the open file");
+    expect(html).toContain('aria-label="Doco activity"');
+    expect(html).toContain(">Activity<");
+    expect(html).toContain(">Top contributors<");
+    expect(html).toContain(">ana<");
+    expect(html).toContain(">Latest activity<");
+    expect(html).toContain("Keep the API in its own repository");
+  });
+
+  it("links each write to its node", () => {
+    expect(render(codeShell)).toContain('href="/acme-codebase/decision/decision_1"');
   });
 });

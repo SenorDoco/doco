@@ -18,9 +18,10 @@ import { getWorkspaceRole, updateWorkspaceConstitution, withClient } from "@doco
 import { entityUrl } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
-import { ActivityHeatmap } from "~/components/activity-heatmap";
+import { HEATMAP_WEEKS } from "~/components/activity-heatmap";
 import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { ActivityCard } from "~/components/doco-activity";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
@@ -44,7 +45,6 @@ import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
 const FEED_LIMIT = 20;
-const HEATMAP_WEEKS = 52;
 const TOP_CONTRIBUTORS_LIMIT = 10;
 
 interface WorkspaceDoco {
@@ -406,14 +406,7 @@ export default function WorkspaceHome({
               </button>
             </Form>
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-              </CardContent>
-            </Card>
+            <ActivityCard byDay={byDay} />
 
             <Card>
               <CardHeader className="px-4 py-3">

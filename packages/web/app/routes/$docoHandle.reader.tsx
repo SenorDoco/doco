@@ -1,6 +1,6 @@
 // The reader's frame, around /<doco>/code/* (a codebase Doco) and
 // /<doco>/pages/* (a Notion Doco): the Doco's name and status, one search
-// box, and the tree of what it copied. The child route loads the folder,
+// box, the tree of what it copied, and the Doco's activity. The child route loads the folder,
 // file, page or search in the middle; moving between them reloads only that,
 // never the frame or the tree, which fetches the listings it opens itself.
 import { withClient } from "@doco/db";
@@ -17,6 +17,7 @@ import { ReaderLayout, type ReaderShell } from "~/components/reader/reader-layou
 import { SiteHeader } from "~/components/site-header";
 import { codeTreeAt } from "~/lib/codebase-read.server";
 import { type DocoRouteParams, canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoActivity } from "~/lib/doco-activity.server";
 import { loadIntegrationStatuses } from "~/lib/integration-status.server";
 import { pageTreeAt } from "~/lib/notion-mirror-read.server";
 import { readerFor } from "~/lib/reader";
@@ -56,6 +57,7 @@ export async function loader({
       status,
       alerts: await loadSilenceAlerts(c, [docoId]),
       tree: reader === "code" ? await codeTreeAt(c, docoId, at) : await pageTreeAt(c, docoId, at),
+      activity: await loadDocoActivity(c, docoId),
     };
     return { me: ctx.me, shell };
   });
