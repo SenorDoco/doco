@@ -1,7 +1,7 @@
 // A codebase or Notion Doco opens in the reader: its home redirects there,
-// each reader route serves only its own kind of Doco, and the tree's data
-// route lists one folder at a time (a Notion copy has no tree: it only finds
-// pages by title).
+// the frame carries the Doco's activity, each reader route serves only its own
+// kind of Doco, and the tree's data route lists one folder at a time (a Notion
+// copy has no tree: it only finds pages by title).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   findCodeFiles: vi.fn(),
   loadCodeView: vi.fn(),
   findPages: vi.fn(),
+  codeTreeAt: vi.fn(),
+  loadDocoActivity: vi.fn(),
 }));
 
 vi.mock("@doco/db", async (importOriginal) => ({
@@ -20,7 +22,14 @@ vi.mock("~/lib/doco-access.server", () => ({
   loadDocoRouteForRead: async () => ({
     handle: "acme-docs",
     me: null,
-    meta: { docoId: "doco_1", template: mocks.template },
+    canonicalOwnerSlug: "acme",
+    meta: {
+      docoId: "doco_1",
+      template: mocks.template,
+      ownerId: "workspace_1",
+      visibility: "private",
+      goal: "",
+    },
   }),
   canAdminDoco: async () => false,
   canWriteDoco: async () => false,
@@ -29,13 +38,21 @@ vi.mock("~/lib/codebase-read.server", () => ({
   listCodeTree: mocks.listCodeTree,
   findCodeFiles: mocks.findCodeFiles,
   loadCodeView: mocks.loadCodeView,
+  codeTreeAt: mocks.codeTreeAt,
 }));
 vi.mock("~/lib/notion-mirror-read.server", () => ({
   findPages: mocks.findPages,
 }));
+vi.mock("~/lib/integration-status.server", () => ({
+  loadIntegrationStatuses: async () => [],
+}));
+vi.mock("~/lib/doco-activity.server", () => ({
+  loadDocoActivity: mocks.loadDocoActivity,
+}));
 
 import { loader as docoHome } from "../$docoHandle._index";
 import { loader as codeView } from "../$docoHandle.code.$";
+import { loader as readerFrame } from "../$docoHandle.reader";
 import { loader as tree } from "../$docoHandle.tree[.]json";
 
 async function thrown(promise: Promise<unknown>): Promise<Response> {
@@ -74,6 +91,22 @@ describe("the Doco home of a reader Doco", () => {
       }),
     );
     expect(res.headers.get("Location")).toBe("/acme-docs/pages");
+  });
+});
+
+// Like every other Doco, the reader shows the Doco's activity, beside
+// whatever is open in it.
+describe("the reader's frame", () => {
+  it("carries the Doco's activity", async () => {
+    const activity = { byDay: { "2026-09-30": 4 }, items: [], topContributors: [] };
+    mocks.codeTreeAt.mockResolvedValue({ "": { items: [], more: 0 } });
+    mocks.loadDocoActivity.mockResolvedValue(activity);
+    const data = await readerFrame({
+      request: new Request("https://doco.test/acme-docs/code/acme/app/README.md"),
+      params: { docoHandle: "acme-docs", "*": "acme/app/README.md" },
+    });
+    expect(mocks.loadDocoActivity).toHaveBeenCalledWith({}, "doco_1");
+    expect(data.shell.activity).toBe(activity);
   });
 });
 

@@ -203,7 +203,7 @@ function PageView({ handle, page }: { handle: string; page: NotionReaderPage }) 
       <div
         className={cn(
           "grid gap-6 px-4 py-5 sm:px-6",
-          beside && "xl:grid-cols-[minmax(0,1fr)_14rem]",
+          beside && "2xl:grid-cols-[minmax(0,1fr)_14rem]",
         )}
       >
         <div className="min-w-0 max-w-3xl space-y-4">
@@ -241,7 +241,7 @@ function PageView({ handle, page }: { handle: string; page: NotionReaderPage }) 
           ) : null}
         </div>
         {beside ? (
-          <aside className="space-y-5 border-border max-xl:border-t max-xl:pt-4 xl:sticky xl:top-14 xl:self-start xl:border-l xl:pl-4">
+          <aside className="space-y-5 border-border max-2xl:border-t max-2xl:pt-4 2xl:sticky 2xl:top-14 2xl:self-start 2xl:border-l 2xl:pl-4">
             {outline.length > 0 ? (
               <nav aria-label="On this page" className="space-y-1.5">
                 <h3 className={SECTION_TITLE}>On this page</h3>

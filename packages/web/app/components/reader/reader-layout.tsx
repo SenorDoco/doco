@@ -5,6 +5,7 @@
 import { ListTree, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
+import { ActivityColumn } from "~/components/doco-activity";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import {
   CONNECT,
@@ -17,6 +18,7 @@ import {
 import { PageHeader } from "~/components/page-header";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { cn } from "~/lib/cn";
+import type { DocoActivity } from "~/lib/doco-activity.server";
 import { findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import type { IntegrationStatus } from "~/lib/integration-status.server";
 import { type ReaderKind, type ReaderListing, readerHref } from "~/lib/reader";
@@ -39,6 +41,8 @@ export interface ReaderShell {
   /** A codebase tree's first listings: the top (""), and the open item's
    *  place. Null for a Notion copy, which has no tree. */
   tree: Record<string, ReaderListing> | null;
+  /** The Doco's activity column. */
+  activity: DocoActivity;
 }
 
 const OUTLINE_BTN =
@@ -205,50 +209,65 @@ export function ReaderLayout({
             </Link>
           ) : null}
         </div>
-        {shell.tree ? (
-          <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[280px_minmax(0,1fr)]">
-            {drawer ? (
-              <button
-                type="button"
-                aria-label="Close"
-                onClick={() => setDrawer(false)}
-                className="fixed inset-0 z-40 bg-foreground/20 md:hidden"
-              />
-            ) : null}
-            <aside
-              className={cn(
-                "min-h-0 flex-col border-r border-border bg-card",
-                drawer
-                  ? "fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-xs shadow-xl md:static md:z-auto md:w-auto md:max-w-none md:shadow-none"
-                  : "hidden md:flex",
-              )}
-            >
+        <div
+          className={cn(
+            "relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)]",
+            shell.tree
+              ? "md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_320px]"
+              : "xl:grid-cols-[minmax(0,1fr)_320px]",
+          )}
+        >
+          {shell.tree ? (
+            <>
               {drawer ? (
-                <div className="flex items-center justify-between px-3 pt-3 md:hidden">
-                  <span className="text-xs font-semibold">Files</span>
-                  <button
-                    type="button"
-                    onClick={() => setDrawer(false)}
-                    aria-label="Hide the files"
-                    className="rounded p-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <X aria-hidden className="h-4 w-4" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setDrawer(false)}
+                  className="fixed inset-0 z-40 bg-foreground/20 md:hidden"
+                />
               ) : null}
-              <ReaderTree
-                handle={handle}
-                listings={shell.tree}
-                trail={trail}
-                current={query ? null : (trail.at(-1) ?? "")}
-                onNavigate={() => setDrawer(false)}
-              />
-            </aside>
-            <div className="min-h-0 min-w-0 overflow-auto">{children}</div>
-          </div>
-        ) : (
-          <div className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</div>
-        )}
+              <aside
+                className={cn(
+                  "min-h-0 flex-col border-r border-border bg-card",
+                  drawer
+                    ? "fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-xs shadow-xl md:static md:z-auto md:w-auto md:max-w-none md:shadow-none"
+                    : "hidden md:flex",
+                )}
+              >
+                {drawer ? (
+                  <div className="flex items-center justify-between px-3 pt-3 md:hidden">
+                    <span className="text-xs font-semibold">Files</span>
+                    <button
+                      type="button"
+                      onClick={() => setDrawer(false)}
+                      aria-label="Hide the files"
+                      className="rounded p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X aria-hidden className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
+                <ReaderTree
+                  handle={handle}
+                  listings={shell.tree}
+                  trail={trail}
+                  current={query ? null : (trail.at(-1) ?? "")}
+                  onNavigate={() => setDrawer(false)}
+                />
+              </aside>
+            </>
+          ) : null}
+          <div className="min-h-0 min-w-0 overflow-auto">{children}</div>
+          {/* The Doco's activity, as every Doco home has it: only where it
+              fits beside what is open. */}
+          <aside
+            aria-label="Doco activity"
+            className="hidden min-h-0 overflow-auto border-l border-border p-4 xl:block"
+          >
+            <ActivityColumn activity={shell.activity} handle={handle} />
+          </aside>
+        </div>
       </section>
     </main>
   );
