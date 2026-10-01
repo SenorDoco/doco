@@ -56,7 +56,8 @@ describe("DocoListCard", () => {
     expect(marker).toBeLessThan(name);
   });
 
-  it("counts the files a codebase Doco copies, which are not nodes", () => {
+  it("counts what a Doco copied from its source, which are not nodes", () => {
+    const empty = { drafting: 0, queued: 0, active: 0, retired: 0 };
     const html = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -67,16 +68,24 @@ describe("DocoListCard", () => {
               id: "doco_code",
               handle: "torre-codebase",
               nodeCount: 0,
-              counts: { drafting: 0, queued: 0, active: 0, retired: 0 },
-              files: 1215,
+              counts: empty,
+              copied: { count: 1215, unit: "file" },
               lastUpdatedAt: "2026-10-01T01:34:00.000Z",
             },
             {
-              id: "doco_both",
-              handle: "torre-mixed",
+              id: "doco_slack",
+              handle: "torre-slack",
+              nodeCount: 0,
+              counts: empty,
+              copied: { count: 48210, unit: "message" },
+              lastUpdatedAt: "2026-09-30T01:34:00.000Z",
+            },
+            {
+              id: "doco_notion",
+              handle: "torre-notion",
               nodeCount: 3,
-              counts: { drafting: 0, queued: 0, active: 3, retired: 0 },
-              files: 1,
+              counts: { ...empty, active: 3 },
+              copied: { count: 1, unit: "page" },
               lastUpdatedAt: null,
             },
           ],
@@ -85,6 +94,7 @@ describe("DocoListCard", () => {
       ),
     );
     expect(html).toContain("(1,215 files)");
-    expect(html).toContain(" · 1 file)");
+    expect(html).toContain("(48,210 messages)");
+    expect(html).toContain(" · 1 page)");
   });
 });

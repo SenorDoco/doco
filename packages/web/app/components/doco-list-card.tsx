@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AccessListCard, type AccessListItem } from "~/components/access-list-card";
+import type { Copied } from "~/lib/doco-stats.server";
 import type { LifecycleCounts } from "~/lib/node-colors";
 
 export interface DocoListEntry {
@@ -9,8 +10,8 @@ export interface DocoListEntry {
   ownerHandle?: string;
   nodeCount: number;
   counts?: LifecycleCounts;
-  /** Files a codebase Doco copied; they are not nodes. */
-  files?: number;
+  /** What the Doco copied from its source; copies are not nodes. */
+  copied?: Copied | null;
   lastUpdatedAt: string | null;
   visibility?: "public" | "private";
 }
@@ -35,7 +36,7 @@ export function DocoListCard({
     count: d.nodeCount,
     countLabel: `${d.nodeCount} nodes`,
     counts: d.counts,
-    files: d.files,
+    copied: d.copied,
     lastUpdatedAt: d.lastUpdatedAt,
     visibility: d.visibility,
   }));

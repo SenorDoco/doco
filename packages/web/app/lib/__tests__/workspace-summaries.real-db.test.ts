@@ -61,7 +61,7 @@ describe("loadWorkspaceSummaries", () => {
     });
   });
 
-  it("counts a file copied from GitHub as activity", async () => {
+  it("counts what a Doco copied from its source as activity", async () => {
     await db.exec(`
       INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data) VALUES
         ('doco_code', 'acme-codebase', 'workspace_acme', 'workspace_acme', 'private',

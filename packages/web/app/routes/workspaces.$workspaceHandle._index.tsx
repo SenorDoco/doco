@@ -35,7 +35,7 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
-import { EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
+import { type Copied, EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
 import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -52,7 +52,7 @@ interface WorkspaceDoco {
   visibility: "public" | "private";
   nodes: number;
   counts: LifecycleCounts;
-  files: number;
+  copied: Copied | null;
   lastUpdatedAt: string | null;
 }
 
@@ -106,7 +106,7 @@ export async function loader({
           visibility: r.visibility,
           nodes: stats.nodes,
           counts: stats.counts,
-          files: stats.files,
+          copied: stats.copied,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -310,7 +310,7 @@ export default function WorkspaceHome({
     ownerHandle: workspace.handle,
     nodeCount: d.nodes,
     counts: d.counts,
-    files: d.files,
+    copied: d.copied,
     lastUpdatedAt: d.lastUpdatedAt,
     visibility: d.visibility,
   }));

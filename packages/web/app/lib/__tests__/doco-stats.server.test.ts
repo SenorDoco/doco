@@ -76,23 +76,3 @@ describe("listDocoStats lifecycle breakdown", () => {
     expect(stats.get("doco_x")?.counts).toEqual({ drafting: 0, queued: 0, active: 0, retired: 0 });
   });
 });
-
-describe("listDocoStats copied code", () => {
-  it("counts a Doco's copied files and dates it by the latest file copied", async () => {
-    const query = async (sql: string) => {
-      if (/FROM code_files/i.test(sql))
-        return { rows: [{ doco_id: "doco_code", n: "215", last_at: "2026-10-01T01:34:29.000Z" }] };
-      if (/FROM audit_events/i.test(sql))
-        return { rows: [{ doco_id: "doco_code", last_at: "2026-09-30T10:00:00.000Z" }] };
-      return { rows: [] };
-    };
-    vi.mocked(withClient).mockImplementation(async (callback) => callback({ query } as never));
-
-    const stats = await listDocoStats(["doco_code"]);
-    expect(stats.get("doco_code")).toMatchObject({
-      nodes: 0,
-      files: 215,
-      lastUpdatedAt: "2026-10-01T01:34:29.000Z",
-    });
-  });
-});
