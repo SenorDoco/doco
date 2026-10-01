@@ -35,8 +35,8 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
-import { type Copied, EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
-import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
+import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
+import { lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -50,9 +50,8 @@ interface WorkspaceDoco {
   docoId: string;
   handle: string;
   visibility: "public" | "private";
-  nodes: number;
-  counts: LifecycleCounts;
-  copied: Copied | null;
+  template: string | null;
+  items: number;
   lastUpdatedAt: string | null;
 }
 
@@ -104,9 +103,8 @@ export async function loader({
           docoId: id,
           handle: r.handle,
           visibility: r.visibility,
-          nodes: stats.nodes,
-          counts: stats.counts,
-          copied: stats.copied,
+          template: r.template,
+          items: stats.items,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -310,9 +308,8 @@ export default function WorkspaceHome({
     href: `/${d.handle}`,
     handle: d.handle,
     ownerHandle: workspace.handle,
-    nodeCount: d.nodes,
-    counts: d.counts,
-    copied: d.copied,
+    template: d.template,
+    items: d.items,
     lastUpdatedAt: d.lastUpdatedAt,
     visibility: d.visibility,
   }));

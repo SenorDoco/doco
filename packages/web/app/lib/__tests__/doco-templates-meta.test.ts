@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DOCO_TEMPLATES, findDocoTemplateMeta } from "../doco-templates-meta";
+import { DOCO_TEMPLATES, countDocoItems, findDocoTemplateMeta } from "../doco-templates-meta";
 
 // The picker offers the blank `generic` start, `process`,
 // `github-pull-requests`, the three decision-record templates, `glossary`,
@@ -64,5 +64,24 @@ describe("doco template metadata", () => {
       expect(handles).not.toContain(handle);
       expect(findDocoTemplateMeta(handle)).toBeUndefined();
     }
+  });
+
+  // Each kind of Doco holds one main thing, and lists count the Doco by it.
+  it("counts each kind of Doco by the one thing it holds", () => {
+    expect(countDocoItems(52500, "github-pull-requests")).toBe("52,500 pull requests");
+    expect(countDocoItems(1, "github-bugs")).toBe("1 bug");
+    expect(countDocoItems(45971, "codebase")).toBe("45,971 files");
+    expect(countDocoItems(80271, "slack")).toBe("80,271 messages");
+    expect(countDocoItems(62673, "notion")).toBe("62,673 pages");
+    expect(countDocoItems(12, "process")).toBe("12 processes");
+    expect(countDocoItems(15, "glossary")).toBe("15 terms");
+    expect(countDocoItems(9, "org-chart")).toBe("9 roles");
+    expect(countDocoItems(0, "product-decisions")).toBe("0 decisions");
+  });
+
+  it("counts a Doco with no known template by its nodes", () => {
+    expect(countDocoItems(3, "generic")).toBe("3 nodes");
+    expect(countDocoItems(1, null)).toBe("1 node");
+    expect(countDocoItems(2, "glossaries")).toBe("2 nodes");
   });
 });

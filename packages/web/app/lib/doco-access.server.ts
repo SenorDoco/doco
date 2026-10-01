@@ -599,7 +599,7 @@ export interface ReadableWorkspaceDoco {
   id: string;
   handle: string;
   visibility: "public" | "private";
-  /** The template the Doco was created from, for its type icon. */
+  /** The template the Doco was created from: its type icon, and what it holds. */
   template: string | null;
 }
 

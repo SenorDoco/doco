@@ -1,49 +1,36 @@
-// Per-Doco aggregate stats (Nodes, per-lifecycle counts, Edges, Last
-// updated) shown in each workspace page's Doco list.
+// Per-Doco stats shown in each workspace page's Doco list: how many of the
+// one thing it holds the Doco has (`items`, named by its template's item; see
+// docoItemFor), and when it last changed.
 //
-// `nodes` counts domain nodes: decisions, intents, rules,
-// actions, evals, ideas, reference_entities, logs, states, and the
-// Doco's principals. Policies are not nodes and are deliberately
-// excluded — they are surfaced via /<handle>/api/policies.json.
-// `counts` is that same total split by lifecycle stage
-// (drafting / queued / active / retired) for the colored count display.
-// `edges` reads the persisted `edges` table.
-// `copied` counts what a Doco copied from its source (code files, Slack
-// messages, Notion pages), which are not nodes.
-// `lastUpdatedAt` is the newest of the max `at` from `audit_events`,
-// entity `updated_at` (imported/pre-audit Docos) and the latest copy.
+// What counts as one item comes from the Doco's template: its nodes of one
+// type, any of its nodes (policies are not nodes; they are surfaced via
+// /<handle>/api/policies.json), the copies it made of its source (code files,
+// Slack messages, Notion pages, which are not nodes), or its processes.
+// `lastUpdatedAt` is the newest of the max `at` from `audit_events`, node
+// `updated_at` (imported/pre-audit Docos) and the latest copy.
 
 import { withClient } from "@doco/db";
-import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts } from "./node-colors";
-
-/** What a Doco copied from its source, and the noun one copy goes by. */
-export interface Copied {
-  count: number;
-  unit: "file" | "message" | "page";
-}
+import { docoItemFor } from "./doco-templates-meta";
 
 export interface DocoStats {
-  nodes: number;
-  counts: LifecycleCounts;
-  edges: number;
-  copied: Copied | null;
+  items: number;
   lastUpdatedAt: string | null;
 }
 
-/** Every copy a Doco holds of its source, as (doco_id, unit, at) rows: the
- *  files of a codebase, the messages of the Slack channels it copies, and the
- *  Notion pages fetched so far. `at` is when it happened in the source where
- *  the source says (a message posted, a page last edited; null when Notion
- *  gave no time), else when Doco copied it (a code file). */
+/** Every copy a Doco holds of its source, as (doco_id, at) rows: the files of
+ *  a codebase, the messages of the Slack channels it copies, and the Notion
+ *  pages fetched so far. `at` is when it happened in the source where the
+ *  source says (a message posted, a page last edited; null when Notion gave no
+ *  time), else when Doco copied it (a code file). */
 export const COPIED_ITEMS_SQL = `
-  SELECT doco_id, 'file' AS unit, synced_at AS at FROM code_files
+  SELECT doco_id, synced_at AS at FROM code_files
   UNION ALL
-  SELECT m.doco_id, 'message', m.posted_at
+  SELECT m.doco_id, m.posted_at
     FROM group_chat_messages m
     JOIN group_chat_channels ch USING (doco_id, channel_id)
    WHERE NOT ch.excluded
   UNION ALL
-  SELECT doco_id, 'page', last_edited_time FROM notion_pages WHERE synced_at IS NOT NULL`;
+  SELECT doco_id, last_edited_time FROM notion_pages WHERE synced_at IS NOT NULL`;
 
 type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
 
@@ -90,13 +77,7 @@ export const NODE_TYPES_FOR_STATS = [
 // the list.
 export const NODE_TYPES_FOR_STATS_SQL = NODE_TYPES_FOR_STATS.map((t) => `'${t}'`).join(", ");
 
-export const EMPTY_DOCO_STATS: DocoStats = {
-  nodes: 0,
-  counts: EMPTY_LIFECYCLE_COUNTS,
-  edges: 0,
-  copied: null,
-  lastUpdatedAt: null,
-};
+export const EMPTY_DOCO_STATS: DocoStats = { items: 0, lastUpdatedAt: null };
 
 export async function listDocoStats(docoIds: readonly string[]): Promise<Map<string, DocoStats>> {
   const out = new Map<string, DocoStats>();
@@ -104,77 +85,65 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const nodesSql = `SELECT doco_id, lifecycle, updated_at
-         FROM nodes
-        WHERE doco_id = ANY($1)
-          AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
-    const [nodesRows, edgesRows, updatedRows, copiedRows] = await Promise.all([
-      c.query<{
-        doco_id: string;
-        n: string;
-        drafting_n: string;
-        queued_n: string;
-        active_n: string;
-        retired_n: string;
-        last_entity_at: string | null;
-      }>(
-        `SELECT doco_id,
-                COUNT(*)::text AS n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'drafting')::text AS drafting_n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'queued')::text AS queued_n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'active')::text AS active_n,
-                COUNT(*) FILTER (WHERE COALESCE(lifecycle, 'active') = 'retired')::text AS retired_n,
-                MAX(updated_at)::text AS last_entity_at
-           FROM (${nodesSql}) t
-          GROUP BY doco_id`,
+    const [docoRows, nodeRows, processRows, auditRows, copiedRows] = await Promise.all([
+      c.query<{ id: string; template: string | null }>(
+        "SELECT id, data->>'template_handle' AS template FROM docos WHERE id = ANY($1)",
         [ids],
       ),
+      c.query<{ doco_id: string; node_type: string; n: string; last_at: string }>(
+        `SELECT doco_id, node_type, COUNT(*)::text AS n, MAX(updated_at)::text AS last_at
+           FROM nodes
+          WHERE doco_id = ANY($1)
+            AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})
+          GROUP BY doco_id, node_type`,
+        [ids],
+      ),
+      // A process is an Action with child Actions linked to it by `has_parent`
+      // (see process-perspective.server.ts).
       c.query<{ doco_id: string; n: string }>(
-        "SELECT doco_id, COUNT(*)::text AS n FROM edges WHERE doco_id = ANY($1) GROUP BY doco_id",
+        `SELECT doco_id, COUNT(DISTINCT to_id)::text AS n
+           FROM edges
+          WHERE doco_id = ANY($1)
+            AND edge_type = 'has_parent'
+            AND from_node_type = 'action'
+            AND to_node_type = 'action'
+          GROUP BY doco_id`,
         [ids],
       ),
       c.query<{ doco_id: string; last_at: string }>(
         "SELECT doco_id, MAX(at)::text AS last_at FROM audit_events WHERE doco_id = ANY($1) GROUP BY doco_id",
         [ids],
       ),
-      c.query<{ doco_id: string; unit: Copied["unit"]; n: string; last_at: string }>(
-        `SELECT doco_id, unit, COUNT(*)::text AS n, MAX(at)::text AS last_at
+      c.query<{ doco_id: string; n: string; last_at: string | null }>(
+        `SELECT doco_id, COUNT(*)::text AS n, MAX(at)::text AS last_at
            FROM (${COPIED_ITEMS_SQL}) t
           WHERE doco_id = ANY($1)
-          GROUP BY doco_id, unit`,
+          GROUP BY doco_id`,
         [ids],
       ),
     ]);
 
-    for (const id of ids)
-      out.set(id, { ...EMPTY_DOCO_STATS, counts: { ...EMPTY_LIFECYCLE_COUNTS } });
-    for (const r of nodesRows.rows) {
-      const s = out.get(r.doco_id);
-      if (s) {
-        s.nodes = Number(r.n);
-        s.counts = {
-          drafting: Number(r.drafting_n),
-          queued: Number(r.queued_n),
-          active: Number(r.active_n),
-          retired: Number(r.retired_n),
-        };
-        s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_entity_at);
-      }
+    const counts = (rows: { doco_id: string; n: string }[]) =>
+      new Map(rows.map((r) => [r.doco_id, Number(r.n)]));
+    const processes = counts(processRows.rows);
+    const copies = counts(copiedRows.rows);
+    const items = (id: string, template: string | null): number => {
+      const { counts: what } = docoItemFor(template);
+      if (what === "process") return processes.get(id) ?? 0;
+      if (what === "copy") return copies.get(id) ?? 0;
+      return nodeRows.rows
+        .filter((r) => r.doco_id === id && (what === "node" || r.node_type === what))
+        .reduce((sum, r) => sum + Number(r.n), 0);
+    };
+
+    for (const id of ids) out.set(id, { ...EMPTY_DOCO_STATS });
+    for (const r of docoRows.rows) {
+      const s = out.get(r.id);
+      if (s) s.items = items(r.id, r.template);
     }
-    for (const r of edgesRows.rows) {
-      const s = out.get(r.doco_id);
-      if (s) s.edges = Number(r.n);
-    }
-    for (const r of updatedRows.rows) {
+    for (const r of [...nodeRows.rows, ...auditRows.rows, ...copiedRows.rows]) {
       const s = out.get(r.doco_id);
       if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
-    }
-    for (const r of copiedRows.rows) {
-      const s = out.get(r.doco_id);
-      if (s) {
-        s.copied = { count: Number(r.n), unit: r.unit };
-        s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
-      }
     }
     return out;
   });

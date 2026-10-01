@@ -9,7 +9,8 @@ const docos: DocoListEntry[] = [
     id: "doco_torr",
     handle: "torr",
     ownerHandle: "torre",
-    nodeCount: 127,
+    template: null,
+    items: 127,
     lastUpdatedAt: "2026-06-02T00:00:00.000Z",
     visibility: "public",
   },
@@ -56,8 +57,7 @@ describe("DocoListCard", () => {
     expect(marker).toBeLessThan(name);
   });
 
-  it("counts what a Doco copied from its source, which are not nodes", () => {
-    const empty = { drafting: 0, queued: 0, active: 0, retired: 0 };
+  it("counts each Doco by the one thing it holds, without a split by stage", () => {
     const html = renderToStaticMarkup(
       createElement(
         MemoryRouter,
@@ -65,27 +65,24 @@ describe("DocoListCard", () => {
         createElement(DocoListCard, {
           docos: [
             {
-              id: "doco_code",
-              handle: "torre-codebase",
-              nodeCount: 0,
-              counts: empty,
-              copied: { count: 1215, unit: "file" },
+              id: "doco_prs",
+              handle: "torre-prs",
+              template: "github-pull-requests",
+              items: 52500,
               lastUpdatedAt: "2026-10-01T01:34:00.000Z",
             },
             {
-              id: "doco_slack",
-              handle: "torre-slack",
-              nodeCount: 0,
-              counts: empty,
-              copied: { count: 48210, unit: "message" },
-              lastUpdatedAt: "2026-09-30T01:34:00.000Z",
+              id: "doco_code",
+              handle: "torre-codebase",
+              template: "codebase",
+              items: 45971,
+              lastUpdatedAt: "2026-10-01T01:34:00.000Z",
             },
             {
-              id: "doco_notion",
-              handle: "torre-notion",
-              nodeCount: 3,
-              counts: { ...empty, active: 3 },
-              copied: { count: 1, unit: "page" },
+              id: "doco_bugs",
+              handle: "torre-github-bugs",
+              template: "github-bugs",
+              items: 1,
               lastUpdatedAt: null,
             },
           ],
@@ -93,8 +90,18 @@ describe("DocoListCard", () => {
         }),
       ),
     );
-    expect(html).toContain("(1,215 files)");
-    expect(html).toContain("(48,210 messages)");
-    expect(html).toContain(" · 1 page)");
+    expect(html).toContain("(52,500 pull requests)");
+    expect(html).toContain("(45,971 files)");
+    expect(html).toContain("(1 bug)");
+    expect(html).not.toContain("color:");
+  });
+
+  it("counts a Doco with no known template by its nodes", () => {
+    expect(render()).toContain("(127 nodes)");
+  });
+
+  it("says when each Doco was last updated", () => {
+    expect(render()).toContain('dateTime="2026-06-02T00:00:00.000Z"');
+    expect(render()).toContain("last updated");
   });
 });
