@@ -32,7 +32,9 @@ export interface DocoStats {
 
 /** Every copy a Doco holds of its source, as (doco_id, unit, at) rows: the
  *  files of a codebase, the messages of the Slack channels it copies, and the
- *  Notion pages fetched so far. */
+ *  Notion pages fetched so far. `at` is when it happened in the source where
+ *  the source says (a message posted, a page last edited; null when Notion
+ *  gave no time), else when Doco copied it (a code file). */
 export const COPIED_ITEMS_SQL = `
   SELECT doco_id, 'file' AS unit, synced_at AS at FROM code_files
   UNION ALL
@@ -41,7 +43,28 @@ export const COPIED_ITEMS_SQL = `
     JOIN group_chat_channels ch USING (doco_id, channel_id)
    WHERE NOT ch.excluded
   UNION ALL
-  SELECT doco_id, 'page', synced_at FROM notion_pages WHERE synced_at IS NOT NULL`;
+  SELECT doco_id, 'page', last_edited_time FROM notion_pages WHERE synced_at IS NOT NULL`;
+
+type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
+
+/** How many copies of these Docos happened each day since `since`, keyed by
+ *  YYYY-MM-DD, for the activity charts. */
+export async function copiesByDay(
+  c: QueryClient,
+  docoIds: readonly string[],
+  since: string,
+): Promise<Record<string, number>> {
+  const rows = (
+    await c.query<{ day: string; n: string }>(
+      `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
+         FROM (${COPIED_ITEMS_SQL}) copied
+        WHERE doco_id = ANY($1::text[]) AND at >= $2
+        GROUP BY day`,
+      [[...docoIds], since],
+    )
+  ).rows;
+  return Object.fromEntries(rows.map((r) => [r.day, Number(r.n)]));
+}
 
 // Post-collapse: every node lives in the unified `nodes` table,
 // discriminated by `node_type`. Stats count domain nodes plus the

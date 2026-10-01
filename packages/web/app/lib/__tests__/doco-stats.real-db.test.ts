@@ -14,7 +14,7 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(state.db),
 }));
 
-import { listDocoStats } from "../doco-stats.server";
+import { copiesByDay, listDocoStats } from "../doco-stats.server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
@@ -45,10 +45,10 @@ beforeEach(async () => {
       ('doco_slack', 'C_HID', '1.3', 'excluded', '2026-09-29T00:00:00Z');
     INSERT INTO notion_mirrors (doco_id, workspace_id, workspace_name, bot_id, access_token, consented_at)
       VALUES ('doco_notion', 'ws-1', 'Torre', 'bot-1', 'v1:enc', now());
-    INSERT INTO notion_pages (doco_id, page_id, object, url, synced_at) VALUES
-      ('doco_notion', 'p1', 'page', 'https://www.notion.so/p1', '2026-09-22T00:00:00Z'),
-      ('doco_notion', 'p2', 'data_source', 'https://www.notion.so/p2', '2026-09-23T00:00:00Z'),
-      ('doco_notion', 'p3', 'page', 'https://www.notion.so/p3', NULL);
+    INSERT INTO notion_pages (doco_id, page_id, object, url, last_edited_time, synced_at) VALUES
+      ('doco_notion', 'p1', 'page', 'https://www.notion.so/p1', '2026-09-22T05:00:00Z', '2026-09-30T00:00:00Z'),
+      ('doco_notion', 'p2', 'data_source', 'https://www.notion.so/p2', '2026-09-23T00:00:00Z', '2026-09-30T00:00:00Z'),
+      ('doco_notion', 'p3', 'page', 'https://www.notion.so/p3', '2026-09-26T00:00:00Z', NULL);
   `);
 });
 
@@ -72,12 +72,29 @@ describe("listDocoStats copies", () => {
       copied: { count: 2, unit: "message" },
       lastUpdatedAt: "2026-09-21T00:00:00.000Z",
     });
-    // A page not fetched yet isn't copied.
+    // A page not fetched yet isn't copied; a page dates from its last edit in Notion.
     expect(seen("doco_notion")).toEqual({
       nodes: 0,
       copied: { count: 2, unit: "page" },
       lastUpdatedAt: "2026-09-23T00:00:00.000Z",
     });
     expect(seen("doco_plain")).toEqual({ nodes: 0, copied: null, lastUpdatedAt: null });
+  });
+});
+
+describe("copiesByDay", () => {
+  it("counts each copy on the day it happened in its source, since a given time", async () => {
+    const days = await copiesByDay(
+      state.db as never,
+      ["doco_code", "doco_slack", "doco_notion"],
+      "2026-09-21T00:00:00Z",
+    );
+    expect(days).toEqual({
+      "2026-09-21": 1, // the newer Slack message; the older one is before `since`
+      "2026-09-22": 1, // Notion pages, by their last edit
+      "2026-09-23": 1,
+      "2026-09-24": 1, // code files, by when they were copied
+      "2026-09-25": 1,
+    });
   });
 });
