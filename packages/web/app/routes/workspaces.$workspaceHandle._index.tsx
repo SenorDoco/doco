@@ -35,7 +35,7 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
-import { type Copied, EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
+import { type Copied, EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
 import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -118,7 +118,7 @@ export async function loader({
         return a.handle.localeCompare(b.handle);
       });
 
-    const byDay: Record<string, number> = {};
+    let byDay: Record<string, number> = {};
     let topContributors: TopContributor[] = [];
     let items: FeedItem[] = [];
 
@@ -135,7 +135,9 @@ export async function loader({
           [docoIds, sinceIso],
         )
       ).rows;
-      for (const r of heatRows) byDay[r.day] = Number(r.n);
+      // What the Docos copied from their sources is activity too.
+      byDay = await copiesByDay(c, docoIds, sinceIso);
+      for (const r of heatRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
 
       const contributorRows = (
         await c.query<{

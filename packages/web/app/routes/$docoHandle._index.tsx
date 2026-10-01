@@ -59,6 +59,7 @@ import { readChangeCursor } from "~/lib/change-cursor.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
+import { NODE_TYPES_FOR_STATS_SQL, copiesByDay } from "~/lib/doco-stats.server";
 import {
   type EdgeDialogDetail,
   type EdgeLifecycleStage,
@@ -271,14 +272,15 @@ export async function loader({
            SELECT to_char(created_at, 'YYYY-MM-DD') AS day
              FROM nodes
             WHERE doco_id = $1
-              AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'reference', 'state', 'principal')
+              AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})
          ) t WHERE day >= $2
          GROUP BY day`,
         [ctx.meta.docoId, sinceIso.slice(0, 10)],
       )
     ).rows;
-    const byDay: Record<string, number> = {};
-    for (const r of activityRows) byDay[r.day] = Number(r.n);
+    // What the Doco copied from its source is activity too.
+    const byDay = await copiesByDay(c, [ctx.meta.docoId], sinceIso);
+    for (const r of activityRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
 
     const contributorRows = (
       await c.query<{
