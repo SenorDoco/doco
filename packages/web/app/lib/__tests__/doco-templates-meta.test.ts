@@ -36,7 +36,17 @@ const REMOVED_HANDLES = ["glossaries", "data-decisions"] as const;
 
 describe("doco template metadata", () => {
   it("exposes exactly the surviving templates in the picker metadata", () => {
-    expect(DOCO_TEMPLATES.map((template) => template.handle)).toEqual([...SURVIVING_HANDLES]);
+    expect(DOCO_TEMPLATES.map((template) => template.handle).sort()).toEqual(
+      [...SURVIVING_HANDLES].sort(),
+    );
+  });
+
+  // The /new-doco picker shows them in this order: the blank start first, then
+  // every other template A to Z by label, so a template is easy to find.
+  it("lists Generic first, then the rest A to Z by label", () => {
+    const [first, ...rest] = DOCO_TEMPLATES.map((template) => template.label);
+    expect(first).toBe("Generic (empty)");
+    expect(rest).toEqual([...rest].sort((a, b) => a.localeCompare(b, "en")));
   });
 
   it("resolves each surviving handle to non-empty metadata", () => {
