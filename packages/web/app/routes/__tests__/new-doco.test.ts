@@ -80,6 +80,17 @@ describe("/new-doco", () => {
     expect(response.headers.get("Location")).toBe("/prs/integrations/github");
   });
 
+  it("asks for a template when none was chosen", async () => {
+    const result = await action({
+      request: formRequest({ workspace_id: "workspace_acme", name: "bpms", visibility: "private" }),
+    });
+
+    expect(result).toMatchObject({
+      error: "Pick a template, or Generic (empty) for a blank doco.",
+    });
+    expect(mocks.createDocoInWorkspace).not.toHaveBeenCalled();
+  });
+
   it("redirects regular docos without a created chat id", async () => {
     mocks.createDocoInWorkspace.mockResolvedValue({
       docoId: "doco_01KSJZ35Y5H6HA7WF75JWMY7J4",

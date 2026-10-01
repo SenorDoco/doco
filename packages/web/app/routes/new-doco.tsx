@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
@@ -6,7 +7,7 @@ import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
-import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
+import { DOCO_TEMPLATES, findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import {
   HANDLE_FORMAT_HELP,
   HANDLE_INPUT_PATTERN,
@@ -45,7 +46,7 @@ import {
  * API-key affordances are reachable from the Doco home page directly.
  */
 
-const DEFAULT_TEMPLATE_HANDLE = "generic";
+const GENERIC_TEMPLATE_HANDLE = "generic";
 
 /**
  * Sentinel <option> value for "+ Create a new workspace". Kept
@@ -70,10 +71,9 @@ interface ActionData {
   state?: CreationState;
 }
 
+/** The template's handle when it is one, "" (none chosen yet) otherwise. */
 function normalizeTemplateHandle(value: string): string {
-  return DOCO_TEMPLATES.some((template) => template.handle === value)
-    ? value
-    : DEFAULT_TEMPLATE_HANDLE;
+  return findDocoTemplateMeta(value) ? value : "";
 }
 
 function parseVisibility(value: unknown): "private" | "public" {
@@ -91,22 +91,24 @@ function readDocoName(params: URLSearchParams): string {
 }
 
 /**
- * Default goal for a template. Empty for "generic" (no template); the
+ * Default goal for a template. Empty for "generic" or no template yet; the
  * chosen template's description text otherwise.
  */
 function defaultGoalForTemplate(templateHandle: string): string {
-  if (templateHandle === DEFAULT_TEMPLATE_HANDLE) return "";
-  return DOCO_TEMPLATES.find((t) => t.handle === templateHandle)?.description ?? "";
+  if (templateHandle === GENERIC_TEMPLATE_HANDLE) return "";
+  return findDocoTemplateMeta(templateHandle)?.description ?? "";
 }
 
 /**
  * The Doco handle the form suggests: the workspace handle plus what the Doco
- * holds — the template's handle, or "doco" for a blank one ("torre-slack",
- * "torre-doco"). Empty until a workspace is chosen; always a valid handle.
+ * holds — the template's handle, or "doco" for a blank one or before a
+ * template is chosen ("torre-slack", "torre-doco"). Empty until a workspace
+ * is chosen; always a valid handle.
  */
 export function suggestedDocoHandle(workspaceHandle: string, templateHandle: string): string {
   if (!workspaceHandle) return "";
-  const what = templateHandle === DEFAULT_TEMPLATE_HANDLE ? "doco" : templateHandle;
+  const what =
+    !templateHandle || templateHandle === GENERIC_TEMPLATE_HANDLE ? "doco" : templateHandle;
   return `${workspaceHandle}-${what}`.slice(0, 64).replace(/[-_]+$/, "");
 }
 
@@ -174,7 +176,11 @@ export async function action({ request }: { request: Request }) {
   const accept = form.get("accept_suggested_handle") === "1";
 
   if (!state.templateHandle) {
-    return { error: "Pick a policies template.", suggestedHandle: null, state };
+    return {
+      error: "Pick a template, or Generic (empty) for a blank doco.",
+      suggestedHandle: null,
+      state,
+    };
   }
   if (!state.workspaceId && !state.newWorkspaceHandle) {
     return { error: "Pick an workspace or create a new one.", suggestedHandle: null, state };
@@ -221,7 +227,7 @@ export async function action({ request }: { request: Request }) {
       createdByUserId: me.id,
       visibility: state.visibility,
       templateHandle:
-        state.templateHandle === DEFAULT_TEMPLATE_HANDLE ? null : state.templateHandle,
+        state.templateHandle === GENERIC_TEMPLATE_HANDLE ? null : state.templateHandle,
       autoSuffix: accept,
       goal: state.goal,
     });
@@ -267,6 +273,7 @@ export default function NewDocoStep1({
       ? formState.newWorkspaceHandle
       : (workspaces.find((o) => o.id === initialWorkspaceId)?.handle ?? "");
   const [templateHandle, setTemplateHandle] = useState(initialTemplate);
+  const chosenTemplate = findDocoTemplateMeta(templateHandle);
   const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId);
   const [newWorkspaceHandle, setNewWorkspaceHandle] = useState(formState.newWorkspaceHandle);
   const [name, setName] = useState(
@@ -287,6 +294,7 @@ export default function NewDocoStep1({
       : (workspaces.find((o) => o.id === id)?.handle ?? "");
   const selectedWorkspaceHandle = workspaceHandleFor(workspaceId, newWorkspaceHandle);
   // The handle follows the workspace and template until the user types one.
+  // An empty value clears the choice and brings every template back.
   const handleTemplateChange = (value: string) => {
     const next = normalizeTemplateHandle(value);
     setTemplateHandle(next);
@@ -330,33 +338,58 @@ export default function NewDocoStep1({
                 <legend className="text-sm font-semibold text-foreground">
                   With this new doco, do you want to document something in particular?
                 </legend>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {DOCO_TEMPLATES.map((template) => (
-                    <label
-                      key={template.handle}
-                      className="neu-button flex cursor-pointer items-start gap-2 rounded-md p-2"
-                    >
-                      <input
-                        type="radio"
-                        name="template_handle"
-                        value={template.handle}
-                        checked={templateHandle === template.handle}
-                        onChange={(e) => handleTemplateChange(e.currentTarget.value)}
-                        className="mt-0.5"
-                      />
-                      <DocoTypeIcon
-                        template={template.handle}
-                        className="mt-0.5 text-muted-foreground"
-                      />
-                      <span className="block">
-                        <span className="block text-sm font-semibold">{template.label}</span>
-                        <span className="block text-[11px] text-muted-foreground">
-                          {template.description}
-                        </span>
+                {chosenTemplate ? (
+                  <div className="neu-pressed flex items-start gap-2 rounded-md p-2">
+                    <input type="hidden" name="template_handle" value={chosenTemplate.handle} />
+                    <DocoTypeIcon
+                      template={chosenTemplate.handle}
+                      className="mt-0.5 text-muted-foreground"
+                    />
+                    <span className="block flex-1">
+                      <span className="block text-sm font-semibold">{chosenTemplate.label}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {chosenTemplate.description}
                       </span>
-                    </label>
-                  ))}
-                </div>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${chosenTemplate.label}`}
+                      title={`Remove ${chosenTemplate.label}`}
+                      onClick={() => handleTemplateChange("")}
+                      className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {DOCO_TEMPLATES.map((template) => (
+                      <label
+                        key={template.handle}
+                        className="neu-button flex cursor-pointer items-start gap-2 rounded-md p-2"
+                      >
+                        <input
+                          type="radio"
+                          name="template_handle"
+                          value={template.handle}
+                          required
+                          onChange={(e) => handleTemplateChange(e.currentTarget.value)}
+                          className="mt-0.5"
+                        />
+                        <DocoTypeIcon
+                          template={template.handle}
+                          className="mt-0.5 text-muted-foreground"
+                        />
+                        <span className="block">
+                          <span className="block text-sm font-semibold">{template.label}</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            {template.description}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </fieldset>
 
               <fieldset className="space-y-2">
