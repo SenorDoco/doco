@@ -1,4 +1,4 @@
-// Reading the Notion mirror: the pages reader (its page tree, Go to page, its
+// Reading the Notion mirror: the pages reader (its page tree, finding a page by title, its
 // home, the open page, search across the copy) and Notion results in the
 // Doco's search. Search is hybrid: full-text over titles and text fused with
 // the nearest embedded chunks when the caller brings a query embedding, the
@@ -117,6 +117,9 @@ interface TreeRow {
   total: number | string;
 }
 
+// Pages by title, the untitled ones (often many, and all alike) last.
+const BY_TITLE = "p.title = '', p.title, p.page_id";
+
 const HAS_CHILDREN = `EXISTS (SELECT 1 FROM notion_pages ch
   WHERE ch.doco_id = p.doco_id AND ch.parent_id = p.page_id) AS has_children`;
 
@@ -134,8 +137,9 @@ function treeItem(row: Omit<TreeRow, "total">, where = ""): ReaderTreeItem {
 }
 
 /** What is directly under one item of the page tree: at the top (""),
- *  every page whose parent isn't in the copy, by title; under a page, its
- *  children by title, and under a database, its rows newest first. */
+ *  every page whose parent isn't in the copy, by title (untitled last);
+ *  under a page, its children by title, and under a database, its rows
+ *  newest first. */
 export async function listPageTree(
   c: QueryClient,
   docoId: string,
@@ -152,7 +156,7 @@ export async function listPageTree(
             WHERE p.doco_id = $1 AND p.parent_id = $2
             ORDER BY CASE WHEN parent.object = 'data_source'
                           THEN p.last_edited_time END DESC NULLS LAST,
-                     p.title, p.page_id
+                     ${BY_TITLE}
             LIMIT ${CHILD_LIMIT}`,
           [docoId, under],
         )
@@ -165,7 +169,7 @@ export async function listPageTree(
              LEFT JOIN notion_pages parent
                ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
             WHERE p.doco_id = $1 AND parent.page_id IS NULL
-            ORDER BY p.title, p.page_id
+            ORDER BY ${BY_TITLE}
             LIMIT ${ROOT_LIMIT}`,
           [docoId],
         )
@@ -188,7 +192,7 @@ export async function pageTreeAt(
   return listingsAlong(trail, (under) => listPageTree(c, docoId, under));
 }
 
-/** Pages whose title holds `query`, for Go to page: those whose title
+/** Pages whose title holds `query`, for the search box's list: those whose title
  *  starts with it first, then by title. */
 export async function findPages(
   c: QueryClient,
@@ -471,7 +475,7 @@ async function loadPagesHome(c: QueryClient, docoId: string): Promise<PagesView>
          LEFT JOIN notion_pages parent
            ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
         WHERE p.doco_id = $1 AND parent.page_id IS NULL
-        ORDER BY p.title, p.page_id
+        ORDER BY ${BY_TITLE}
         LIMIT ${TOP_LIMIT}`,
       [docoId],
     )

@@ -128,6 +128,7 @@ async function rows() {
     object: string;
     title: string;
     parent_id: string | null;
+    parent_type: string | null;
     markdown: string;
     plain_text: string;
     fetch_pending: boolean;
@@ -137,7 +138,7 @@ async function rows() {
     synced_at: Date | null;
     truncated: boolean;
   }>(
-    `SELECT page_id, object, title, parent_id, markdown, plain_text, fetch_pending, fetch_reason,
+    `SELECT page_id, object, title, parent_id, parent_type, markdown, plain_text, fetch_pending, fetch_reason,
             fetch_attempts, fetch_error, synced_at, truncated
        FROM notion_pages ORDER BY page_id`,
   );
@@ -662,6 +663,81 @@ describe("children", () => {
     ]);
     expect(notion.calls.filter((c) => c.path === `/databases/${DB}`)).toHaveLength(2);
     expect(notion.calls.map((c) => c.path)).not.toContain(`/data_sources/${DB}`);
+  });
+
+  // Notion names a block (a column, a toggle, a callout) as the parent of a
+  // page kept inside one, and no page; the page holding the block names it
+  // in its text, which places it.
+  const BLOCK = "dddddddd-0000-0000-0000-000000000001";
+  const inBlock = { parent: { type: "block_id", block_id: BLOCK } };
+  const names = (id: string) => `<page url="https://www.notion.so/Two-${bare(id)}">Two</page>`;
+
+  it("puts a page Notion keeps in a block under the page whose text holds it", async () => {
+    const notion = fakeNotion({
+      "POST /search": () => list([page(P1), page(P2, inBlock)]),
+      "GET /pages/:id/markdown": markdownFor({
+        [P1]: `<columns><column>${names(P2)}</column></columns>`,
+      }),
+      "GET /users": noUsers,
+    });
+
+    await tick(0, notion.fetchImpl);
+
+    expect((await rows()).map((r) => [r.page_id, r.parent_id, r.parent_type])).toEqual([
+      [P1, null, "workspace"],
+      [P2, P1, "page"],
+    ]);
+  });
+
+  it("keeps a child under the page that named it when Notion says it sits in a block", async () => {
+    const notion = fakeNotion({
+      "POST /search": () => list([page(P1)]),
+      "GET /pages/:id": (_call, params) => page(params.id, inBlock),
+      "GET /pages/:id/markdown": markdownFor({ [P1]: names(P2) }),
+      "GET /users": noUsers,
+    });
+
+    await tick(0, notion.fetchImpl);
+    // The next walk lists the child too, still in its block.
+    await dbm.db.query("UPDATE notion_mirrors SET discovered_at = $1", [at(-8 * 86_400)]);
+    const again = fakeNotion({
+      "POST /search": () => list([page(P1), page(P2, inBlock)]),
+      "GET /pages/:id/markdown": markdownFor({ [P1]: names(P2) }),
+      "GET /users": noUsers,
+    });
+    await tick(60, again.fetchImpl);
+
+    expect((await rows()).map((r) => [r.page_id, r.parent_id, r.parent_type])).toEqual([
+      [P1, null, "workspace"],
+      [P2, P1, "page"],
+    ]);
+  });
+
+  it("moves the pages copied in a block under the page holding them on the next scan", async () => {
+    await dbm.db.query(
+      `INSERT INTO notion_pages
+         (doco_id, page_id, object, parent_type, url, title, markdown, fetch_pending, seen_at, synced_at)
+       VALUES ('doco_notion', $1, 'page', 'workspace', 'https://www.notion.so/one', 'One', $3,
+               false, $2, $2),
+              ('doco_notion', $4, 'page', 'block', 'https://www.notion.so/two', 'Two', '',
+               false, $2, $2)`,
+      [P1, at(-86_400), names(P2), P2],
+    );
+    await dbm.db.query("UPDATE notion_pages SET parent_id = $1 WHERE page_id = $2", [BLOCK, P2]);
+    // The deploy runs the schema again.
+    await dbm.db.exec(schemaSql);
+    await dbm.db.query(
+      `UPDATE notion_mirrors SET discovered_at = $1, reconciled_at = $1, content_scan = 'older'
+        WHERE doco_id = 'doco_notion'`,
+      [at(-60)],
+    );
+
+    await tick(0, fakeNotion({ "GET /users": noUsers }).fetchImpl);
+
+    expect((await rows()).map((r) => [r.page_id, r.parent_id, r.parent_type])).toEqual([
+      [P1, null, "workspace"],
+      [P2, P1, "page"],
+    ]);
   });
 
   it("takes a capped listing for what it is: pages it left out are kept, not re-verified", async () => {

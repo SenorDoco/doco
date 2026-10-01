@@ -1,5 +1,5 @@
 // Reading a codebase Doco's copy of its repositories (codebase-sync): the code
-// reader (its tree, Go to file, a folder with its README, a file colored by
+// reader (its tree, finding a file by name, a folder with its README, a file colored by
 // token, search) and code results in the Doco's search. Search is full text
 // over paths and file contents, matching identifiers as written. Everything
 // here is scoped to one Doco; callers have already checked that the viewer
@@ -237,7 +237,7 @@ export function codeTreeAt(
   return listingsAlong(codeTrail(id), (under) => listCodeTree(c, docoId, under));
 }
 
-/** Files whose path names every word of `query`, for Go to file: those
+/** Files whose path names every word of `query`, for the search box's list: those
  *  whose name starts with the query first, then those whose name holds
  *  it, then the rest, shorter paths first. */
 export async function findCodeFiles(
