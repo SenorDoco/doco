@@ -1,9 +1,9 @@
 // /workspaces/:workspaceHandle — per-Workspace home. On top, until they're
 // done, the steps that get the workspace going for the signed-in person
 // (components/onboarding-stepper.tsx), on the first one not done. Then the
-// same summary card the Workspaces page shows for it (Doco icons, New Doco or source /
-// Invite person / Invite agent, latest activity), then the detailed list of
-// its Docos. Below those, a wide two-column layout
+// same summary card the Workspaces page shows for it (Doco icons, silence
+// alerts, New Doco or source / Invite person / Invite agent, latest activity),
+// then the detailed list of its Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
 // collapses to a hamburger — it renders as a single column so the constitution
 // keeps a readable measure instead of being crushed beside the 420px sidebar.
@@ -14,7 +14,8 @@
 // Right column (compact sidebar):
 //   - Search box (submits to /workspaces/:workspaceHandle/search)
 //   - Activity heatmap (52w)
-//   - Top contributors across the workspace's Docos
+//   - Top contributors and Top queryers across the workspace's Docos, one row
+//     per person and agent (or the website)
 
 import { getWorkspaceRole, updateWorkspaceConstitution, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
@@ -27,6 +28,7 @@ import { ActivityCard } from "~/components/doco-activity";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { OnboardingStepper } from "~/components/onboarding-stepper";
 import { PageHeader } from "~/components/page-header";
+import { TopActorsList } from "~/components/top-actors-list";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import {
   activityRowLifecycle,
@@ -42,12 +44,13 @@ import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.s
 import { lifecycleColor } from "~/lib/node-colors";
 import { loadOnboardingView } from "~/lib/onboarding-view.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 import { timeAgo } from "~/lib/time-ago";
+import { TOP_ACTORS_LIMIT, type TopActor, listTopActors } from "~/lib/top-actors.server";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
 const FEED_LIMIT = 20;
-const TOP_CONTRIBUTORS_LIMIT = 10;
 
 interface WorkspaceDoco {
   docoId: string;
@@ -56,13 +59,6 @@ interface WorkspaceDoco {
   template: string | null;
   items: number;
   lastUpdatedAt: string | null;
-}
-
-interface TopContributor {
-  userId: string;
-  username: string;
-  lastAt: string;
-  eventCount: number;
 }
 
 interface FeedItem {
@@ -121,7 +117,8 @@ export async function loader({
       });
 
     let byDay: Record<string, number> = {};
-    let topContributors: TopContributor[] = [];
+    let topContributors: TopActor[] = [];
+    let topQueryers: TopActor[] = [];
     let items: FeedItem[] = [];
 
     if (docoIds.length > 0) {
@@ -141,35 +138,11 @@ export async function loader({
       byDay = await copiesByDay(c, docoIds, sinceIso);
       for (const r of heatRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
 
-      const contributorRows = (
-        await c.query<{
-          user_id: string;
-          user_name: string;
-          last_at: Date | string;
-          event_count: string;
-        }>(
-          `SELECT ae.by_user AS user_id,
-                  COALESCE(c.github_login, c.email, c.id) AS user_name,
-                  MAX(ae.at) AS last_at,
-                  COUNT(*)::text AS event_count
-             FROM audit_events ae
-             JOIN users c ON c.id = ae.by_user
-            WHERE ae.doco_id = ANY($1::text[])
-            GROUP BY ae.by_user, c.github_login, c.email, c.id
-            ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
-            LIMIT $2`,
-          [docoIds, TOP_CONTRIBUTORS_LIMIT],
-        )
-      ).rows;
-      topContributors = contributorRows.map((r) => ({
-        userId: String(r.user_id),
-        username: String(r.user_name),
-        lastAt:
-          r.last_at instanceof Date
-            ? r.last_at.toISOString()
-            : new Date(String(r.last_at)).toISOString(),
-        eventCount: Number(r.event_count),
-      }));
+      // A search across the workspace spans its private Docos too, so only
+      // members see who ran one.
+      const scope = { docoIds, workspaceId: myRole ? workspace.id : undefined };
+      topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
+      topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
 
       const feedRows = (
         await c.query<{
@@ -243,6 +216,7 @@ export async function loader({
       role: myRole,
       docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
       lastActivityAt: items[0]?.at ?? null,
+      alerts: await loadSilenceAlerts(c, docoIds),
     };
 
     return {
@@ -254,6 +228,7 @@ export async function loader({
       docos,
       byDay,
       topContributors,
+      topQueryers,
       items,
     };
   });
@@ -305,6 +280,7 @@ export default function WorkspaceHome({
     docos,
     byDay,
     topContributors,
+    topQueryers,
     items,
   } = loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
@@ -415,35 +391,16 @@ export default function WorkspaceHome({
               <CardTitle className="text-sm">Top contributors</CardTitle>
             </CardHeader>
             <CardContent>
-              {topContributors.length === 0 ? (
-                <p className="text-xs italic text-muted-foreground">
-                  No recorded contributions yet.
-                </p>
-              ) : (
-                <ul className="space-y-1">
-                  {topContributors.map((c) => (
-                    <li
-                      key={c.userId}
-                      className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
-                    >
-                      <span className="truncate" title={c.username}>
-                        {c.username}
-                      </span>
-                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                        {c.eventCount}
-                      </span>
-                      <time
-                        dateTime={c.lastAt}
-                        title={c.lastAt}
-                        suppressHydrationWarning
-                        className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
-                      >
-                        {timeAgo(c.lastAt)}
-                      </time>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <TopActorsList actors={topContributors} empty="No recorded contributions yet." />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Top queryers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TopActorsList actors={topQueryers} empty="No recorded queries yet." />
             </CardContent>
           </Card>
         </aside>

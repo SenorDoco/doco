@@ -1,6 +1,7 @@
 // A codebase or Notion Doco opens in the reader: its home redirects there,
 // the frame carries the Doco's activity, each reader route serves only its own
-// kind of Doco, and the tree's data route lists one folder or page at a time.
+// kind of Doco, and the tree's data route lists one folder at a time (a Notion
+// copy has no tree: it only finds pages by title).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -8,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   listCodeTree: vi.fn(),
   findCodeFiles: vi.fn(),
   loadCodeView: vi.fn(),
-  listPageTree: vi.fn(),
   findPages: vi.fn(),
   codeTreeAt: vi.fn(),
   loadDocoActivity: vi.fn(),
@@ -41,7 +41,6 @@ vi.mock("~/lib/codebase-read.server", () => ({
   codeTreeAt: mocks.codeTreeAt,
 }));
 vi.mock("~/lib/notion-mirror-read.server", () => ({
-  listPageTree: mocks.listPageTree,
   findPages: mocks.findPages,
 }));
 vi.mock("~/lib/integration-status.server", () => ({
@@ -49,6 +48,9 @@ vi.mock("~/lib/integration-status.server", () => ({
 }));
 vi.mock("~/lib/doco-activity.server", () => ({
   loadDocoActivity: mocks.loadDocoActivity,
+}));
+vi.mock("~/lib/silence-alerts.server", () => ({
+  loadSilenceAlerts: async () => [],
 }));
 
 import { loader as docoHome } from "../$docoHandle._index";
@@ -99,7 +101,12 @@ describe("the Doco home of a reader Doco", () => {
 // whatever is open in it.
 describe("the reader's frame", () => {
   it("carries the Doco's activity", async () => {
-    const activity = { byDay: { "2026-09-30": 4 }, items: [], topContributors: [] };
+    const activity = {
+      byDay: { "2026-09-30": 4 },
+      items: [],
+      topContributors: [],
+      topQueryers: [],
+    };
     mocks.codeTreeAt.mockResolvedValue({ "": { items: [], more: 0 } });
     mocks.loadDocoActivity.mockResolvedValue(activity);
     const data = await readerFrame({
@@ -169,6 +176,17 @@ describe("/:docoHandle/tree.json", () => {
     });
     expect(await res.json()).toEqual({ items: [], more: 0 });
     expect(mocks.findPages).toHaveBeenCalledWith({}, "doco_1", "onb", 50);
+  });
+
+  it("lists no tree for a Notion Doco, whose structure the copy can't show as Notion does", async () => {
+    mocks.template = "notion";
+    const res = await thrown(
+      tree({
+        request: new Request("https://doco.test/acme-docs/tree.json?under="),
+        params: { docoHandle: "acme-docs" },
+      }),
+    );
+    expect(res.status).toBe(404);
   });
 
   it("is a 404 on a Doco without a reader", async () => {

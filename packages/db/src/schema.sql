@@ -269,6 +269,26 @@ CREATE TABLE IF NOT EXISTS changesets (
 );
 CREATE INDEX IF NOT EXISTS changesets_doco_idx ON changesets (doco_id, tx_id DESC);
 
+-- Query log — one row per query, the read-side twin of `changesets`: who
+-- (actor), how they came in (source + metadata, the same request context a
+-- changeset records, so reads and writes name the same agent), and when.
+-- Every agent read of a Doco (MCP, REST API, Señor Doco) and every search on
+-- the website is a query; opening a page on the website isn't. A search across
+-- a whole workspace has no `doco_id`.
+CREATE TABLE IF NOT EXISTS query_events (
+  id            bigserial PRIMARY KEY,
+  at            timestamptz NOT NULL DEFAULT now(),
+  actor         text,                          -- user_<ulid>; null for a project token or anonymous reader
+  workspace_id  text NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  doco_id       text REFERENCES docos(id) ON DELETE CASCADE,
+  source        text NOT NULL
+                  CHECK (source IN ('api','mcp','ui','slack','import','reset','system')),
+  metadata      jsonb
+);
+CREATE INDEX IF NOT EXISTS query_events_workspace_idx ON query_events (workspace_id, at DESC);
+CREATE INDEX IF NOT EXISTS query_events_doco_idx ON query_events (doco_id, at DESC);
+CREATE INDEX IF NOT EXISTS query_events_actor_idx ON query_events (actor, at DESC);
+
 -- Immutable version snapshots — one row per (entity, version). payload is
 -- the FULL state of the node/edge at that version, so "how it was" is an
 -- O(1) read, never a replay (Git's blob/tree). Append-only.
@@ -1456,3 +1476,33 @@ CREATE TRIGGER notion_pages_embeddings_drop
 DROP TRIGGER IF EXISTS group_chat_messages_embeddings_drop ON group_chat_messages;
 CREATE TRIGGER group_chat_messages_embeddings_drop
   AFTER DELETE ON group_chat_messages FOR EACH ROW EXECUTE FUNCTION embeddings_drop_for_row();
+
+-- ──────────────────────────────────────────────────────────────────────────
+-- Silence alerts: an integration Doco that stopped receiving data, or an agent
+-- that stopped reading and writing in a workspace, for longer than its own
+-- history makes expected (silence-alerts.server.ts decides, every hour). A row
+-- is one episode: it opens when the silence turns unexpected, its email goes
+-- out once (emailed_at), and it is deleted when data or calls resume.
+CREATE TABLE IF NOT EXISTS silence_alerts (
+  id            text PRIMARY KEY,
+  workspace_id  text NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  -- What went quiet: an integration Doco, or an agent (a person and the agent
+  -- they read and write through, named as agentName names it).
+  doco_id       text REFERENCES docos(id) ON DELETE CASCADE,
+  user_id       text REFERENCES users(id) ON DELETE CASCADE,
+  agent         text,
+  -- The Docos it concerns: the integration Doco, or the ones the agent used.
+  doco_ids      text[] NOT NULL,
+  -- The last item or call before the silence.
+  quiet_since   timestamptz NOT NULL,
+  -- How many the same hours of each of the past four weeks brought, on average.
+  usual         int NOT NULL,
+  opened_at     timestamptz NOT NULL DEFAULT now(),
+  emailed_at    timestamptz,
+  CHECK ((doco_id IS NOT NULL) <> (user_id IS NOT NULL AND agent IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS silence_alerts_doco_idx
+  ON silence_alerts (doco_id) WHERE doco_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS silence_alerts_agent_idx
+  ON silence_alerts (workspace_id, user_id, agent) WHERE agent IS NOT NULL;
+CREATE INDEX IF NOT EXISTS silence_alerts_docos_idx ON silence_alerts USING gin (doco_ids);

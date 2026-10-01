@@ -7,6 +7,7 @@
 // lifecycle / node-type filters).
 
 import { DOCO_GENERIC_CAPTURE_NODE_TABLE_SPECS, rankEmbeddings, withClient } from "@doco/db";
+import { waitUntil } from "@vercel/functions";
 import type { PoolClient } from "pg";
 import { Form, Link } from "react-router";
 import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
@@ -18,6 +19,7 @@ import { SingleColumnPageMain } from "~/components/page-main";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { nodeTypePlural } from "~/lib/node-colors";
+import { recordQuery } from "~/lib/query-log.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead } from "~/lib/workspace-helpers.server";
@@ -116,6 +118,9 @@ export async function loader({
         warning: null as string | null,
       };
     }
+
+    // A search across the workspace is one query of the workspace.
+    waitUntil(recordQuery(request, { workspaceId: workspace.id, docoId: null }, me?.id ?? null));
 
     const { semantic, warning } = await embedQuery(q);
     if (!semantic) return { workspace, me, host, q, hits: [] as Hit[], warning };

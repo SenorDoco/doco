@@ -23,6 +23,13 @@ const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf
 const dbm = vi.hoisted(() => ({
   db: null as unknown as InstanceType<typeof PGlite>,
   me: null as null | { id: string },
+  pending: [] as Promise<unknown>[],
+}));
+
+vi.mock("@vercel/functions", () => ({
+  waitUntil: (p: Promise<unknown>) => {
+    dbm.pending.push(p);
+  },
 }));
 
 vi.mock("@doco/db", async (importOriginal) => {
@@ -47,7 +54,8 @@ vi.mock("@doco/db", async (importOriginal) => {
   };
 });
 
-vi.mock("~/lib/session.server", () => ({
+vi.mock("~/lib/session.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/session.server")>()),
   getCurrentPrincipal: async () => dbm.me,
 }));
 
@@ -193,5 +201,63 @@ describe("workspace home only lists Docos the caller can read", () => {
   it("404s a workspace where the caller can read nothing", async () => {
     as("user_outsider");
     await expect(homeData("vault")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("workspace queries", () => {
+  const CLAUDE_CODE = JSON.stringify({ auth: "oauth", token_name: "Claude Code" });
+
+  async function addQuery(docoId: string | null, workspaceId: string, metadata: string) {
+    await dbm.db.query(
+      `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata)
+       VALUES ('user_member', $1, $2, $3, $4)`,
+      [workspaceId, docoId, metadata === CLAUDE_CODE ? "api" : "ui", metadata],
+    );
+  }
+
+  it("records a search across the workspace as one query on the website", async () => {
+    as("user_member");
+    await searchHits("acme");
+    await Promise.all(dbm.pending);
+    const rows = (
+      await dbm.db.query("SELECT actor, workspace_id, doco_id, source, metadata FROM query_events")
+    ).rows;
+    expect(rows).toEqual([
+      {
+        actor: "user_member",
+        workspace_id: "workspace_acme",
+        doco_id: null,
+        source: "ui",
+        metadata: { surface: "website" },
+      },
+    ]);
+  });
+
+  it("lists top queryers once per agent, with the website marked", async () => {
+    await addQuery("doco_public", "workspace_acme", CLAUDE_CODE);
+    await addQuery("doco_private", "workspace_acme", CLAUDE_CODE);
+    await addQuery(null, "workspace_acme", JSON.stringify({ surface: "website" }));
+    await addQuery("doco_vault", "workspace_vault", CLAUDE_CODE);
+
+    as("user_member");
+    const member = await homeData("acme");
+    expect(
+      member.topQueryers.map((a: { username: string; via: string | null; count: number }) => [
+        a.username,
+        a.via,
+        a.count,
+      ]),
+    ).toEqual([
+      ["member", "Claude Code", 2],
+      ["member", null, 1],
+    ]);
+
+    // Signed out, only the public Doco's queries show: workspace searches
+    // span private Docos.
+    as(null);
+    const visitor = await homeData("acme");
+    expect(
+      visitor.topQueryers.map((a: { via: string | null; count: number }) => [a.via, a.count]),
+    ).toEqual([["Claude Code", 1]]);
   });
 });

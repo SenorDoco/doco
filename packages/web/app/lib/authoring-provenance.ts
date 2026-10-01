@@ -11,6 +11,10 @@ export interface AuthoringPair {
   updated: AuthoringActorEntry | null;
 }
 
+/** What `formatAuthoringMechanism` calls a write or read made on the website
+ *  itself, by a person rather than an agent. */
+const WEBSITE = "Website";
+
 export function formatAuthoringMechanism(
   source: string | null | undefined,
   metadata: Record<string, unknown> | null | undefined,
@@ -26,17 +30,29 @@ export function formatAuthoringMechanism(
         : null;
 
   if (surface === "senor_doco" && client === "website") return "Señor Doco on website";
-  if (surface === "website") return "Website";
+  if (surface === "website") return WEBSITE;
   if (surface === "slack" || source === "slack") return "Slack";
   if (surface === "mcp" || source === "mcp") return "MCP";
-  if (source === "ui") return "Website";
+  if (source === "ui") return WEBSITE;
   if (source === "api" && tokenName) return tokenName;
-  if (source === "api" && auth === "oauth") return "API";
-  if (source === "api") return "API";
+  if (source === "api" && auth) return "API";
+  // Every request records how it arrived (an auth or a surface), so a write
+  // with neither came from Doco itself, such as the GitHub import.
+  if (source === "api") return "Import";
   if (source === "import") return "Import";
   if (source === "reset") return "Reset";
   if (source === "system") return "System";
   return source ? source.replaceAll("_", " ") : null;
+}
+
+/** The agent a person wrote or queried through, or null when they used the
+ *  website themselves. Señor Doco counts as an agent, on the website too. */
+export function agentName(
+  source: string | null | undefined,
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  const mechanism = formatAuthoringMechanism(source, metadata);
+  return mechanism === WEBSITE ? null : mechanism;
 }
 
 export function authoringEntry(input: {

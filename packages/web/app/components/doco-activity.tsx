@@ -1,12 +1,13 @@
-// The cards of a Doco's activity column: the Activity chart, who contributed
-// most, and the latest recorded writes. Every Doco home shows them, and the
-// reader (codebase, Notion) shows them beside whatever is open.
+// The cards of a Doco's activity column: the Activity chart, who wrote to and
+// queried it most, and the latest recorded writes. Every Doco home shows them,
+// and the reader (codebase, Notion) shows them beside whatever is open.
 
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import type { DocoActivity, DocoFeedItem, TopContributor } from "~/lib/doco-activity.server";
-import { timeAgo } from "~/lib/time-ago";
+import { TopActorsList } from "~/components/top-actors-list";
+import type { DocoActivity, DocoFeedItem } from "~/lib/doco-activity.server";
+import type { TopActor } from "~/lib/top-actors.server";
 
 /** How much happened each day of the last year. */
 export function ActivityCard({ byDay }: { byDay: Record<string, number> }) {
@@ -22,30 +23,25 @@ export function ActivityCard({ byDay }: { byDay: Record<string, number> }) {
   );
 }
 
-export function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {
+/** Top contributors and Top queryers, one row per person and agent. */
+export function TopActorsSections({
+  contributors,
+  queryers,
+}: {
+  contributors: TopActor[];
+  queryers: TopActor[];
+}) {
   return (
-    <section className="space-y-1">
-      <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
-      {contributors.length === 0 ? (
-        <p className="text-xs italic text-muted-foreground">No recorded contributions yet.</p>
-      ) : (
-        contributors.map((c) => (
-          <div key={c.userId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-            <span className="truncate text-xs" title={c.username}>
-              {c.username}
-            </span>
-            <time
-              dateTime={c.lastAt}
-              title={c.lastAt}
-              suppressHydrationWarning
-              className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
-            >
-              {timeAgo(c.lastAt)}
-            </time>
-          </div>
-        ))
-      )}
-    </section>
+    <>
+      <section className="space-y-1">
+        <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
+        <TopActorsList actors={contributors} empty="No recorded contributions yet." />
+      </section>
+      <section className="space-y-1">
+        <h2 className="text-xs font-semibold text-foreground">Top queryers</h2>
+        <TopActorsList actors={queryers} empty="No recorded queries yet." />
+      </section>
+    </>
   );
 }
 
@@ -94,8 +90,11 @@ export function ActivityColumn({ activity, handle }: { activity: DocoActivity; h
     <div className="min-w-0 space-y-5">
       <ActivityCard byDay={activity.byDay} />
       <Card>
-        <CardContent className="p-5">
-          <TopContributorsList contributors={activity.topContributors} />
+        <CardContent className="space-y-4 p-5">
+          <TopActorsSections
+            contributors={activity.topContributors}
+            queryers={activity.topQueryers}
+          />
         </CardContent>
       </Card>
       <LatestActivityCard items={activity.items} handle={handle} />

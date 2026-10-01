@@ -20,7 +20,7 @@ import { ArrowRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, redirect, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { ActivityCard, LatestActivityCard, TopContributorsList } from "~/components/doco-activity";
+import { ActivityCard, LatestActivityCard, TopActorsSections } from "~/components/doco-activity";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { IntegrationStatusCard } from "~/components/integration-status-card";
 import {
@@ -48,6 +48,7 @@ import { ProcessPerspective } from "~/components/perspectives/process-perspectiv
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SlackPerspective } from "~/components/perspectives/slack-perspective";
+import { SilenceAlertList } from "~/components/silence-alerts";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
 import { readChangeCursor } from "~/lib/change-cursor.server";
@@ -94,6 +95,7 @@ import {
 } from "~/lib/pull-requests";
 import { readerFor, readerHref } from "~/lib/reader";
 import { computeFilterFacets } from "~/lib/search-filters.server";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 import { useFullscreen } from "~/lib/use-fullscreen";
 
 // The side panel — the activity column, or the node dialog — sits to the
@@ -172,7 +174,10 @@ export async function loader({
     throw new Response("Unknown node type", { status: 404 });
   }
   return withClient(async (c) => {
-    const { items, byDay, topContributors } = await loadDocoActivity(c, ctx.meta.docoId);
+    const { items, byDay, topContributors, topQueryers } = await loadDocoActivity(
+      c,
+      ctx.meta.docoId,
+    );
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const selectedNode = requestedNode
       ? await loadNodeDialogDetail(c, ctx.meta, {
@@ -266,6 +271,8 @@ export async function loader({
     // status box per source atop the right column: how live the copy is and
     // how far the import of older items has got.
     const integrations = await loadIntegrationStatuses(c, ctx.meta.docoId);
+    // Its source, or an agent that used it, gone unexpectedly quiet.
+    const alerts = await loadSilenceAlerts(c, [ctx.meta.docoId]);
 
     // Live-feed baseline: the latest audit-event id this render reflects. The
     // client polls /changes.json against it and only revalidates when it
@@ -277,6 +284,7 @@ export async function loader({
       facets,
       byDay,
       topContributors,
+      topQueryers,
       handle,
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
@@ -285,6 +293,7 @@ export async function loader({
       ownerIsWorkspace: ctx.meta.ownerId.startsWith("workspace_"),
       canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
       integrations,
+      alerts,
       host: await loadHostConfig(),
       graph,
       policyCount,
@@ -421,6 +430,7 @@ export default function DocoHome({
     facets,
     byDay,
     topContributors,
+    topQueryers,
     handle,
     docoId,
     goal,
@@ -429,6 +439,7 @@ export default function DocoHome({
     ownerIsWorkspace,
     canInviteUsers,
     integrations,
+    alerts,
     graph,
     policyCount,
     perspectives,
@@ -1372,6 +1383,7 @@ export default function DocoHome({
         }
       >
         {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
+        <SilenceAlertList alerts={alerts} />
       </PageHeader>
       <div
         ref={contentPaneRef}
@@ -1608,7 +1620,7 @@ export default function DocoHome({
                   This Doco has no nodes or edges yet.
                 </p>
               }
-              aside={<TopContributorsList contributors={topContributors} />}
+              aside={<TopActorsSections contributors={topContributors} queryers={topQueryers} />}
             />
 
             <LatestActivityCard
