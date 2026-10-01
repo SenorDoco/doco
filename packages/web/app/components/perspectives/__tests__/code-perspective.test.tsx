@@ -77,10 +77,10 @@ describe("CodePerspective", () => {
     );
   });
 
-  it("says GitHub refused the code, and what to give Doco's GitHub App", () => {
+  it("says GitHub refused the code, and what to accept in GitHub", () => {
     const html = render(noCode, { ...importing, state: "done", skipped: 14, refused: true });
     expect(html).toContain(
-      "GitHub doesn&#x27;t let Doco&#x27;s GitHub App read the code of 14 repositories: give the App Contents read access in GitHub. The copy runs again once it&#x27;s accepted.",
+      "GitHub hasn&#x27;t given Doco&#x27;s GitHub App access to the code of 14 repositories yet. Accept the App&#x27;s request for Contents access in GitHub. The copy runs again once it&#x27;s accepted.",
     );
     expect(html).toMatch(/href="\/acme-codebase\/integrations\/github"[^>]*>Manage GitHub/);
   });

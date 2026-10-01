@@ -4,6 +4,7 @@ import { Card, CardTitle } from "~/components/card";
 import { LifecycleCountsLabel } from "~/components/lifecycle-counts";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { cn } from "~/lib/cn";
+import type { Copied } from "~/lib/doco-stats.server";
 import type { LifecycleCounts } from "~/lib/node-colors";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -14,8 +15,8 @@ export interface AccessListItem {
   count: number;
   countLabel?: string;
   counts?: LifecycleCounts;
-  /** Files a codebase Doco copied, shown next to its node counts. */
-  files?: number;
+  /** What a Doco copied from its source, shown next to its node counts. */
+  copied?: Copied | null;
   lastUpdatedAt: string | null;
   /** Doco (leaf) rows carry their visibility so the list can mark it;
    *  workspace (group) rows leave it unset. */
@@ -128,7 +129,7 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
             {item.counts ? (
               <>
                 {"("}
-                <CountsLabel counts={item.counts} count={item.count} files={item.files ?? 0} />
+                <CountsLabel counts={item.counts} count={item.count} copied={item.copied ?? null} />
                 {")"}
               </>
             ) : (
@@ -146,22 +147,25 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
   );
 }
 
-// A codebase Doco holds files, not nodes: its files stand in for empty counts.
+// A Doco that copies a source holds copies, not nodes: they stand in for
+// empty counts.
 function CountsLabel({
   counts,
   count,
-  files,
+  copied,
 }: {
   counts: LifecycleCounts;
   count: number;
-  files: number;
+  copied: Copied | null;
 }) {
-  const showCounts = files === 0 || count > 0;
+  const showCounts = !copied || count > 0;
   return (
     <>
       {showCounts ? <LifecycleCountsLabel counts={counts} /> : null}
-      {files > 0
-        ? `${showCounts ? " · " : ""}${files.toLocaleString("en-US")} ${files === 1 ? "file" : "files"}`
+      {copied
+        ? `${showCounts ? " · " : ""}${copied.count.toLocaleString("en-US")} ${copied.unit}${
+            copied.count === 1 ? "" : "s"
+          }`
         : null}
     </>
   );
