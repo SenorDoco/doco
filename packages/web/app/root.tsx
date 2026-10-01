@@ -10,16 +10,13 @@ import {
   useLocation,
   useNavigationType,
   useRouteError,
+  useRouteLoaderData,
 } from "react-router";
 
 import { AccessDeniedView, isAccessDeniedData } from "~/components/access-denied-view";
 import { AgentSidebar } from "~/components/agent-sidebar";
 import { FeedbackReporter } from "~/components/feedback-reporter";
-import {
-  type FeedbackPending,
-  SiteHeader,
-  SiteHeaderSuppressionProvider,
-} from "~/components/site-header";
+import { type FeedbackPending, SiteHeader } from "~/components/site-header";
 import { countPendingAccessRequestsForOwner } from "~/lib/access-requests.server";
 import { countPendingFeedback } from "~/lib/feedback-reports.server";
 import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
@@ -27,8 +24,9 @@ import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server
 import { TAGLINE } from "~/lib/tagline";
 import "./app.css";
 
-// Root loader — fetch the current Principal once so the persistent
-// AgentSidebar in App() knows whether to render. Per-route loaders
+// Root loader — fetch the current Principal once so the shell's header
+// knows whether to offer Sign in or the nav, and whether the persistent
+// AgentSidebar renders. Per-route loaders
 // still fetch `me` themselves where they need it; we don't try to
 // thread root data through context. For the owner we also tally uncleared
 // bug/idea reports so the header can flag them beside the version pill;
@@ -99,45 +97,40 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+interface RootData {
+  me: CurrentPrincipal | null;
+  feedbackPending?: FeedbackPending | null;
+  accessRequestsPending?: number | null;
+}
+
 export default function App() {
-  const data = useLoaderData() as
-    | {
-        me: CurrentPrincipal | null;
-        feedbackPending?: FeedbackPending | null;
-        accessRequestsPending?: number | null;
-      }
-    | undefined;
+  return (
+    <Shell data={useLoaderData() as RootData | undefined}>
+      <Outlet />
+    </Shell>
+  );
+}
+
+// The chrome every page sits in, signed in or out: the one SiteHeader pinned
+// on top, then the shell body. Signed in, Señor Doco's rail rides beside the
+// page; below the shared two-column breakpoint it floats over the page
+// instead, so the page never gets squeezed into a sliver next to the rail.
+function Shell({ data, children }: { data: RootData | undefined; children: React.ReactNode }) {
   const me = data?.me ?? null;
-  const feedbackPending = data?.feedbackPending ?? null;
-  const accessRequestsPending = data?.accessRequestsPending ?? 0;
   const mainRef = useMainScrollRestoration();
-  // Signed-out: the anonymous landing + sign-in flow has its own header
-  // chrome; let it render as-is.
-  if (!me) {
-    return <Outlet />;
-  }
-  // Signed-in chrome layout: top bar pinned, then a responsive shell
-  // body. Below the shared two-column breakpoint, Señor Doco stacks
-  // above the scrolling page content so the page never gets squeezed
-  // into a sliver next to the rail. We render SiteHeader here once
-  // (shellOwner) and wrap the Outlet in SiteHeaderSuppressionProvider
-  // so per-route <SiteHeader> calls (default shellOwner=false) render null.
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <SiteHeader
         me={me}
-        shellOwner
-        feedbackPending={feedbackPending}
-        accessRequestsPending={accessRequestsPending}
+        feedbackPending={data?.feedbackPending ?? null}
+        accessRequestsPending={data?.accessRequestsPending ?? 0}
       />
       <div className="doco-shell-body flex min-h-0 flex-1">
-        <AgentSidebar me={me} />
+        {me ? <AgentSidebar me={me} /> : null}
         <main ref={mainRef} className="doco-shell-main min-w-0 flex-1 overflow-y-auto">
-          <SiteHeaderSuppressionProvider>
-            <Outlet />
-          </SiteHeaderSuppressionProvider>
+          {children}
         </main>
-        <FeedbackReporter />
+        {me ? <FeedbackReporter /> : null}
       </div>
     </div>
   );
@@ -190,6 +183,15 @@ function useMainScrollRestoration() {
 }
 
 export function ErrorBoundary() {
+  const data = useRouteLoaderData("root") as RootData | undefined;
+  return (
+    <Shell data={data}>
+      <RouteError />
+    </Shell>
+  );
+}
+
+function RouteError() {
   const error = useRouteError();
   const location = useLocation();
   let message = "An error occurred.";
@@ -210,7 +212,7 @@ export function ErrorBoundary() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
+    <div className="mx-auto max-w-2xl p-6">
       <div className="rounded-lg border border-destructive bg-card p-5">
         <h1 className="text-base font-semibold text-destructive">{message}</h1>
         {details ? <pre className="mt-2 text-xs text-muted-foreground">{details}</pre> : null}
@@ -218,7 +220,7 @@ export function ErrorBoundary() {
           <pre className="mt-3 overflow-auto text-xs text-muted-foreground">{stack}</pre>
         ) : null}
       </div>
-    </main>
+    </div>
   );
 }
 

@@ -1,5 +1,4 @@
 import { redirect } from "react-router";
-import { SiteHeader } from "~/components/site-header";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 export async function loader({
@@ -29,13 +28,8 @@ export default function UserProfile({
 }) {
   const { me } = loaderData;
   return (
-    <div className="flex min-h-full flex-col">
-      <SiteHeader me={me} />
-      <main className="flex flex-1 items-center justify-center px-6 py-10 text-center">
-        <p className="text-sm text-muted-foreground">
-          Not much to do here, Señor(a) {me.username}.
-        </p>
-      </main>
-    </div>
+    <main className="flex min-h-full items-center justify-center px-6 py-10 text-center">
+      <p className="text-sm text-muted-foreground">Not much to do here, Señor(a) {me.username}.</p>
+    </main>
   );
 }

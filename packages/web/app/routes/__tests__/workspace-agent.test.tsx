@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createWorkspace = vi.fn();
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
 vi.mock("~/lib/redeem.server", () => ({
   ensurePersonalWorkspace: vi.fn(),

@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { PageHeader } from "~/components/page-header";
 import { DocoPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
@@ -56,7 +55,6 @@ export async function loader({
     handle,
     docoId: meta.docoId,
     invites: serialized,
-    me,
     canMint: Boolean(me),
   };
 }
@@ -134,110 +132,103 @@ export default function Invites({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: ActionResult;
 }) {
-  const { ownerSlug, docoSlug, handle, invites, me, canMint } = loaderData;
+  const { ownerSlug, docoSlug, handle, invites, canMint } = loaderData;
   const navigation = useNavigation();
   const minting = navigation.state === "submitting";
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <DocoPageMain className="py-6 space-y-5">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })}
-          title={
-            <>
-              <Link to={`/${handle}`} className="hover:text-primary">
-                {handle}
-              </Link>
-              <span className="text-muted-foreground"> · invites</span>
-            </>
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            Share an invite URL with a person to grant them access to this doco. Each invite is
-            single-use and expires after the chosen window. For agent access, mint an{" "}
-            <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
-              API key
-            </Link>{" "}
-            instead.
-          </p>
-        </PageHeader>
+    <DocoPageMain className="py-6 space-y-5">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })}
+        title={
+          <>
+            <Link to={`/${handle}`} className="hover:text-primary">
+              {handle}
+            </Link>
+            <span className="text-muted-foreground"> · invites</span>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Share an invite URL with a person to grant them access to this doco. Each invite is
+          single-use and expires after the chosen window. For agent access, mint an{" "}
+          <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
+            API key
+          </Link>{" "}
+          instead.
+        </p>
+      </PageHeader>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Mint a new invite</CardTitle>
-            <CardDescription>
-              {canMint
-                ? "Single-use; expires in the chosen window. Anyone with the URL can claim access."
-                : "Sign in to mint invites."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {canMint ? (
-              <Form method="post" className="flex items-end gap-2">
-                <label className="text-sm">
-                  <span className="block text-xs text-muted-foreground mb-1">
-                    Expires in (days)
-                  </span>
-                  <input
-                    type="number"
-                    name="expires_in_days"
-                    defaultValue={7}
-                    min={1}
-                    max={365}
-                    className="block w-24 rounded-md px-2 py-1 text-sm font-mono"
-                  />
-                </label>
-                <button
-                  type="submit"
-                  name="intent"
-                  value="mint"
-                  disabled={minting}
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  {minting ? "Minting…" : "Mint invite"}
-                </button>
-              </Form>
-            ) : (
-              <Link
-                to={`/sign-in?return=${encodeURIComponent(`/${handle}/invites`)}`}
-                className="text-primary hover:underline text-sm"
-              >
-                Sign in
-              </Link>
-            )}
-            {actionData && "error" in actionData ? (
-              <p className="mt-3 text-sm text-destructive">{actionData.error}</p>
-            ) : null}
-            {actionData && "ok" in actionData && actionData.invite_url ? (
-              <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3">
-                <p className="mb-3 text-sm font-semibold">Fresh invite</p>
-                <CollaborationInvitePrompt
-                  inviteUrl={actionData.invite_url}
-                  note={
-                    <>Single-use, expires {new Date(actionData.expires_at).toLocaleString()}.</>
-                  }
+      <Card>
+        <CardHeader>
+          <CardTitle>Mint a new invite</CardTitle>
+          <CardDescription>
+            {canMint
+              ? "Single-use; expires in the chosen window. Anyone with the URL can claim access."
+              : "Sign in to mint invites."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {canMint ? (
+            <Form method="post" className="flex items-end gap-2">
+              <label className="text-sm">
+                <span className="block text-xs text-muted-foreground mb-1">Expires in (days)</span>
+                <input
+                  type="number"
+                  name="expires_in_days"
+                  defaultValue={7}
+                  min={1}
+                  max={365}
+                  className="block w-24 rounded-md px-2 py-1 text-sm font-mono"
                 />
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+              </label>
+              <button
+                type="submit"
+                name="intent"
+                value="mint"
+                disabled={minting}
+                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                {minting ? "Minting…" : "Mint invite"}
+              </button>
+            </Form>
+          ) : (
+            <Link
+              to={`/sign-in?return=${encodeURIComponent(`/${handle}/invites`)}`}
+              className="text-primary hover:underline text-sm"
+            >
+              Sign in
+            </Link>
+          )}
+          {actionData && "error" in actionData ? (
+            <p className="mt-3 text-sm text-destructive">{actionData.error}</p>
+          ) : null}
+          {actionData && "ok" in actionData && actionData.invite_url ? (
+            <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3">
+              <p className="mb-3 text-sm font-semibold">Fresh invite</p>
+              <CollaborationInvitePrompt
+                inviteUrl={actionData.invite_url}
+                note={<>Single-use, expires {new Date(actionData.expires_at).toLocaleString()}.</>}
+              />
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>All invites</CardTitle>
-            <CardDescription>
-              {invites.length === 0 ? "No invites yet." : `${invites.length} total — newest first.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {invites.map((inv) => (
-              <InviteRow key={inv.code} invite={inv} canRevoke={canMint} />
-            ))}
-          </CardContent>
-        </Card>
-      </DocoPageMain>
-    </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>All invites</CardTitle>
+          <CardDescription>
+            {invites.length === 0 ? "No invites yet." : `${invites.length} total — newest first.`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {invites.map((inv) => (
+            <InviteRow key={inv.code} invite={inv} canRevoke={canMint} />
+          ))}
+        </CardContent>
+      </Card>
+    </DocoPageMain>
   );
 }
 

@@ -26,10 +26,6 @@ vi.mock("~/lib/api-keys.server", () => ({
   revokeApiKey: mocks.revokeApiKey,
 }));
 
-vi.mock("~/components/site-header", () => ({
-  SiteHeader: () => null,
-}));
-
 import { catalogFromOptions } from "~/lib/grant-picker";
 import ApiKeysPage, {
   ExistingTokensPanel,
@@ -175,7 +171,6 @@ describe("/tokens page action", () => {
         null,
         createElement(ApiKeysPage, {
           loaderData: {
-            me: { id: "user_alice", username: "alice", type: "person", isHuman: true },
             keys: [],
             scopeOptions: [],
             host: "https://doco.test",

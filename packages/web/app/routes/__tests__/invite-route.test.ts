@@ -178,9 +178,6 @@ describe("/invite/:code", () => {
   });
 
   it("shows a Doco invite's new member the way on to the Doco, with no workspace steps", async () => {
-    // VersionPill reads these vite-injected build-time globals during render.
-    vi.stubGlobal("__DOCO_VERSION__", "0.0.0-test");
-    vi.stubGlobal("__DOCO_RELEASE_AT__", "2026-01-01T00:00:00.000Z");
     const docoInvite = {
       ...WORKSPACE_INVITE,
       level: "doco",
@@ -208,6 +205,5 @@ describe("/invite/:code", () => {
     );
     expect(html).toContain("You&#x27;re in");
     expect(html).toContain('href="/torre-bugs"');
-    vi.unstubAllGlobals();
   });
 });

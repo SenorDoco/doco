@@ -6,7 +6,6 @@ import { Card, CardContent } from "~/components/card";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { DOCO_TEMPLATES, findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import {
   HANDLE_FORMAT_HELP,
@@ -321,231 +320,228 @@ export default function NewDocoStep1({
   };
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-6 space-y-4">
-        <PageHeader
-          breadcrumb={hostBreadcrumb({
-            section: { label: "Docos", to: "/workspaces" },
-            pageLabel: "New doco",
-          })}
-          title="New doco"
-        />
-        <Card>
-          <CardContent className="pt-4">
-            <Form method="post" className="space-y-5">
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold text-foreground">
-                  With this new doco, do you want to document something in particular?
-                </legend>
-                {chosenTemplate ? (
-                  <div className="neu-pressed flex items-start gap-2 rounded-md p-2">
-                    <input type="hidden" name="template_handle" value={chosenTemplate.handle} />
-                    <DocoTypeIcon
-                      template={chosenTemplate.handle}
-                      className="mt-0.5 text-muted-foreground"
-                    />
-                    <span className="block flex-1">
-                      <span className="block text-sm font-semibold">{chosenTemplate.label}</span>
-                      <span className="block text-[11px] text-muted-foreground">
-                        {chosenTemplate.description}
-                      </span>
+    <SingleColumnPageMain className="py-6 space-y-4">
+      <PageHeader
+        breadcrumb={hostBreadcrumb({
+          section: { label: "Docos", to: "/workspaces" },
+          pageLabel: "New doco",
+        })}
+        title="New doco"
+      />
+      <Card>
+        <CardContent className="pt-4">
+          <Form method="post" className="space-y-5">
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold text-foreground">
+                With this new doco, do you want to document something in particular?
+              </legend>
+              {chosenTemplate ? (
+                <div className="neu-pressed flex items-start gap-2 rounded-md p-2">
+                  <input type="hidden" name="template_handle" value={chosenTemplate.handle} />
+                  <DocoTypeIcon
+                    template={chosenTemplate.handle}
+                    className="mt-0.5 text-muted-foreground"
+                  />
+                  <span className="block flex-1">
+                    <span className="block text-sm font-semibold">{chosenTemplate.label}</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {chosenTemplate.description}
                     </span>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${chosenTemplate.label}`}
-                      title={`Remove ${chosenTemplate.label}`}
-                      onClick={() => handleTemplateChange("")}
-                      className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${chosenTemplate.label}`}
+                    title={`Remove ${chosenTemplate.label}`}
+                    onClick={() => handleTemplateChange("")}
+                    className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {DOCO_TEMPLATES.map((template) => (
+                    <label
+                      key={template.handle}
+                      className="neu-button flex cursor-pointer items-start gap-2 rounded-md p-2"
                     >
-                      <X className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {DOCO_TEMPLATES.map((template) => (
-                      <label
-                        key={template.handle}
-                        className="neu-button flex cursor-pointer items-start gap-2 rounded-md p-2"
-                      >
-                        <input
-                          type="radio"
-                          name="template_handle"
-                          value={template.handle}
-                          required
-                          onChange={(e) => handleTemplateChange(e.currentTarget.value)}
-                          className="mt-0.5"
-                        />
-                        <DocoTypeIcon
-                          template={template.handle}
-                          className="mt-0.5 text-muted-foreground"
-                        />
-                        <span className="block">
-                          <span className="block text-sm font-semibold">{template.label}</span>
-                          <span className="block text-[11px] text-muted-foreground">
-                            {template.description}
-                          </span>
+                      <input
+                        type="radio"
+                        name="template_handle"
+                        value={template.handle}
+                        required
+                        onChange={(e) => handleTemplateChange(e.currentTarget.value)}
+                        className="mt-0.5"
+                      />
+                      <DocoTypeIcon
+                        template={template.handle}
+                        className="mt-0.5 text-muted-foreground"
+                      />
+                      <span className="block">
+                        <span className="block text-sm font-semibold">{template.label}</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {template.description}
                         </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </fieldset>
-
-              <fieldset className="space-y-2">
-                <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Doco's goal
-                </legend>
-                <textarea
-                  name="goal"
-                  rows={3}
-                  value={goal}
-                  onChange={(e) => {
-                    setGoal(e.currentTarget.value);
-                    setGoalEdited(true);
-                  }}
-                  placeholder="What is this doco for? Agents read this first when they bootstrap."
-                  className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                />
-                <span className="block text-[11px] text-muted-foreground">
-                  Templates prefill this; edit to make it your own.
-                </span>
-              </fieldset>
-
-              <fieldset className="space-y-2">
-                <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Workspace
-                </legend>
-                <select
-                  name="workspace_id"
-                  required
-                  value={workspaceId}
-                  onChange={(e) => updateWorkspaceId(e.target.value)}
-                  className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  <option value="" disabled>
-                    Select an workspace…
-                  </option>
-                  {workspaces.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.handle}
-                      {o.handle === me.username ? " (personal)" : ""}
-                    </option>
+                      </span>
+                    </label>
                   ))}
-                  <option value={CREATE_NEW_WORKSPACE_VALUE}>+ Create a new workspace</option>
-                </select>
-                {isCreateNewWorkspace ? (
-                  <>
-                    <input
-                      type="text"
-                      name="new_workspace_handle"
-                      required
-                      pattern={HANDLE_INPUT_PATTERN}
-                      value={newWorkspaceHandle}
-                      onChange={(e) => updateNewWorkspaceHandle(e.target.value)}
-                      onInvalid={(event) => {
-                        event.currentTarget.setCustomValidity(
-                          handleValidityMessage(event.currentTarget.validity, "Workspace handle"),
-                        );
-                      }}
-                      onInput={(event) => event.currentTarget.setCustomValidity("")}
-                      placeholder="Workspace handle"
-                      title={HANDLE_FORMAT_HELP}
-                      aria-describedby="new-doco-workspace-handle-help"
-                      className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                    />
-                    <span
-                      id="new-doco-workspace-handle-help"
-                      className="block text-[11px] text-muted-foreground"
-                    >
-                      {HANDLE_FORMAT_HELP}
-                    </span>
-                  </>
-                ) : null}
-              </fieldset>
+                </div>
+              )}
+            </fieldset>
 
-              <fieldset className="space-y-2">
-                <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Doco handle
-                </legend>
-                <input
-                  type="text"
-                  name="name"
-                  required
-                  pattern={HANDLE_INPUT_PATTERN}
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value.toLowerCase());
-                    setNameEdited(true);
-                  }}
-                  onInvalid={(event) => {
-                    event.currentTarget.setCustomValidity(
-                      handleValidityMessage(event.currentTarget.validity, "Doco handle"),
-                    );
-                  }}
-                  onInput={(event) => event.currentTarget.setCustomValidity("")}
-                  placeholder={suggestedDocoHandle(selectedWorkspaceHandle, templateHandle)}
-                  title={HANDLE_FORMAT_HELP}
-                  aria-describedby="new-doco-name-help"
-                  className="w-[60ch] max-w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                />
-                <span
-                  id="new-doco-name-help"
-                  className="mt-1 block text-[11px] text-muted-foreground"
-                >
-                  {HANDLE_FORMAT_HELP}
-                </span>
-              </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                Doco's goal
+              </legend>
+              <textarea
+                name="goal"
+                rows={3}
+                value={goal}
+                onChange={(e) => {
+                  setGoal(e.currentTarget.value);
+                  setGoalEdited(true);
+                }}
+                placeholder="What is this doco for? Agents read this first when they bootstrap."
+                className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              />
+              <span className="block text-[11px] text-muted-foreground">
+                Templates prefill this; edit to make it your own.
+              </span>
+            </fieldset>
 
-              <fieldset className="space-y-2">
-                <legend className="text-xs font-semibold uppercase text-muted-foreground">
-                  Visibility
-                </legend>
-                <select
-                  name="visibility"
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.currentTarget.value as "private" | "public")}
-                  className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                >
-                  <option value="private">Private</option>
-                  <option value="public">Public</option>
-                </select>
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  Private docos return 403 to non-members on both the web and the API.
-                </span>
-              </fieldset>
-
-              {actionData?.error ? (
-                <p className="text-xs text-destructive">{actionData.error}</p>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                Workspace
+              </legend>
+              <select
+                name="workspace_id"
+                required
+                value={workspaceId}
+                onChange={(e) => updateWorkspaceId(e.target.value)}
+                className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="" disabled>
+                  Select an workspace…
+                </option>
+                {workspaces.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.handle}
+                    {o.handle === me.username ? " (personal)" : ""}
+                  </option>
+                ))}
+                <option value={CREATE_NEW_WORKSPACE_VALUE}>+ Create a new workspace</option>
+              </select>
+              {isCreateNewWorkspace ? (
+                <>
+                  <input
+                    type="text"
+                    name="new_workspace_handle"
+                    required
+                    pattern={HANDLE_INPUT_PATTERN}
+                    value={newWorkspaceHandle}
+                    onChange={(e) => updateNewWorkspaceHandle(e.target.value)}
+                    onInvalid={(event) => {
+                      event.currentTarget.setCustomValidity(
+                        handleValidityMessage(event.currentTarget.validity, "Workspace handle"),
+                      );
+                    }}
+                    onInput={(event) => event.currentTarget.setCustomValidity("")}
+                    placeholder="Workspace handle"
+                    title={HANDLE_FORMAT_HELP}
+                    aria-describedby="new-doco-workspace-handle-help"
+                    className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+                  />
+                  <span
+                    id="new-doco-workspace-handle-help"
+                    className="block text-[11px] text-muted-foreground"
+                  >
+                    {HANDLE_FORMAT_HELP}
+                  </span>
+                </>
               ) : null}
-              <div className="flex items-center gap-2">
+            </fieldset>
+
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                Doco handle
+              </legend>
+              <input
+                type="text"
+                name="name"
+                required
+                pattern={HANDLE_INPUT_PATTERN}
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value.toLowerCase());
+                  setNameEdited(true);
+                }}
+                onInvalid={(event) => {
+                  event.currentTarget.setCustomValidity(
+                    handleValidityMessage(event.currentTarget.validity, "Doco handle"),
+                  );
+                }}
+                onInput={(event) => event.currentTarget.setCustomValidity("")}
+                placeholder={suggestedDocoHandle(selectedWorkspaceHandle, templateHandle)}
+                title={HANDLE_FORMAT_HELP}
+                aria-describedby="new-doco-name-help"
+                className="w-[60ch] max-w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              />
+              <span
+                id="new-doco-name-help"
+                className="mt-1 block text-[11px] text-muted-foreground"
+              >
+                {HANDLE_FORMAT_HELP}
+              </span>
+            </fieldset>
+
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold uppercase text-muted-foreground">
+                Visibility
+              </legend>
+              <select
+                name="visibility"
+                value={visibility}
+                onChange={(e) => setVisibility(e.currentTarget.value as "private" | "public")}
+                className="rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Private docos return 403 to non-members on both the web and the API.
+              </span>
+            </fieldset>
+
+            {actionData?.error ? (
+              <p className="text-xs text-destructive">{actionData.error}</p>
+            ) : null}
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+              >
+                Create doco
+              </button>
+              {actionData?.suggestedHandle ? (
                 <button
                   type="submit"
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+                  name="accept_suggested_handle"
+                  value="1"
+                  className="neu-button rounded-md px-4 py-2 text-sm"
                 >
-                  Create doco
+                  Use "{actionData.suggestedHandle}" instead
                 </button>
-                {actionData?.suggestedHandle ? (
-                  <button
-                    type="submit"
-                    name="accept_suggested_handle"
-                    value="1"
-                    className="neu-button rounded-md px-4 py-2 text-sm"
-                  >
-                    Use "{actionData.suggestedHandle}" instead
-                  </button>
-                ) : null}
-                <Link
-                  to="/workspaces"
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </Link>
-              </div>
-            </Form>
-          </CardContent>
-        </Card>
-      </SingleColumnPageMain>
-    </div>
+              ) : null}
+              <Link
+                to="/workspaces"
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Cancel
+              </Link>
+            </div>
+          </Form>
+        </CardContent>
+      </Card>
+    </SingleColumnPageMain>
   );
 }

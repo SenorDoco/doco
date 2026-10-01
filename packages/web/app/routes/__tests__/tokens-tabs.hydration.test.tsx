@@ -10,16 +10,12 @@ import { act } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 // React's act() needs this flag to flush effects/state updates synchronously
 // in a non-browser test runner; without it the warning fires and updates may
 // not be applied before assertions.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-vi.mock("~/components/site-header", () => ({
-  SiteHeader: () => null,
-}));
 
 import ApiKeysPage from "../tokens";
 
@@ -29,7 +25,6 @@ function App() {
     null,
     createElement(ApiKeysPage, {
       loaderData: {
-        me: { id: "user_alice", username: "alice", type: "person", isHuman: true },
         keys: [],
         scopeOptions: [],
         host: "https://doco.test",

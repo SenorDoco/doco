@@ -4,9 +4,7 @@
 import { ArrowUpRight } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
-import { SiteHeader } from "~/components/site-header";
 import type { GitHubInstallationChoice } from "~/lib/github-connection.server";
-import type { CurrentPrincipal } from "~/lib/session.server";
 
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
 export const PRIMARY_BTN =
@@ -268,51 +266,46 @@ export function ActionNotice({ data }: { data: { error: string } | { message: st
  * Doco the import fills.
  */
 export function GitHubImportStarted({
-  me,
   count,
   docos,
 }: {
-  me: CurrentPrincipal | null;
   count: number;
   docos: Array<{ handle: string; items: string }>;
 }) {
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-xl px-6 py-16">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <span
-            aria-hidden
-            className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-          />
-          <h1 className="text-2xl font-semibold">Import started</h1>
-          <p className="text-sm text-muted-foreground">
-            Importing{" "}
-            {docos.map((d, i) => (
-              <Fragment key={d.handle}>
-                {i > 0 ? (i === docos.length - 1 ? " and " : ", ") : null}
-                {d.items} into <span className="font-mono font-semibold">{d.handle}</span>
-              </Fragment>
-            ))}
-            {count > 0 ? (
-              <>
-                {" "}
-                from <span className="font-mono font-semibold tabular-nums">{count}</span>{" "}
-                {count === 1 ? "repository" : "repositories"}
-              </>
-            ) : null}{" "}
-            in the background. You can keep working — they&apos;ll appear as they sync, and new
-            repos in the organization sync automatically.
-          </p>
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
-            {docos.map((d) => (
-              <Link key={d.handle} to={`/${d.handle}`} className={PRIMARY_BTN}>
-                {docos.length === 1 ? "Continue" : `Open ${d.handle}`}
-              </Link>
-            ))}
-          </div>
+    <main className="mx-auto max-w-xl px-6 py-16">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <span
+          aria-hidden
+          className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+        />
+        <h1 className="text-2xl font-semibold">Import started</h1>
+        <p className="text-sm text-muted-foreground">
+          Importing{" "}
+          {docos.map((d, i) => (
+            <Fragment key={d.handle}>
+              {i > 0 ? (i === docos.length - 1 ? " and " : ", ") : null}
+              {d.items} into <span className="font-mono font-semibold">{d.handle}</span>
+            </Fragment>
+          ))}
+          {count > 0 ? (
+            <>
+              {" "}
+              from <span className="font-mono font-semibold tabular-nums">{count}</span>{" "}
+              {count === 1 ? "repository" : "repositories"}
+            </>
+          ) : null}{" "}
+          in the background. You can keep working — they&apos;ll appear as they sync, and new repos
+          in the organization sync automatically.
+        </p>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          {docos.map((d) => (
+            <Link key={d.handle} to={`/${d.handle}`} className={PRIMARY_BTN}>
+              {docos.length === 1 ? "Continue" : `Open ${d.handle}`}
+            </Link>
+          ))}
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }

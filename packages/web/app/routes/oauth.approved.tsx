@@ -17,14 +17,11 @@
 import { useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { getClient, peekAuthorizationCode } from "~/lib/oauth-server.server";
-import { type CurrentPrincipal, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 interface LoaderData {
   to: string;
   client_name: string;
-  me: CurrentPrincipal | null;
 }
 
 // The browser fires meta-refresh after this many seconds. Long enough
@@ -85,12 +82,9 @@ export async function loader({ request }: { request: Request }): Promise<LoaderD
     throw failureResponse("oauth client no longer exists", 400);
   }
 
-  const me = await getCurrentPrincipalAsync(request);
-
   return {
     to: target.toString(),
     client_name: client.client_name ?? peeked.client_id.slice(0, 20),
-    me,
   };
 }
 
@@ -119,8 +113,7 @@ export default function ApprovedPage() {
     data.to,
   )}); }, ${Math.round(REDIRECT_DELAY_SECONDS * 1000)});`;
   return (
-    <div>
-      <SiteHeader me={data.me} />
+    <>
       <SingleColumnPageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
@@ -142,6 +135,6 @@ export default function ApprovedPage() {
         // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-side string, JSON-stringified
         dangerouslySetInnerHTML={{ __html: redirectScript }}
       />
-    </div>
+    </>
   );
 }
