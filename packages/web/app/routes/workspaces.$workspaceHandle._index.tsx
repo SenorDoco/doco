@@ -1,9 +1,9 @@
 // /workspaces/:workspaceHandle — per-Workspace home. On top, until they're
 // done, the steps that get the workspace going for the signed-in person
 // (components/onboarding-stepper.tsx), on the first one not done. Then the
-// same summary card the Workspaces page shows for it (Doco icons, New Doco or source /
-// Invite person / Invite agent, latest activity), then the detailed list of
-// its Docos. Below those, a wide two-column layout
+// same summary card the Workspaces page shows for it (Doco icons, silence
+// alerts, New Doco or source / Invite person / Invite agent, latest activity),
+// then the detailed list of its Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
 // collapses to a hamburger — it renders as a single column so the constitution
 // keeps a readable measure instead of being crushed beside the 420px sidebar.
@@ -45,6 +45,7 @@ import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.s
 import { lifecycleColor } from "~/lib/node-colors";
 import { loadOnboardingView } from "~/lib/onboarding-view.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 import { timeAgo } from "~/lib/time-ago";
 import { TOP_ACTORS_LIMIT, type TopActor, listTopActors } from "~/lib/top-actors.server";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -216,6 +217,7 @@ export async function loader({
       role: myRole,
       docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
       lastActivityAt: items[0]?.at ?? null,
+      alerts: await loadSilenceAlerts(c, docoIds),
     };
 
     return {

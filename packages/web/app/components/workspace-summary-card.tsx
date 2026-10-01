@@ -1,12 +1,14 @@
-// One workspace at a glance: the icons of its Docos, the three things to do
-// next (add a Doco or a source of knowledge, invite a person, invite an
-// agent) and when it last saw activity. The Workspaces page lists
-// one per workspace, with the way back to the person's open onboarding step;
-// each workspace's own page shows its card under the steps.
+// One workspace at a glance: the icons of its Docos, any integration or agent
+// gone unexpectedly quiet, the three things to do next (add a Doco or a source
+// of knowledge, invite a person, invite an agent) and when it last saw
+// activity. The Workspaces page lists one per workspace, with the way back to
+// the person's open onboarding step; each workspace's own page shows its card
+// under the steps.
 
 import { Link } from "react-router";
 import { Card, CardContent } from "~/components/card";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
+import { SilenceAlertList } from "~/components/silence-alerts";
 import { timeAgo } from "~/lib/time-ago";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
@@ -61,6 +63,7 @@ export function WorkspaceSummaryCard({
             ) : null}
           </ul>
         </div>
+        <SilenceAlertList alerts={workspace.alerts} />
         {setup ? (
           <Link
             to={`/workspaces/${workspace.handle}`}

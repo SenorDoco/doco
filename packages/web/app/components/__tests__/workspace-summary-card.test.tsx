@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
+import type { SilenceAlert } from "~/lib/silence-alerts.server";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 import { WorkspaceSummaryCard } from "../workspace-summary-card";
 
@@ -16,6 +17,17 @@ const TORRE: WorkspaceSummary = {
     { id: "doco_slack", handle: "torre-slack", template: "slack" },
   ],
   lastActivityAt: "2026-09-20T00:00:00.000Z",
+  alerts: [],
+};
+
+const QUIET_SLACK: SilenceAlert = {
+  id: "alert_slack",
+  kind: "integration",
+  workspaceHandle: "torre",
+  quietSince: "2026-09-18T00:00:00.000Z",
+  usual: 40,
+  docoHandle: "torre-slack",
+  source: "slack",
 };
 
 function render(workspace: WorkspaceSummary, showName?: boolean): string {
@@ -105,6 +117,25 @@ describe("WorkspaceSummaryCard", () => {
     expect(rowOf('ul[aria-label="Docos"]')).toBe(0);
     expect(rowOf('a[href="/workspaces/torre/agent"]')).toBe(1);
     expect(rows[2]).toBe(lastActivity);
+  });
+
+  // A source or an agent gone unexpectedly quiet shows right under the Docos,
+  // on the Workspaces page and atop the workspace's own page alike.
+  it("flags a Doco gone quiet between the Docos and the buttons", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render({ ...TORRE, alerts: [QUIET_SLACK] });
+    const alerts = doc.querySelector('ul[aria-label="Alerts"]');
+    expect(alerts?.textContent).toContain("torre-slack has received nothing from Slack for");
+    expect(alerts?.querySelector('a[href="/torre-slack/integrations/slack"]')?.textContent).toBe(
+      "Check the connection",
+    );
+    const rows = Array.from(alerts?.parentElement?.children ?? []);
+    expect(rows[1]).toBe(alerts);
+    expect(rows[2]?.querySelector('a[href="/workspaces/torre/agent"]')).not.toBeNull();
+  });
+
+  it("shows no alert box when nothing has gone quiet", () => {
+    expect(render(TORRE)).not.toContain('aria-label="Alerts"');
   });
 
   it("leaves the name out on the workspace's own page", () => {

@@ -1,7 +1,7 @@
 // The reader's frame, around whatever it shows (a folder, a file, a page, a
-// search): the Doco's name and kind with one status line for its copy, one
-// search box, and a codebase's tree, which turns into a drawer on a phone.
-// "/" focuses the search.
+// search): the Doco's name and kind with one status line for its copy and any
+// silence alert about it, one search box, and a codebase's tree, which turns
+// into a drawer on a phone. "/" focuses the search.
 import { ListTree, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
@@ -16,12 +16,14 @@ import {
   liveLine,
 } from "~/components/integration-status-card";
 import { PageHeader } from "~/components/page-header";
+import { SilenceAlertList } from "~/components/silence-alerts";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { cn } from "~/lib/cn";
 import type { DocoActivity } from "~/lib/doco-activity.server";
 import { findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import type { IntegrationStatus } from "~/lib/integration-status.server";
 import { type ReaderKind, type ReaderListing, readerHref } from "~/lib/reader";
+import type { SilenceAlert } from "~/lib/silence-alerts.server";
 import { ReaderSearch } from "./reader-search";
 import { ReaderTree } from "./reader-tree";
 
@@ -38,6 +40,8 @@ export interface ReaderShell {
   canAdmin: boolean;
   /** How the copy from the Doco's source is doing. */
   status: IntegrationStatus;
+  /** Its source, or an agent that used it, gone unexpectedly quiet. */
+  alerts: SilenceAlert[];
   /** A codebase tree's first listings: the top (""), and the open item's
    *  place. Null for a Notion copy, which has no tree. */
   tree: Record<string, ReaderListing> | null;
@@ -187,6 +191,7 @@ export function ReaderLayout({
       >
         <StatusLine shell={shell} now={now} />
         {shell.goal ? <p className="text-[11px] text-muted-foreground">{shell.goal}</p> : null}
+        <SilenceAlertList alerts={shell.alerts} now={now} />
       </PageHeader>
 
       <section className="neu-surface flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-card">

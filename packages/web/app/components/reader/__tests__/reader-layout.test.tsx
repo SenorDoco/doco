@@ -72,6 +72,7 @@ const codeShell: ReaderShell = {
   goal: "",
   canAdmin: true,
   status: github,
+  alerts: [],
   tree: codeTree,
   activity: {
     byDay: { "2026-09-30": 4 },

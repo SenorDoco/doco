@@ -84,6 +84,14 @@ export type IntegrationStatus = ConnectedIntegrationStatus | UnconnectedIntegrat
 
 const STALL_MS = IMPORT_STALL_MINUTES * 60_000;
 
+/** The pull requests and bug issues a Doco brought from GitHub (a pull
+ *  request's Reference, a bug's Eval), as (doco_id, at) rows dated by when
+ *  Doco last wrote them. */
+export const GITHUB_ITEMS_SQL = `
+  SELECT doco_id, updated_at AS at FROM nodes
+   WHERE node_type IN ('reference', 'eval')
+     AND locator ~ '^https://github\\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'`;
+
 export async function loadIntegrationStatuses(
   c: QueryClient,
   docoId: string,
@@ -128,9 +136,7 @@ async function loadGitHubStatus(
   const latest = (
     await c.query<{ at: Date | string | null }>(
       `SELECT greatest(
-                (SELECT max(updated_at) FROM nodes
-                  WHERE doco_id = $1 AND node_type IN ('reference', 'eval')
-                    AND locator ~ '^https://github\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'),
+                (SELECT max(at) FROM (${GITHUB_ITEMS_SQL}) items WHERE doco_id = $1),
                 (SELECT max(synced_at) FROM code_files WHERE doco_id = $1)) AS at`,
       [docoId],
     )

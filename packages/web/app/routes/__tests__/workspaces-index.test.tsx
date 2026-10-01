@@ -16,6 +16,7 @@ const TORRE = {
   role: "owner" as const,
   docos: [{ id: "doco_bugs", handle: "torre-bugs", template: "bugs" }],
   lastActivityAt: null,
+  alerts: [],
 };
 const PERSONAL = { ...TORRE, id: "workspace_alice", handle: "alice", name: "alice", docos: [] };
 

@@ -1,11 +1,13 @@
 // One row per workspace a person reaches, for the Workspaces page and the top
 // of each workspace's page: its Docos (with the template each came from, for
-// the type icon), the person's role, and when it last saw activity.
+// the type icon), the person's role, when it last saw activity, and the open
+// silence alerts about the Docos they reach.
 //
 // A person reaches a workspace by membership (every live Doco in it) or by a
 // Doco invite (just the Docos they were invited to; role is null).
 
 import { COPIED_ITEMS_SQL } from "./doco-stats.server";
+import { type SilenceAlert, loadSilenceAlerts } from "./silence-alerts.server";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -29,6 +31,8 @@ export interface WorkspaceSummary {
   docos: WorkspaceSummaryDoco[];
   /** When the latest change landed in any of its Docos; null when none has. */
   lastActivityAt: string | null;
+  /** Integrations and agents gone unexpectedly quiet in its Docos. */
+  alerts: SilenceAlert[];
 }
 
 export async function loadWorkspaceSummaries(
@@ -81,6 +85,10 @@ export async function loadWorkspaceSummaries(
   const lastActivityAt = new Map(
     activityRows.rows.map((r) => [r.workspace_id, new Date(r.at).toISOString()]),
   );
+  const alerts = await loadSilenceAlerts(
+    c,
+    docoRows.rows.map((d) => d.id),
+  );
 
   return workspaceRows.rows
     .map(
@@ -93,6 +101,7 @@ export async function loadWorkspaceSummaries(
           .filter((d) => d.workspace_id === w.id)
           .map((d) => ({ id: d.id, handle: d.handle, template: d.template })),
         lastActivityAt: lastActivityAt.get(w.id) ?? null,
+        alerts: alerts.filter((a) => a.workspaceHandle === w.handle),
       }),
     )
     .sort((a, b) => {

@@ -49,6 +49,9 @@ vi.mock("~/lib/integration-status.server", () => ({
 vi.mock("~/lib/doco-activity.server", () => ({
   loadDocoActivity: mocks.loadDocoActivity,
 }));
+vi.mock("~/lib/silence-alerts.server", () => ({
+  loadSilenceAlerts: async () => [],
+}));
 
 import { loader as docoHome } from "../$docoHandle._index";
 import { loader as codeView } from "../$docoHandle.code.$";

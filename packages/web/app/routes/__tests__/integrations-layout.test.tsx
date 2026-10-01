@@ -306,6 +306,7 @@ describe("integrations: Set up... on a Doco-level integration picks the doco", (
       role: "owner" as const,
       docos: docos.map((d) => ({ id: `doco_${d}`, handle: d, template: null })),
       lastActivityAt: null,
+      alerts: [],
     };
   }
 
