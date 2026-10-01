@@ -44,10 +44,10 @@ authorized it directly.
 ## Don't chase `main` — a green PR merges even when `main` moved on
 
 `main` is busy: during a burst a new commit lands every few minutes,
-while CI (`pnpm verify`) takes ~4 minutes. The trap to avoid: if you act
+while CI (`pnpm verify`) takes ~8 minutes. The trap to avoid: if you act
 as though the PR must be *up to date* with `main` before it can merge,
 every new `main` commit knocks you "behind," so you re-merge
-`origin/main`, which restarts your ~4-min CI, during which `main` moves
+`origin/main`, which restarts your ~8-min CI, during which `main` moves
 again — an unwinnable chase (the #1103 → #1107 → … loop that motivated
 this note).
 
