@@ -156,7 +156,7 @@ describe("ReaderLayout header", () => {
       reader: "pages",
       template: "notion",
       status: notion,
-      tree: { "": { items: [], more: 0 } },
+      tree: null,
     });
     expect(html).toContain("Notion workspace");
     expect(html).toContain("Acme · 1,284 pages");
@@ -164,6 +164,13 @@ describe("ReaderLayout header", () => {
     expect(html).toContain('placeholder="Find a page or search every page"');
     expect(html).not.toContain("Go to page");
     expect(html).toContain('href="/acme-notion/pages"');
+    // No tree: Notion's teamspaces and sidebar aren't in what its API shares,
+    // so the copy can't be laid out the way Notion shows it.
+    expect(html).not.toContain('aria-label="Files"');
+    expect(html).not.toContain('aria-label="Pages"');
+    expect(html).not.toContain("Show the pages");
+    expect(html).toContain('aria-label="Doco activity"');
+    expect(html).toContain("the open file");
   });
 });
 
