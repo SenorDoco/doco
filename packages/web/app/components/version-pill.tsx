@@ -24,7 +24,7 @@ interface VersionPillProps {
   className?: string;
 }
 
-export const DOCO_TAGLINE = "Keep people, agents, and work aligned";
+export const DOCO_TAGLINE = "Shared knowledge and context for AI and teams";
 
 /**
  * Identity strip beside the DocoMark on every page: "Alpha <version> · <ago>"
