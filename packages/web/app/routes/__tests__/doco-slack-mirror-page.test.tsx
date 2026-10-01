@@ -27,7 +27,6 @@ vi.mock("~/lib/slack-mirror-setup.server", () => ({
   setSlackMirrorChannelExcluded: vi.fn(),
   stopSlackMirror: vi.fn(),
 }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 import DocoSlackMirrorPage from "../$docoHandle.integrations.slack";
 

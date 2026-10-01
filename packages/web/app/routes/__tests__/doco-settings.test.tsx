@@ -13,7 +13,6 @@ vi.mock("react-router", async () => {
 });
 vi.mock("@doco/db", () => ({ withClient: vi.fn(), getWorkspaceRole: vi.fn() }));
 vi.mock("~/lib/doco-access.server", () => ({ loadDocoRouteForAdmin: vi.fn() }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 import DocoSettings from "../$docoHandle.settings";
 

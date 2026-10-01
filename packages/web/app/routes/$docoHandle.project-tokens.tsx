@@ -12,7 +12,6 @@ import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
 import { DocoPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
   type ProjectTokenSummary,
@@ -43,7 +42,6 @@ export async function loader({
     handle,
     ownerSlug: canonicalOwnerSlug,
     docoId: meta.docoId,
-    me,
     tokens,
   };
 }
@@ -119,7 +117,7 @@ export default function ProjectTokensPage({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: ActionResult;
 }) {
-  const { ownerSlug, handle, tokens, me } = loaderData;
+  const { ownerSlug, handle, tokens } = loaderData;
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
   const justMinted =
@@ -129,95 +127,92 @@ export default function ProjectTokensPage({
   const errorMsg = actionData && "error" in actionData ? actionData.error : null;
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <DocoPageMain className="py-6 space-y-5">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Project tokens" })}
-          title={
-            <>
-              <Link to={`/${handle}`} className="hover:text-primary">
-                {handle}
-              </Link>
-              <span className="text-muted-foreground"> · project tokens</span>
-            </>
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            A project token is a committable, read-only credential for this doco. Commit it to{" "}
-            <code>.doco/project-tokens.json</code> in any repo whose readers can also read this doco
-            — agents that clone the repo will then read the doco without OAuth.
-          </p>
-        </PageHeader>
+    <DocoPageMain className="py-6 space-y-5">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Project tokens" })}
+        title={
+          <>
+            <Link to={`/${handle}`} className="hover:text-primary">
+              {handle}
+            </Link>
+            <span className="text-muted-foreground"> · project tokens</span>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          A project token is a committable, read-only credential for this doco. Commit it to{" "}
+          <code>.doco/project-tokens.json</code> in any repo whose readers can also read this doco —
+          agents that clone the repo will then read the doco without OAuth.
+        </p>
+      </PageHeader>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Mint a new project token</CardTitle>
-            <CardDescription>
-              Read-only. Indefinite TTL — revoke from this page when the repo's read access changes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form method="post" className="space-y-3">
-              <label className="block text-sm">
-                <span className="block text-xs text-muted-foreground mb-1">Label (optional)</span>
-                <input
-                  type="text"
-                  name="label"
-                  placeholder="e.g. doco repo bootstrap"
-                  className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
-                />
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <input type="checkbox" name="confirm_repo_readable" className="mt-0.5" required />
-                <span>
-                  You understand that anyone with read access to a repo where this token is
-                  committed will be able to read this doco.
-                </span>
-              </label>
-              <button
-                type="submit"
-                name="intent"
-                value="mint"
-                disabled={submitting}
-                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              >
-                {submitting ? "Minting…" : "Mint project token"}
-              </button>
-            </Form>
-            {errorMsg ? <p className="mt-3 text-sm text-destructive">{errorMsg}</p> : null}
-            {justMinted ? (
-              <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2">
-                <p className="text-sm font-semibold">Token minted — copy it now</p>
-                <p className="text-xs text-muted-foreground">
-                  This token body is shown ONCE. If you lose it, revoke and mint a new one.
-                </p>
-                <pre className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono">
-                  {justMinted.full_token}
-                </pre>
-                <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-background px-2 py-1 text-xs">
-                  {justMinted.install_hint}
-                </pre>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Mint a new project token</CardTitle>
+          <CardDescription>
+            Read-only. Indefinite TTL — revoke from this page when the repo's read access changes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form method="post" className="space-y-3">
+            <label className="block text-sm">
+              <span className="block text-xs text-muted-foreground mb-1">Label (optional)</span>
+              <input
+                type="text"
+                name="label"
+                placeholder="e.g. doco repo bootstrap"
+                className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
+              />
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="confirm_repo_readable" className="mt-0.5" required />
+              <span>
+                You understand that anyone with read access to a repo where this token is committed
+                will be able to read this doco.
+              </span>
+            </label>
+            <button
+              type="submit"
+              name="intent"
+              value="mint"
+              disabled={submitting}
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              {submitting ? "Minting…" : "Mint project token"}
+            </button>
+          </Form>
+          {errorMsg ? <p className="mt-3 text-sm text-destructive">{errorMsg}</p> : null}
+          {justMinted ? (
+            <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3 space-y-2">
+              <p className="text-sm font-semibold">Token minted — copy it now</p>
+              <p className="text-xs text-muted-foreground">
+                This token body is shown ONCE. If you lose it, revoke and mint a new one.
+              </p>
+              <pre className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono">
+                {justMinted.full_token}
+              </pre>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-background px-2 py-1 text-xs">
+                {justMinted.install_hint}
+              </pre>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>All project tokens</CardTitle>
-            <CardDescription>
-              {tokens.length === 0 ? "None minted yet." : `${tokens.length} total — newest first.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {tokens.map((tok) => (
-              <TokenRow key={tok.id} token={tok} />
-            ))}
-          </CardContent>
-        </Card>
-      </DocoPageMain>
-    </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>All project tokens</CardTitle>
+          <CardDescription>
+            {tokens.length === 0 ? "None minted yet." : `${tokens.length} total — newest first.`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {tokens.map((tok) => (
+            <TokenRow key={tok.id} token={tok} />
+          ))}
+        </CardContent>
+      </Card>
+    </DocoPageMain>
   );
 }
 

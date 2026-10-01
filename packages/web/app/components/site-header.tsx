@@ -1,5 +1,5 @@
 import { Bug, Lightbulb, Menu } from "lucide-react";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form, NavLink } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { VersionPill } from "~/components/version-pill";
@@ -15,8 +15,6 @@ export interface FeedbackPending {
 interface SiteHeaderProps {
   /** Currently signed-in Principal. */
   me?: CurrentPrincipal | null;
-  /** Root shell headers stay visible while route-level headers are suppressed. */
-  shellOwner?: boolean;
   /**
    * Uncleared bug/idea counts. Only the owner's root loader supplies this;
    * it renders the bug/lightbulb flags beside the version pill.
@@ -38,25 +36,11 @@ const navButtonClass =
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
 
-const SiteHeaderSuppressionContext = createContext(false);
-
-export function SiteHeaderSuppressionProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <SiteHeaderSuppressionContext.Provider value={true}>
-      {children}
-    </SiteHeaderSuppressionContext.Provider>
-  );
-}
-
-export function SiteHeader({
-  me,
-  shellOwner = false,
-  feedbackPending,
-  accessRequestsPending,
-}: SiteHeaderProps) {
-  const suppressed = useContext(SiteHeaderSuppressionContext);
-  if (suppressed && !shellOwner) return null;
-
+/**
+ * The one header every page carries, signed in or out. The root layout draws
+ * it once; pages never draw their own. It spans the window.
+ */
+export function SiteHeader({ me, feedbackPending, accessRequestsPending }: SiteHeaderProps) {
   return (
     <header className="neu-header h-14 border-b border-border bg-card">
       <div className="flex h-full w-full items-center gap-6 px-6">

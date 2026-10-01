@@ -139,7 +139,7 @@ export function ReaderLayout({
   const things = reader === "code" ? "Files" : "Pages";
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-5 sm:px-6 sm:pb-6">
+    <main className="flex h-full min-h-0 flex-col px-4 pb-4 pt-5 sm:px-6 sm:pb-6">
       <PageHeader
         className="mb-4 shrink-0"
         breadcrumb={[

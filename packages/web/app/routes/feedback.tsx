@@ -3,7 +3,6 @@ import { Form, redirect } from "react-router";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import {
   type FeedbackReportRow,
   clearFeedbackReports,
@@ -33,12 +32,11 @@ async function requireTorrenegra(request: Request) {
 }
 
 export async function loader({ request }: { request: Request }) {
-  const me = await requireTorrenegra(request);
+  await requireTorrenegra(request);
   // `bugs` / `ideas` are the authoritative uncleared counts over the whole
   // table (same source as the header flags), not a tally of the capped list.
   const [reports, pending] = await Promise.all([listFeedbackReports(150), countPendingFeedback()]);
   return {
-    me,
     reports,
     counts: {
       total: reports.length,
@@ -180,36 +178,33 @@ function ClearButton({
 }
 
 export default function FeedbackPage({ loaderData }: { loaderData: LoaderData }) {
-  const { reports, counts, me } = loaderData;
+  const { reports, counts } = loaderData;
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="space-y-6 py-8">
-        <header className="space-y-3">
-          <h1 className="text-2xl font-semibold">Feedback</h1>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <Badge>{counts.total} shown</Badge>
-            <Badge>{counts.bugs} bugs to clear</Badge>
-            <Badge>{counts.ideas} ideas to clear</Badge>
-            <Badge>{counts.cleared} cleared</Badge>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <ClearButton reportType="bug" count={counts.bugs} />
-            <ClearButton reportType="idea" count={counts.ideas} />
-          </div>
-        </header>
+    <SingleColumnPageMain className="space-y-6 py-8">
+      <header className="space-y-3">
+        <h1 className="text-2xl font-semibold">Feedback</h1>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge>{counts.total} shown</Badge>
+          <Badge>{counts.bugs} bugs to clear</Badge>
+          <Badge>{counts.ideas} ideas to clear</Badge>
+          <Badge>{counts.cleared} cleared</Badge>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <ClearButton reportType="bug" count={counts.bugs} />
+          <ClearButton reportType="idea" count={counts.ideas} />
+        </div>
+      </header>
 
-        {reports.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No reports yet.</p>
-        ) : (
-          <div className="space-y-4">
-            {reports.map((report) => (
-              <ReportCard key={report.id} report={report} />
-            ))}
-          </div>
-        )}
-      </SingleColumnPageMain>
-    </div>
+      {reports.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No reports yet.</p>
+      ) : (
+        <div className="space-y-4">
+          {reports.map((report) => (
+            <ReportCard key={report.id} report={report} />
+          ))}
+        </div>
+      )}
+    </SingleColumnPageMain>
   );
 }
 

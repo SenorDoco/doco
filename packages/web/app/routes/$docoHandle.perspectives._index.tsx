@@ -9,7 +9,6 @@
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import {
@@ -39,7 +38,6 @@ export async function loader({
     available,
     attachedIds: Array.from(attachedIds),
     canAdmin,
-    me: ctx.me,
     host,
   };
 }
@@ -84,88 +82,85 @@ export default function PerspectivesPicker({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { handle, ownerSlug, available, attachedIds, canAdmin, me } = loaderData;
+  const { handle, ownerSlug, available, attachedIds, canAdmin } = loaderData;
   const attachedSet = new Set(attachedIds);
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-3xl px-6 py-6">
-        <PageHeader
-          className="mb-4"
-          breadcrumb={[
-            ...docoBreadcrumb({ ownerSlug, handle }),
-            { label: "Perspectives", to: `/${handle}/perspectives` },
-          ]}
-          title="Perspectives"
-          actions={
-            <Link
-              to={`/${handle}`}
-              className="neu-button rounded-md px-3 py-1.5 text-xs font-semibold"
-            >
-              ← Back to {handle}
-            </Link>
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            Visualization perspectives switch how the doco's nodes and edges render. Add any of the
-            perspectives below to put a tab on this doco's overview page.
-            {!canAdmin ? (
-              <span className="ml-1 italic">Adding requires owner or writer access.</span>
-            ) : null}
-          </p>
-        </PageHeader>
-        <ul className="neu-surface divide-y divide-border rounded-md bg-card">
-          {available.map((p) => {
-            const isAttached = attachedSet.has(p.id);
-            return (
-              <li key={p.id} className="flex items-start gap-4 px-4 py-3">
-                <span aria-hidden className="mt-0.5 text-xl leading-none">
-                  {p.icon ?? "•"}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <h2 className="text-sm font-semibold">{p.name}</h2>
-                    {p.ownerHandle ? (
-                      <span className="text-xs text-muted-foreground">by {p.ownerHandle}</span>
-                    ) : null}
-                    {p.isBuiltin ? (
-                      <span className="neu-surface rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                        builtin
-                      </span>
-                    ) : null}
-                  </div>
-                  {p.description ? (
-                    <p className="mt-1 text-xs text-muted-foreground">{p.description}</p>
+    <main className="mx-auto max-w-3xl px-6 py-6">
+      <PageHeader
+        className="mb-4"
+        breadcrumb={[
+          ...docoBreadcrumb({ ownerSlug, handle }),
+          { label: "Perspectives", to: `/${handle}/perspectives` },
+        ]}
+        title="Perspectives"
+        actions={
+          <Link
+            to={`/${handle}`}
+            className="neu-button rounded-md px-3 py-1.5 text-xs font-semibold"
+          >
+            ← Back to {handle}
+          </Link>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          Visualization perspectives switch how the doco's nodes and edges render. Add any of the
+          perspectives below to put a tab on this doco's overview page.
+          {!canAdmin ? (
+            <span className="ml-1 italic">Adding requires owner or writer access.</span>
+          ) : null}
+        </p>
+      </PageHeader>
+      <ul className="neu-surface divide-y divide-border rounded-md bg-card">
+        {available.map((p) => {
+          const isAttached = attachedSet.has(p.id);
+          return (
+            <li key={p.id} className="flex items-start gap-4 px-4 py-3">
+              <span aria-hidden className="mt-0.5 text-xl leading-none">
+                {p.icon ?? "•"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h2 className="text-sm font-semibold">{p.name}</h2>
+                  {p.ownerHandle ? (
+                    <span className="text-xs text-muted-foreground">by {p.ownerHandle}</span>
+                  ) : null}
+                  {p.isBuiltin ? (
+                    <span className="neu-surface rounded-sm px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      builtin
+                    </span>
                   ) : null}
                 </div>
-                <div className="shrink-0">
-                  {isAttached ? (
-                    <span className="inline-block rounded-md bg-input px-2 py-1 text-xs text-muted-foreground">
-                      Added
-                    </span>
-                  ) : canAdmin ? (
-                    <Form method="post">
-                      <input type="hidden" name="perspective_id" value={p.id} />
-                      <input type="hidden" name="perspective_slug" value={p.slug} />
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        className="neu-button inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
-                      >
-                        Add
-                      </button>
-                    </Form>
-                  ) : (
-                    <span className="inline-block text-xs text-muted-foreground">—</span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      </main>
-    </div>
+                {p.description ? (
+                  <p className="mt-1 text-xs text-muted-foreground">{p.description}</p>
+                ) : null}
+              </div>
+              <div className="shrink-0">
+                {isAttached ? (
+                  <span className="inline-block rounded-md bg-input px-2 py-1 text-xs text-muted-foreground">
+                    Added
+                  </span>
+                ) : canAdmin ? (
+                  <Form method="post">
+                    <input type="hidden" name="perspective_id" value={p.id} />
+                    <input type="hidden" name="perspective_slug" value={p.slug} />
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="neu-button inline-block rounded-md px-3 py-1 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Add
+                    </button>
+                  </Form>
+                ) : (
+                  <span className="inline-block text-xs text-muted-foreground">—</span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </main>
   );
 }

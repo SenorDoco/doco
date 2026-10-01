@@ -12,7 +12,6 @@ import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
 import { PolicyFormFields } from "~/components/policy-form-fields";
-import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { capturePolicy, loadPolicyForEdit, transitionPolicyLifecycle } from "~/lib/capture.server";
@@ -46,7 +45,6 @@ export async function loader({
     ownerSlug,
     docoSlug,
     handle,
-    me: ctx.me,
     policyId: params.policyId,
     lifecycle: result.lifecycle,
     initial: policyFormInitialFromData(result.data),
@@ -131,86 +129,83 @@ export default function EditPolicy({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, handle, me, policyId, initial, lifecycle } = loaderData;
+  const { ownerSlug, handle, policyId, initial, lifecycle } = loaderData;
   const actionData = useActionData<ActionError>();
   const isRetired = lifecycle === "retired";
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({
-            ownerSlug,
-            handle,
-            parent: { label: "Policies", to: `/${handle}/policies` },
-            pageLabel: "Modify policy",
-          })}
-          title="Modify policy"
-        >
-          <p className="text-sm text-muted-foreground">
-            Saving changes creates a new policy and retires this one with a{" "}
-            <code>superseded_by</code> edge. Retiring leaves the old one in place. Either way the
-            audit log retains the full history.
-          </p>
-        </PageHeader>
-        <Card>
-          <CardContent className="pt-6">
-            {actionData?.error ? (
-              <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {actionData.error}
-              </div>
-            ) : null}
-            {isRetired ? (
-              <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-                This policy is <strong>retired</strong> and is not being enforced. Activate it to
-                put it back into effect, or save changes to supersede it with a new policy.
-              </div>
-            ) : null}
-            <Form method="post" className="space-y-4">
-              <PolicyFormFields initial={initial} />
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({
+          ownerSlug,
+          handle,
+          parent: { label: "Policies", to: `/${handle}/policies` },
+          pageLabel: "Modify policy",
+        })}
+        title="Modify policy"
+      >
+        <p className="text-sm text-muted-foreground">
+          Saving changes creates a new policy and retires this one with a <code>superseded_by</code>{" "}
+          edge. Retiring leaves the old one in place. Either way the audit log retains the full
+          history.
+        </p>
+      </PageHeader>
+      <Card>
+        <CardContent className="pt-6">
+          {actionData?.error ? (
+            <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {actionData.error}
+            </div>
+          ) : null}
+          {isRetired ? (
+            <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+              This policy is <strong>retired</strong> and is not being enforced. Activate it to put
+              it back into effect, or save changes to supersede it with a new policy.
+            </div>
+          ) : null}
+          <Form method="post" className="space-y-4">
+            <PolicyFormFields initial={initial} />
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="submit"
+                name="intent"
+                value="modify"
+                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+              >
+                Save changes
+              </button>
+              {isRetired ? (
                 <button
                   type="submit"
                   name="intent"
-                  value="modify"
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+                  value="activate"
+                  className="rounded-md border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400"
                 >
-                  Save changes
+                  Activate policy
                 </button>
-                {isRetired ? (
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="activate"
-                    className="rounded-md border border-emerald-600 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400"
-                  >
-                    Activate policy
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="retire"
-                    className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
-                  >
-                    Retire policy
-                  </button>
-                )}
-                <Link
-                  to={`/${handle}/policies`}
-                  className="ml-auto text-xs text-muted-foreground hover:underline"
+              ) : (
+                <button
+                  type="submit"
+                  name="intent"
+                  value="retire"
+                  className="rounded-md border border-destructive px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
-                  Cancel
-                </Link>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Policy id: <code>{policyId}</code>
-              </p>
-            </Form>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+                  Retire policy
+                </button>
+              )}
+              <Link
+                to={`/${handle}/policies`}
+                className="ml-auto text-xs text-muted-foreground hover:underline"
+              >
+                Cancel
+              </Link>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Policy id: <code>{policyId}</code>
+            </p>
+          </Form>
+        </CardContent>
+      </Card>
+    </main>
   );
 }

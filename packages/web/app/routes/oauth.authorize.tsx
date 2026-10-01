@@ -18,7 +18,6 @@ import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { OAuthAccessApprovalForm } from "~/components/oauth-access-approval-form";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import {
   type ApprovalDocoOption,
   type ApprovalWorkspaceOption,
@@ -67,7 +66,6 @@ interface LoaderData {
   // When set, the connector is bound to a workspace the user doesn't own —
   // render the terminal "not owned" message instead of the picker.
   boundWorkspaceBlockedId: string | null;
-  me: Awaited<ReturnType<typeof getCurrentPrincipal>>;
 }
 
 export async function loader({ request }: { request: Request }) {
@@ -115,7 +113,6 @@ export async function loader({ request }: { request: Request }) {
             maxRole: scoped.boundWorkspace.my_role,
           },
       boundWorkspaceBlockedId: scoped.blocked ? scoped.workspaceId : null,
-      me: principal,
     } satisfies LoaderData;
   }
 
@@ -128,7 +125,6 @@ export async function loader({ request }: { request: Request }) {
     blockedTargetHandle: view.blocked ? view.targetDocoHandle : null,
     boundWorkspace: null,
     boundWorkspaceBlockedId: null,
-    me: principal,
   } satisfies LoaderData;
 }
 
@@ -220,56 +216,53 @@ export function meta() {
 export default function AuthorizePage() {
   const data = useLoaderData() as LoaderData;
   return (
-    <div>
-      <SiteHeader me={data.me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve access" }]} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Approve access</CardTitle>
-            {data.blockedTargetHandle || data.boundWorkspaceBlockedId ? null : (
-              <CardDescription>
-                {data.boundWorkspace ? (
-                  <>
-                    An agent is requesting access to your{" "}
-                    <strong>{data.boundWorkspace.label}</strong> workspace through{" "}
-                    <strong>{data.client_name}</strong>. Name the token and choose the access level.
-                  </>
-                ) : (
-                  <>
-                    An agent is requesting access to your docos through{" "}
-                    <strong>{data.client_name}</strong>. Name the token and choose how much access
-                    to grant.
-                  </>
-                )}
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent>
-            {data.blockedTargetHandle ? (
-              <p className="text-sm text-destructive">
-                {approvalTargetNotOwnedMessage(data.blockedTargetHandle)}
-              </p>
-            ) : data.boundWorkspaceBlockedId ? (
-              <p className="text-sm text-destructive">
-                {boundWorkspaceNotOwnedMessage(data.boundWorkspaceBlockedId)}
-              </p>
-            ) : (
-              <OAuthAccessApprovalForm
-                docos={data.docos}
-                workspaces={data.workspaces}
-                boundWorkspace={data.boundWorkspace ?? undefined}
-                tokenNamePlaceholder="e.g. Claude Code in repo"
-                requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
-                approveLabel="Approve"
-                cancelLabel="Cancel"
-                cancelDecisionValue="cancel"
-              />
-            )}
-          </CardContent>
-        </Card>
-      </SingleColumnPageMain>
-    </div>
+    <SingleColumnPageMain className="py-8 space-y-4">
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve access" }]} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Approve access</CardTitle>
+          {data.blockedTargetHandle || data.boundWorkspaceBlockedId ? null : (
+            <CardDescription>
+              {data.boundWorkspace ? (
+                <>
+                  An agent is requesting access to your <strong>{data.boundWorkspace.label}</strong>{" "}
+                  workspace through <strong>{data.client_name}</strong>. Name the token and choose
+                  the access level.
+                </>
+              ) : (
+                <>
+                  An agent is requesting access to your docos through{" "}
+                  <strong>{data.client_name}</strong>. Name the token and choose how much access to
+                  grant.
+                </>
+              )}
+            </CardDescription>
+          )}
+        </CardHeader>
+        <CardContent>
+          {data.blockedTargetHandle ? (
+            <p className="text-sm text-destructive">
+              {approvalTargetNotOwnedMessage(data.blockedTargetHandle)}
+            </p>
+          ) : data.boundWorkspaceBlockedId ? (
+            <p className="text-sm text-destructive">
+              {boundWorkspaceNotOwnedMessage(data.boundWorkspaceBlockedId)}
+            </p>
+          ) : (
+            <OAuthAccessApprovalForm
+              docos={data.docos}
+              workspaces={data.workspaces}
+              boundWorkspace={data.boundWorkspace ?? undefined}
+              tokenNamePlaceholder="e.g. Claude Code in repo"
+              requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
+              approveLabel="Approve"
+              cancelLabel="Cancel"
+              cancelDecisionValue="cancel"
+            />
+          )}
+        </CardContent>
+      </Card>
+    </SingleColumnPageMain>
   );
 }
 

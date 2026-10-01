@@ -4,7 +4,6 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 vi.mock("~/lib/session.server", () => ({ getCurrentPrincipal: vi.fn() }));
 
 import WorkspacesPage from "../workspaces._index";

@@ -15,7 +15,6 @@ import { IntegrationStatusCard } from "~/components/integration-status-card";
 import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
   type GitHubImportProgress,
@@ -33,7 +32,7 @@ export async function loader({
   request: Request;
   params: { docoHandle: string };
 }) {
-  const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
+  const { meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const ctx = await getDocoConnectionsContext(meta.docoId);
   const orgAccounts = ctx
     ? githubOrgAccounts({ installations: ctx.installations, connections: ctx.connections })
@@ -45,7 +44,6 @@ export async function loader({
     (status) => status.integration !== "github" && status.state !== "unconnected",
   );
   return {
-    me,
     handle: meta.handle,
     ownerSlug,
     workspaceHandle: ctx?.workspaceHandle ?? "",
@@ -98,8 +96,7 @@ export function ImportingNote({ progress }: { progress: GitHubImportProgress | n
 }
 
 export default function DocoIntegrations() {
-  const { me, handle, ownerSlug, workspaceHandle, github, mirrors } =
-    useLoaderData<typeof loader>();
+  const { handle, ownerSlug, workspaceHandle, github, mirrors } = useLoaderData<typeof loader>();
 
   // While a GitHub backfill is running, poll the loader so the "importing X of Y"
   // count climbs on its own — this is import progress the user is actively
@@ -122,78 +119,74 @@ export default function DocoIntegrations() {
   }, [github.importing]);
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="space-y-6 py-6">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })}
-          title="App integrations"
-        >
-          <div className="space-y-3 pt-1">
-            <p className="text-sm text-muted-foreground">
-              What&apos;s connected to {handle}, and what else you can wire up at any level.
-            </p>
-            <ScopeNavLinks scope="doco" workspaceHandle={workspaceHandle} />
-          </div>
-        </PageHeader>
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">Connected on this doco</h2>
-            {github.connected ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">GitHub</CardTitle>
-                  <CardDescription>
-                    {github.orgAccounts.length > 0 ? (
-                      <>
-                        Connected to{" "}
-                        {github.orgAccounts.map((a, i) => (
-                          <span key={a}>
-                            {i > 0 ? ", " : ""}
-                            <span className="font-mono font-semibold text-foreground">{a}</span>
-                          </span>
-                        ))}{" "}
-                        — {github.repoCount}{" "}
-                        {github.repoCount === 1 ? "repository" : "repositories"}
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-mono font-semibold text-foreground">
-                          {github.repoCount}
-                        </span>{" "}
-                        {github.repoCount === 1 ? "repository" : "repositories"} connected
-                      </>
-                    )}
-                    {github.importing ? <ImportingNote progress={github.importProgress} /> : "."}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">{github.brings}</p>
-                  <Link to={`/${handle}/integrations/github`} className={MANAGE_BTN}>
-                    Manage
-                  </Link>
-                </CardContent>
-              </Card>
-            ) : null}
-            {mirrors.map((status) => (
-              <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
-            ))}
-            {!github.connected && mirrors.length === 0 ? (
-              <Card>
-                <CardContent className="py-6 text-sm text-muted-foreground">
-                  Nothing connected yet. Wire up an integration from the catalog →
-                </CardContent>
-              </Card>
-            ) : null}
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
-            <AvailableIntegrations pageScope="doco" docoHandle={handle} />
-          </section>
+    <SingleColumnPageMain className="space-y-6 py-6">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })}
+        title="App integrations"
+      >
+        <div className="space-y-3 pt-1">
+          <p className="text-sm text-muted-foreground">
+            What&apos;s connected to {handle}, and what else you can wire up at any level.
+          </p>
+          <ScopeNavLinks scope="doco" workspaceHandle={workspaceHandle} />
         </div>
-      </SingleColumnPageMain>
-    </div>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">Connected on this doco</h2>
+          {github.connected ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">GitHub</CardTitle>
+                <CardDescription>
+                  {github.orgAccounts.length > 0 ? (
+                    <>
+                      Connected to{" "}
+                      {github.orgAccounts.map((a, i) => (
+                        <span key={a}>
+                          {i > 0 ? ", " : ""}
+                          <span className="font-mono font-semibold text-foreground">{a}</span>
+                        </span>
+                      ))}{" "}
+                      — {github.repoCount} {github.repoCount === 1 ? "repository" : "repositories"}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-mono font-semibold text-foreground">
+                        {github.repoCount}
+                      </span>{" "}
+                      {github.repoCount === 1 ? "repository" : "repositories"} connected
+                    </>
+                  )}
+                  {github.importing ? <ImportingNote progress={github.importProgress} /> : "."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">{github.brings}</p>
+                <Link to={`/${handle}/integrations/github`} className={MANAGE_BTN}>
+                  Manage
+                </Link>
+              </CardContent>
+            </Card>
+          ) : null}
+          {mirrors.map((status) => (
+            <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
+          ))}
+          {!github.connected && mirrors.length === 0 ? (
+            <Card>
+              <CardContent className="py-6 text-sm text-muted-foreground">
+                Nothing connected yet. Wire up an integration from the catalog →
+              </CardContent>
+            </Card>
+          ) : null}
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
+          <AvailableIntegrations pageScope="doco" docoHandle={handle} />
+        </section>
+      </div>
+    </SingleColumnPageMain>
   );
 }

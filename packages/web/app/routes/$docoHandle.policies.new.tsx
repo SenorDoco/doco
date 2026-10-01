@@ -7,7 +7,6 @@ import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
 import { PolicyFormFields } from "~/components/policy-form-fields";
-import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { capturePolicy } from "~/lib/capture.server";
@@ -27,8 +26,8 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { docoSlug, handle, me, ownerSlug } = await loadDocoRouteForAdmin(request, params);
-  return { ownerSlug, docoSlug, handle, me, host: await loadHostConfig() };
+  const { docoSlug, handle, ownerSlug } = await loadDocoRouteForAdmin(request, params);
+  return { ownerSlug, docoSlug, handle, host: await loadHostConfig() };
 }
 
 export async function action({
@@ -75,53 +74,50 @@ export default function NewPolicy({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, handle, me } = loaderData;
+  const { ownerSlug, handle } = loaderData;
   const actionData = useActionData<ActionError>();
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({
-            ownerSlug,
-            handle,
-            parent: { label: "Policies", to: `/${handle}/policies` },
-            pageLabel: "New policy",
-          })}
-          title="New policy"
-        >
-          <p className="text-sm text-muted-foreground">
-            Every policy is an authoring policy. Pick a kind, then describe the instruction (for
-            suggestion / probabilistic) or compose the structural check (for deterministic).
-          </p>
-        </PageHeader>
-        <Card>
-          <CardContent className="pt-6">
-            {actionData?.error ? (
-              <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {actionData.error}
-              </div>
-            ) : null}
-            <Form method="post" className="space-y-4">
-              <PolicyFormFields />
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
-                >
-                  Add policy
-                </button>
-                <Link
-                  to={`/${handle}/policies`}
-                  className="text-xs text-muted-foreground hover:underline"
-                >
-                  Cancel
-                </Link>
-              </div>
-            </Form>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({
+          ownerSlug,
+          handle,
+          parent: { label: "Policies", to: `/${handle}/policies` },
+          pageLabel: "New policy",
+        })}
+        title="New policy"
+      >
+        <p className="text-sm text-muted-foreground">
+          Every policy is an authoring policy. Pick a kind, then describe the instruction (for
+          suggestion / probabilistic) or compose the structural check (for deterministic).
+        </p>
+      </PageHeader>
+      <Card>
+        <CardContent className="pt-6">
+          {actionData?.error ? (
+            <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {actionData.error}
+            </div>
+          ) : null}
+          <Form method="post" className="space-y-4">
+            <PolicyFormFields />
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="submit"
+                className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+              >
+                Add policy
+              </button>
+              <Link
+                to={`/${handle}/policies`}
+                className="text-xs text-muted-foreground hover:underline"
+              >
+                Cancel
+              </Link>
+            </div>
+          </Form>
+        </CardContent>
+      </Card>
+    </main>
   );
 }

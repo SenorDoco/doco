@@ -14,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { PolicyView, toPolicyItem } from "~/components/policy-view";
-import { SiteHeader } from "~/components/site-header";
 import { loadPolicyForEdit, transitionPolicyLifecycle } from "~/lib/capture.server";
 import {
   canEditPolicies,
@@ -57,7 +56,6 @@ export async function loader({
     ownerSlug,
     docoSlug,
     handle,
-    me: ctx.me,
     host: await loadHostConfig(),
     canEdit: await canEditPolicies(ctx.meta, ctx.me?.id ?? null),
     policyId: params.policyId,
@@ -113,79 +111,76 @@ export default function PolicyDetail({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, handle, me, canEdit, item, policyId } = loaderData;
+  const { ownerSlug, handle, canEdit, item, policyId } = loaderData;
   const actionData = useActionData<ActionError>();
   const isRetired = (item.lifecycle ?? "active") === "retired";
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({
-            ownerSlug,
-            handle,
-            parent: { label: "Policies", to: `/${handle}/policies` },
-            pageLabel: "Policy",
-          })}
-          title="Policy"
-        >
-          <p className="text-sm text-muted-foreground">
-            One authoring policy for{" "}
-            <Link to={`/${handle}`} className="font-medium hover:underline">
-              {handle}
-            </Link>
-            . This page has a stable URL — link to it when you reference this policy.
-          </p>
-        </PageHeader>
+    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({
+          ownerSlug,
+          handle,
+          parent: { label: "Policies", to: `/${handle}/policies` },
+          pageLabel: "Policy",
+        })}
+        title="Policy"
+      >
+        <p className="text-sm text-muted-foreground">
+          One authoring policy for{" "}
+          <Link to={`/${handle}`} className="font-medium hover:underline">
+            {handle}
+          </Link>
+          . This page has a stable URL — link to it when you reference this policy.
+        </p>
+      </PageHeader>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <CardTitle className="flex items-center gap-2">
-                <NodeTypeIcon nodeType="policy" className="h-4 w-4" />
-                <span>Policy</span>
-                <span className="neu-surface rounded px-2 py-1 font-mono text-[10px] font-normal text-muted-foreground">
-                  {item.lifecycle ?? "active"}
-                </span>
-              </CardTitle>
-              {canEdit ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  <Link
-                    to={`/${handle}/policies/${policyId}/edit`}
-                    className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
-                  >
-                    Modify
-                  </Link>
-                  {isRetired ? null : (
-                    <Form method="post">
-                      <button
-                        type="submit"
-                        name="intent"
-                        value="revoke"
-                        className="rounded-md border border-destructive px-3 py-1.5 text-sm font-semibold text-destructive hover:bg-destructive/10"
-                      >
-                        Revoke
-                      </button>
-                    </Form>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {actionData?.error ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {actionData.error}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle className="flex items-center gap-2">
+              <NodeTypeIcon nodeType="policy" className="h-4 w-4" />
+              <span>Policy</span>
+              <span className="neu-surface rounded px-2 py-1 font-mono text-[10px] font-normal text-muted-foreground">
+                {item.lifecycle ?? "active"}
+              </span>
+            </CardTitle>
+            {canEdit ? (
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  to={`/${handle}/policies/${policyId}/edit`}
+                  className="neu-button rounded-md px-3 py-1.5 text-sm font-semibold text-foreground"
+                >
+                  Modify
+                </Link>
+                {isRetired ? null : (
+                  <Form method="post">
+                    <button
+                      type="submit"
+                      name="intent"
+                      value="revoke"
+                      className="rounded-md border border-destructive px-3 py-1.5 text-sm font-semibold text-destructive hover:bg-destructive/10"
+                    >
+                      Revoke
+                    </button>
+                  </Form>
+                )}
               </div>
             ) : null}
-            <PolicyView item={item} />
-            <p className="text-[11px] text-muted-foreground">
-              Policy id: <code className="select-all">{policyId}</code>
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {actionData?.error ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {actionData.error}
+            </div>
+          ) : null}
+          <PolicyView item={item} />
+          <p className="text-[11px] text-muted-foreground">
+            Policy id: <code className="select-all">{policyId}</code>
+          </p>
+        </CardContent>
+      </Card>
+    </main>
   );
 }

@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const addWorkspaceByHandle = vi.fn();
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
 vi.mock("~/lib/redeem.server", () => ({
   addWorkspaceByHandle: (args: unknown) => addWorkspaceByHandle(args),

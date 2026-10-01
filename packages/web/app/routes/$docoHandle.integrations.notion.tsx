@@ -13,7 +13,6 @@ import { Form, redirect, useActionData, useLoaderData, useSearchParams } from "r
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { getNotionConfig } from "~/lib/notion-api.server";
 import {
@@ -30,7 +29,6 @@ export async function loader({ request, params }: RouteArgs) {
   const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const canManage = me ? (await getWorkspaceRole(meta.workspaceId, me.id)) === "owner" : false;
   return {
-    me,
     handle: meta.handle,
     ownerSlug,
     visibility: meta.visibility,
@@ -115,7 +113,7 @@ const FLASH: Record<string, { text: string; error: boolean }> = {
 };
 
 export default function DocoNotionMirrorPage() {
-  const { me, handle, ownerSlug, visibility, canManage, notionConfigured, status } =
+  const { handle, ownerSlug, visibility, canManage, notionConfigured, status } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
@@ -123,51 +121,48 @@ export default function DocoNotionMirrorPage() {
   const otherHandle = searchParams.get("handle");
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({
-            ownerSlug,
-            handle,
-            parent: { label: "App integrations", to: `/${handle}/integrations` },
-            pageLabel: "Notion",
-          })}
-          title="Notion"
-        >
-          <p className="text-sm text-muted-foreground">
-            A read-only copy of the Notion pages and databases a workspace shares with Doco, kept in
-            sync.
-          </p>
-        </PageHeader>
+    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({
+          ownerSlug,
+          handle,
+          parent: { label: "App integrations", to: `/${handle}/integrations` },
+          pageLabel: "Notion",
+        })}
+        title="Notion"
+      >
+        <p className="text-sm text-muted-foreground">
+          A read-only copy of the Notion pages and databases a workspace shares with Doco, kept in
+          sync.
+        </p>
+      </PageHeader>
 
-        {flash ? (
-          <p className={flash.error ? ERROR_NOTICE : NOTICE}>
-            {flash.text}
-            {otherHandle && searchParams.get("notion") === "workspace_mirrored_elsewhere" ? (
-              <>
-                {" "}
-                (<span className="font-mono">{otherHandle}</span>)
-              </>
-            ) : null}
-          </p>
-        ) : null}
-        {actionData && "error" in actionData ? (
-          <p className={ERROR_NOTICE}>{actionData.error}</p>
-        ) : null}
-        {actionData && "ok" in actionData ? <p className={NOTICE}>{actionData.message}</p> : null}
+      {flash ? (
+        <p className={flash.error ? ERROR_NOTICE : NOTICE}>
+          {flash.text}
+          {otherHandle && searchParams.get("notion") === "workspace_mirrored_elsewhere" ? (
+            <>
+              {" "}
+              (<span className="font-mono">{otherHandle}</span>)
+            </>
+          ) : null}
+        </p>
+      ) : null}
+      {actionData && "error" in actionData ? (
+        <p className={ERROR_NOTICE}>{actionData.error}</p>
+      ) : null}
+      {actionData && "ok" in actionData ? <p className={NOTICE}>{actionData.message}</p> : null}
 
-        {status ? (
-          <MirrorStatus status={status} canManage={canManage} />
-        ) : (
-          <TurnOnMirror
-            canManage={canManage}
-            notionConfigured={notionConfigured}
-            isPrivate={visibility === "private"}
-          />
-        )}
-      </main>
-    </div>
+      {status ? (
+        <MirrorStatus status={status} canManage={canManage} />
+      ) : (
+        <TurnOnMirror
+          canManage={canManage}
+          notionConfigured={notionConfigured}
+          isPrivate={visibility === "private"}
+        />
+      )}
+    </main>
   );
 }
 

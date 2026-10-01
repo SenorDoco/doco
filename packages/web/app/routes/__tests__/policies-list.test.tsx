@@ -12,7 +12,6 @@ vi.mock("~/lib/doco-access.server", () => ({
   canEditPolicies: vi.fn(),
 }));
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 import { toPolicyItem } from "~/components/policy-view";
 import Policies, { PolicyRow } from "../$docoHandle.policies";
@@ -34,7 +33,6 @@ function makeLoaderData(
     ownerSlug: "torre",
     docoSlug: "runbook",
     handle: "runbook" as unknown as Parameters<typeof Policies>[0]["loaderData"]["handle"],
-    me: null,
     host: {} as never,
     canEdit: false,
     activePolicies: [],

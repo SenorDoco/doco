@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   docoLoaderData: {
-    me: { id: "user_alice", username: "alice", type: "person" as const, isHuman: true },
     handle: "runbook",
     ownerSlug: "acme",
     workspaceHandle: "acme",
@@ -82,10 +81,6 @@ vi.mock("~/lib/workspace-helpers.server", () => ({
   resolveWorkspaceByHandle: vi.fn(),
 }));
 
-vi.mock("~/components/site-header", () => ({
-  SiteHeader: () => null,
-}));
-
 import DocoIntegrations, { meta as docoIntegrationsMeta } from "../$docoHandle.integrations";
 import {
   CONNECTION_ACTION_DESTRUCTIVE,
@@ -107,13 +102,10 @@ function mainClassName(markup: string): string {
 
 describe("integrations page layout", () => {
   it("uses the same default full-width page container on every integrations page", () => {
-    const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
-
     const pages = [
       createElement(IntegrationsPage, {
         key: "account",
         loaderData: {
-          me,
           notice: null,
           slackConfirmation: null,
           rollup: { slack: [], workspaces: [], docos: [] },
@@ -123,7 +115,6 @@ describe("integrations page layout", () => {
       createElement(WorkspaceIntegrations, {
         key: "workspace",
         loaderData: {
-          me,
           workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
           slack: [],
@@ -140,13 +131,10 @@ describe("integrations page layout", () => {
   });
 
   it("labels every integrations page as app integrations", () => {
-    const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
-
     const pages = [
       {
         element: createElement(IntegrationsPage, {
           loaderData: {
-            me,
             notice: null,
             slackConfirmation: null,
             rollup: { slack: [], workspaces: [], docos: [] },
@@ -158,7 +146,6 @@ describe("integrations page layout", () => {
       {
         element: createElement(WorkspaceIntegrations, {
           loaderData: {
-            me,
             workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
             rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
             slack: [],
@@ -184,7 +171,6 @@ describe("integrations page layout", () => {
 });
 
 describe("integrations: Slack folded into the per-workspace rollup", () => {
-  const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
   const doco = {
     docoId: "doco_1",
     handle: "torre-prs",
@@ -210,7 +196,6 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
     return renderRoute(
       createElement(IntegrationsPage, {
         loaderData: {
-          me,
           notice: null,
           slackConfirmation: null,
           rollup: {
@@ -228,7 +213,6 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
     return renderRoute(
       createElement(WorkspaceIntegrations, {
         loaderData: {
-          me,
           workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [doco] },
           slack: [{ teamId: "T1", teamName: "Torre.ai", installedAt: "2026-06-03T00:00:00.000Z" }],
@@ -296,8 +280,6 @@ describe("integrations: Slack folded into the per-workspace rollup", () => {
 });
 
 describe("integrations: Set up... on a Doco-level integration picks the doco", () => {
-  const me = { id: "user_alice", username: "alice", type: "person" as const, isHuman: true };
-
   function workspace(handle: string, docos: string[]) {
     return {
       id: `workspace_${handle}`,
@@ -315,7 +297,6 @@ describe("integrations: Set up... on a Doco-level integration picks the doco", (
     return renderRoute(
       createElement(WorkspaceIntegrations, {
         loaderData: {
-          me,
           workspace: { id: "workspace_acme", handle: "acme", name: "Acme", constitution: "" },
           rollup: { workspaceId: "workspace_acme", workspaceHandle: "acme", docos: [] },
           slack: [],
@@ -330,7 +311,6 @@ describe("integrations: Set up... on a Doco-level integration picks the doco", (
     return renderRoute(
       createElement(IntegrationsPage, {
         loaderData: {
-          me,
           notice: null,
           slackConfirmation: null,
           rollup: { slack: [], workspaces: [], docos: [] },

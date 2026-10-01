@@ -14,7 +14,6 @@ import {
   useSearchParams,
 } from "react-router";
 import { ReaderLayout, type ReaderShell } from "~/components/reader/reader-layout";
-import { SiteHeader } from "~/components/site-header";
 import { codeTreeAt } from "~/lib/codebase-read.server";
 import { type DocoRouteParams, canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadIntegrationStatuses } from "~/lib/integration-status.server";
@@ -75,7 +74,7 @@ export function shouldRevalidate({
 }
 
 export default function DocoReader() {
-  const { me, shell } = useLoaderData<typeof loader>();
+  const { shell } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   // The open item's place in the tree comes with what the child loaded.
   const view = (useMatches().at(-1)?.data as { view?: { trail: string[] } } | undefined)?.view;
@@ -96,15 +95,12 @@ export default function DocoReader() {
   }, [importing]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <SiteHeader me={me} />
-      <ReaderLayout
-        shell={shell}
-        trail={view?.trail ?? []}
-        query={(searchParams.get("q") ?? "").trim()}
-      >
-        <Outlet context={shell} />
-      </ReaderLayout>
-    </div>
+    <ReaderLayout
+      shell={shell}
+      trail={view?.trail ?? []}
+      query={(searchParams.get("q") ?? "").trim()}
+    >
+      <Outlet context={shell} />
+    </ReaderLayout>
   );
 }

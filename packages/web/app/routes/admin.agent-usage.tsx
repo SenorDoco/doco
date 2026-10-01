@@ -16,7 +16,6 @@
 import { withClient } from "@doco/db";
 import { redirect } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { SiteHeader } from "~/components/site-header";
 import { type HealthSnapshot, getAgentHealth } from "~/lib/agent-health.server";
 import { type AnthropicUsageBucket, aggregateAnthropicUsage } from "~/lib/agent-usage.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -239,8 +238,7 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
   // from the loader. Cheap and avoids a websocket / SSE for what is
   // a low-volume admin page.
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader />
+    <>
       <meta httpEquiv="refresh" content="30" />
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <div className="mb-4 flex items-center justify-between">
@@ -420,7 +418,7 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
           </Card>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -1,9 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
+import { describe, expect, it } from "vitest";
 
 import SlackLinkPage from "../integrations.slack.link";
 

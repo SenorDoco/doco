@@ -8,7 +8,6 @@ import { Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { OnboardingCard } from "~/components/onboarding-card";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import { loadOnboardingProgress } from "~/lib/onboarding.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -23,7 +22,7 @@ export async function loader({ request }: { request: Request }) {
     onboarding: await loadOnboardingProgress(c, me.id),
     workspaces: await loadWorkspaceSummaries(c, me.id),
   }));
-  return { me, onboarding, workspaces };
+  return { onboarding, workspaces };
 }
 
 export function meta() {
@@ -35,35 +34,32 @@ export default function WorkspacesPage({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, onboarding, workspaces } = loaderData;
+  const { onboarding, workspaces } = loaderData;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-4xl space-y-6 px-6 py-6">
-        <PageHeader
-          breadcrumb={hostBreadcrumb({ pageLabel: "Workspaces" })}
-          title="Workspaces"
-          actions={
-            <Link
-              to="/new-workspace"
-              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
-            >
-              New workspace
-            </Link>
-          }
-        />
+    <main className="mx-auto max-w-4xl space-y-6 px-6 py-6">
+      <PageHeader
+        breadcrumb={hostBreadcrumb({ pageLabel: "Workspaces" })}
+        title="Workspaces"
+        actions={
+          <Link
+            to="/new-workspace"
+            className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+          >
+            New workspace
+          </Link>
+        }
+      />
 
-        <OnboardingCard progress={onboarding} />
+      <OnboardingCard progress={onboarding} />
 
-        <section className="space-y-3" aria-label="Your workspaces">
-          {workspaces.map((workspace) => (
-            <WorkspaceSummaryCard key={workspace.id} workspace={workspace} />
-          ))}
-          {workspaces.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No workspaces yet.</p>
-          ) : null}
-        </section>
-      </main>
-    </div>
+      <section className="space-y-3" aria-label="Your workspaces">
+        {workspaces.map((workspace) => (
+          <WorkspaceSummaryCard key={workspace.id} workspace={workspace} />
+        ))}
+        {workspaces.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No workspaces yet.</p>
+        ) : null}
+      </section>
+    </main>
   );
 }

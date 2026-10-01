@@ -29,7 +29,6 @@ import {
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { loadDocoPicker, loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { listSlackInstallations } from "~/lib/slack.server";
@@ -74,7 +73,6 @@ export async function loader({
       installedAt: install.installedAt,
     }));
   return {
-    me,
     workspace,
     rollup,
     slack,
@@ -98,116 +96,112 @@ export default function WorkspaceIntegrations({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, workspace, rollup, slack, canManageSlack, docoPicker } = loaderData;
+  const { workspace, rollup, slack, canManageSlack, docoPicker } = loaderData;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="space-y-6 py-6">
-        <PageHeader
-          breadcrumb={workspaceBreadcrumb({
-            workspaceSlug: workspace.handle,
-            pageLabel: "App integrations",
-          })}
-          title="App integrations"
-        >
-          <div className="space-y-3 pt-1">
-            <p className="text-sm text-muted-foreground">
-              Everything wired up under {workspace.handle}, plus a rollup of each doco&apos;s
-              connections.
-            </p>
-            <ScopeNavLinks scope="workspace" />
-          </div>
-        </PageHeader>
-
-        <DocoPickerCard picker={docoPicker} />
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">
-              Connected under {workspace.handle}
-            </h2>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Workspace-level integrations</CardTitle>
-                <CardDescription>
-                  Connections that apply to every doco in this workspace.
-                </CardDescription>
-              </CardHeader>
-              {slack.length > 0 ? (
-                <CardContent className="p-0">
-                  <ConnectionList>
-                    {slack.map((team) => (
-                      <ConnectionRow
-                        key={team.teamId}
-                        title={team.teamName}
-                        detail={`Slack · installed ${formatDate(team.installedAt)}`}
-                        action={{
-                          label: "Set defaults",
-                          href: slackSetupHref(team.teamId),
-                          icon: ArrowRight,
-                        }}
-                        secondaryAction={
-                          canManageSlack ? (
-                            <RemoveSlackButton teamId={team.teamId} teamName={team.teamName} />
-                          ) : undefined
-                        }
-                      />
-                    ))}
-                  </ConnectionList>
-                </CardContent>
-              ) : (
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    No workspace-wide integrations are configured yet. Connect Slack from the
-                    catalog to bind a team to {workspace.handle}; its channel defaults are managed
-                    here.
-                  </p>
-                </CardContent>
-              )}
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Docos in this workspace</CardTitle>
-                <CardDescription>
-                  Each doco manages its own connections. Open one to drill in.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-0">
-                {rollup.docos.length > 0 ? (
-                  <ConnectionList>
-                    {rollup.docos.map((d) => (
-                      <ConnectionRow
-                        key={d.docoId}
-                        title={d.handle}
-                        titleHref={`/${d.handle}/integrations`}
-                        detail={`${d.githubRepoCount} GitHub repo${
-                          d.githubRepoCount === 1 ? "" : "s"
-                        } connected`}
-                        action={{
-                          label: "Manage",
-                          href: `/${d.handle}/integrations`,
-                          icon: ArrowRight,
-                        }}
-                      />
-                    ))}
-                  </ConnectionList>
-                ) : (
-                  <p className="px-4 py-3 text-sm text-muted-foreground">
-                    No docos in this workspace have integrations configured yet.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
-            <AvailableIntegrations pageScope="workspace" workspaceHandle={workspace.handle} />
-          </section>
+    <SingleColumnPageMain className="space-y-6 py-6">
+      <PageHeader
+        breadcrumb={workspaceBreadcrumb({
+          workspaceSlug: workspace.handle,
+          pageLabel: "App integrations",
+        })}
+        title="App integrations"
+      >
+        <div className="space-y-3 pt-1">
+          <p className="text-sm text-muted-foreground">
+            Everything wired up under {workspace.handle}, plus a rollup of each doco&apos;s
+            connections.
+          </p>
+          <ScopeNavLinks scope="workspace" />
         </div>
-      </SingleColumnPageMain>
-    </div>
+      </PageHeader>
+
+      <DocoPickerCard picker={docoPicker} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Connected under {workspace.handle}
+          </h2>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Workspace-level integrations</CardTitle>
+              <CardDescription>
+                Connections that apply to every doco in this workspace.
+              </CardDescription>
+            </CardHeader>
+            {slack.length > 0 ? (
+              <CardContent className="p-0">
+                <ConnectionList>
+                  {slack.map((team) => (
+                    <ConnectionRow
+                      key={team.teamId}
+                      title={team.teamName}
+                      detail={`Slack · installed ${formatDate(team.installedAt)}`}
+                      action={{
+                        label: "Set defaults",
+                        href: slackSetupHref(team.teamId),
+                        icon: ArrowRight,
+                      }}
+                      secondaryAction={
+                        canManageSlack ? (
+                          <RemoveSlackButton teamId={team.teamId} teamName={team.teamName} />
+                        ) : undefined
+                      }
+                    />
+                  ))}
+                </ConnectionList>
+              </CardContent>
+            ) : (
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  No workspace-wide integrations are configured yet. Connect Slack from the catalog
+                  to bind a team to {workspace.handle}; its channel defaults are managed here.
+                </p>
+              </CardContent>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Docos in this workspace</CardTitle>
+              <CardDescription>
+                Each doco manages its own connections. Open one to drill in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {rollup.docos.length > 0 ? (
+                <ConnectionList>
+                  {rollup.docos.map((d) => (
+                    <ConnectionRow
+                      key={d.docoId}
+                      title={d.handle}
+                      titleHref={`/${d.handle}/integrations`}
+                      detail={`${d.githubRepoCount} GitHub repo${
+                        d.githubRepoCount === 1 ? "" : "s"
+                      } connected`}
+                      action={{
+                        label: "Manage",
+                        href: `/${d.handle}/integrations`,
+                        icon: ArrowRight,
+                      }}
+                    />
+                  ))}
+                </ConnectionList>
+              ) : (
+                <p className="px-4 py-3 text-sm text-muted-foreground">
+                  No docos in this workspace have integrations configured yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
+          <AvailableIntegrations pageScope="workspace" workspaceHandle={workspace.handle} />
+        </section>
+      </div>
+    </SingleColumnPageMain>
   );
 }
 

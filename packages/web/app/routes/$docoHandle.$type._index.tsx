@@ -9,7 +9,6 @@ import { entityUrl, normalizeNodeType } from "@doco/shared";
 import { Link } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -78,52 +77,47 @@ export default function ListByTypeInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { items, type, ownerSlug, docoSlug, handle, host: _host, me } = loaderData;
+  const { items, type, ownerSlug, docoSlug, handle, host: _host } = loaderData;
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        <Breadcrumb
-          items={docoBreadcrumb({ ownerSlug, handle, pageLabel: `${capitalize(type)}s` })}
-        />
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {capitalize(type)}s{" "}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                ({items.length})
-              </span>
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>id</TableHead>
-                <TableHead>summary</TableHead>
+    <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+      <Breadcrumb
+        items={docoBreadcrumb({ ownerSlug, handle, pageLabel: `${capitalize(type)}s` })}
+      />
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {capitalize(type)}s{" "}
+            <span className="ml-2 text-xs font-normal text-muted-foreground">({items.length})</span>
+          </CardTitle>
+        </CardHeader>
+      </Card>
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>id</TableHead>
+              <TableHead>summary</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((it) => (
+              <TableRow key={it.id}>
+                <TableCell>
+                  <Link
+                    to={entityUrl({ docoHandle: handle, nodeType: type, id: it.id })}
+                    className="text-primary hover:underline"
+                  >
+                    {it.name ?? it.id}
+                  </Link>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{it.summary}</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((it) => (
-                <TableRow key={it.id}>
-                  <TableCell>
-                    <Link
-                      to={entityUrl({ docoHandle: handle, nodeType: type, id: it.id })}
-                      className="text-primary hover:underline"
-                    >
-                      {it.name ?? it.id}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{it.summary}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      </main>
-    </div>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+    </main>
   );
 }
 

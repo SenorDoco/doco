@@ -26,9 +26,7 @@ import { type EntityId, WRITE_ALL } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { DocoMark } from "~/components/doco-mark";
 import { OnboardingCard } from "~/components/onboarding-card";
-import { VersionPill } from "~/components/version-pill";
 import { rootDir } from "~/lib/db.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
 import { type OnboardingProgress, loadOnboardingProgress } from "~/lib/onboarding.server";
@@ -212,7 +210,7 @@ export default function InviteLanding({
 }) {
   if (actionData && "ok" in actionData) {
     return (
-      <Shell>
+      <InviteMain>
         <Card>
           <CardHeader>
             <CardTitle>You're in</CardTitle>
@@ -230,25 +228,25 @@ export default function InviteLanding({
           </CardContent>
         </Card>
         <OnboardingCard progress={actionData.onboarding} />
-      </Shell>
+      </InviteMain>
     );
   }
 
   if ("error" in loaderData) {
     return (
-      <Shell>
+      <InviteMain>
         <Card>
           <CardHeader>
             <CardTitle>{errorTitle(loaderData.error)}</CardTitle>
             <CardDescription>{errorDescription(loaderData.error)}</CardDescription>
           </CardHeader>
         </Card>
-      </Shell>
+      </InviteMain>
     );
   }
 
   return (
-    <Shell>
+    <InviteMain>
       <Card>
         <CardHeader>
           <CardTitle>
@@ -316,7 +314,7 @@ export default function InviteLanding({
           )}
         </CardContent>
       </Card>
-    </Shell>
+    </InviteMain>
   );
 }
 
@@ -341,21 +339,11 @@ function errorDescription(err: LoaderError["error"]): string {
   return "The doco it pointed at has been deleted.";
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function InviteMain({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <header>
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
-            <DocoMark height={28} />
-          </Link>
-          <VersionPill />
-        </div>
-      </header>
-      <main className="mx-auto max-w-xl px-6 py-12 w-full space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
-        {children}
-      </main>
-    </div>
+    <main className="mx-auto max-w-xl px-6 py-12 w-full space-y-4">
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
+      {children}
+    </main>
   );
 }

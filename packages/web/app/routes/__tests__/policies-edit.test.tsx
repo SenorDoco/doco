@@ -43,7 +43,6 @@ vi.mock("react-router", () => ({
   redirect: (url: string) => ({ redirectTo: url }),
   useActionData: () => undefined,
 }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 vi.mock("~/components/breadcrumb", () => ({
   Breadcrumb: () => null,
   docoBreadcrumb: () => [],
@@ -92,7 +91,6 @@ function baseLoaderData(overrides: Partial<LoaderData> = {}): LoaderData {
     ownerSlug: "torre",
     docoSlug: "runbook",
     handle: "runbook",
-    me: { id: "user_1", username: "alice", type: "person", isHuman: true },
     policyId: "policy_01HZEDIT",
     lifecycle: "active",
     initial: baseInitial,

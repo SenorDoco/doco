@@ -27,7 +27,6 @@ vi.mock("~/lib/github-connection.server", () => ({
 }));
 vi.mock("~/lib/integration-status.server", () => ({ loadIntegrationStatuses: vi.fn() }));
 vi.mock("~/lib/slack.server", () => ({ getSlackConfig: vi.fn(() => ({ configured: true })) }));
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 import DocoIntegrations from "../$docoHandle.integrations";
 
