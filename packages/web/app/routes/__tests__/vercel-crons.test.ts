@@ -20,6 +20,7 @@ describe("Vercel cron jobs", () => {
       "/api/embeddings/sweep",
       "/api/github/backfill-sweep",
       "/api/notion/mirror-sync",
+      "/api/onboarding/reminders",
       "/api/slack/mirror-sync",
     ]);
   });

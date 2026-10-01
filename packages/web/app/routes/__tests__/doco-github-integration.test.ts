@@ -7,11 +7,10 @@ const mocks = vi.hoisted(() => ({
   getDocoConnectionsContext: vi.fn(),
   listGitHubInstallationChoicesForDocos: vi.fn(),
   buildInstallUrl: vi.fn(),
-  connectRepositories: vi.fn(),
+  connectPicked: vi.fn(),
   removeConnection: vi.fn(),
   reconcileInstallationConnections: vi.fn(),
   setBackfillState: vi.fn(),
-  subscribeInstallation: vi.fn(),
   backfillRepoPullRequests: vi.fn(),
   kickBackfillRun: vi.fn(),
   waitUntil: vi.fn(),
@@ -46,7 +45,7 @@ vi.mock("~/lib/github-backfill.server", () => ({
 vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
   pickConnections: (await importOriginal<typeof import("~/lib/github-connection.server")>())
     .pickConnections,
-  connectRepositories: mocks.connectRepositories,
+  connectPicked: mocks.connectPicked,
   buildInstallUrl: mocks.buildInstallUrl,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   githubOrgAccounts: ({
@@ -77,7 +76,6 @@ vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
     installation_id: connections[0]?.installation_id,
   }),
   setBackfillState: mocks.setBackfillState,
-  subscribeInstallation: mocks.subscribeInstallation,
 }));
 
 vi.mock("../api.github.backfill-run", () => ({
@@ -138,9 +136,11 @@ describe("/:docoHandle/integrations/github", () => {
     mocks.buildInstallUrl.mockReturnValue(
       "https://github.com/apps/doco-pr-sync/installations/new?state=doco_1",
     );
-    mocks.connectRepositories.mockResolvedValue(undefined);
+    // Queues an import when there are repositories to bring, as the real one does.
+    mocks.connectPicked.mockImplementation(
+      async (_docoId: string, picked: { connections: unknown[] }) => picked.connections.length > 0,
+    );
     mocks.setBackfillState.mockResolvedValue(undefined);
-    mocks.subscribeInstallation.mockResolvedValue([]);
     mocks.kickBackfillRun.mockResolvedValue(undefined);
   });
 
@@ -233,10 +233,13 @@ describe("/:docoHandle/integrations/github", () => {
     // The Doco itself shows the import filling it: no separate screen to click through.
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toBe("/meta-pull-requests");
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_1", [
-      { repo: "acme/web", installation_id: 42 },
-      { repo: "zeta/app", installation_id: 7 },
-    ]);
+    expect(mocks.connectPicked).toHaveBeenCalledWith("doco_1", {
+      connections: [
+        { repo: "acme/web", installation_id: 42 },
+        { repo: "zeta/app", installation_id: 7 },
+      ],
+      installations: [],
+    });
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
@@ -258,20 +261,15 @@ describe("/:docoHandle/integrations/github", () => {
     }).catch((error: Response) => error)) as Response;
 
     expect(response.headers.get("Location")).toBe("/meta-pull-requests");
-    // Subscribed, so repositories GitHub gives Doco later come in too…
-    expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({
-        installation_id: 42,
-        account: "torre-labs",
-        connected_at: expect.any(String),
-      }),
-    );
-    // …and every repository it lists now starts importing.
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_1", [
-      { repo: "torre-labs/heda", installation_id: 42 },
-      { repo: "torre-labs/vader", installation_id: 42 },
-    ]);
+    // Subscribed, so repositories GitHub gives Doco later come in too, and
+    // every repository it lists now starts importing.
+    expect(mocks.connectPicked).toHaveBeenCalledWith("doco_1", {
+      installations: [expect.objectContaining({ installation_id: 42, account: "torre-labs" })],
+      connections: [
+        { repo: "torre-labs/heda", installation_id: 42 },
+        { repo: "torre-labs/vader", installation_id: 42 },
+      ],
+    });
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
@@ -293,11 +291,10 @@ describe("/:docoHandle/integrations/github", () => {
     }).catch((error: Response) => error)) as Response;
 
     expect(response.headers.get("Location")).toBe("/meta-pull-requests");
-    expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({ installation_id: 42, account: "Doco-to" }),
-    );
-    expect(mocks.connectRepositories).not.toHaveBeenCalled();
+    expect(mocks.connectPicked).toHaveBeenCalledWith("doco_1", {
+      installations: [expect.objectContaining({ installation_id: 42, account: "Doco-to" })],
+      connections: [],
+    });
     expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
 
@@ -453,7 +450,7 @@ describe("/:docoHandle/integrations/github", () => {
     expect(result).toMatchObject({
       error: "acme/web is not available from your GitHub connections.",
     });
-    expect(mocks.connectRepositories).not.toHaveBeenCalled();
+    expect(mocks.connectPicked).not.toHaveBeenCalled();
   });
 
   it("re-imports without adding repositories the Doco never picked", async () => {

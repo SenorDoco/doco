@@ -27,6 +27,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/onboarding/reminders",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/admin/purge-deleted-docos",
       "schedule": "0 3 * * *"
     }

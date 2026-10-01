@@ -7,6 +7,7 @@
 
 import { type DocoRole, getWorkspaceRole, withClient } from "@doco/db";
 import { type ReadableWorkspaceDoco, listReadableDocosInWorkspace } from "./doco-access.server";
+import { createDocoInWorkspace } from "./redeem.server";
 
 export interface MyWorkspaceRow {
   id: string;
@@ -119,4 +120,38 @@ export async function isWorkspaceMember(workspaceId: string, userId: string): Pr
     );
     return (r.rowCount ?? 0) > 0;
   });
+}
+
+/**
+ * The workspace's Doco made from `template`: its oldest live one, or a new one
+ * created by `userId` as `<workspace>-<handleSuffix>` when it has none. A
+ * source of knowledge (a GitHub import, Slack, Notion) fills one this way.
+ */
+export async function ensureWorkspaceDoco(opts: {
+  workspace: { id: string; handle: string };
+  template: string;
+  handleSuffix: string;
+  userId: string;
+}): Promise<{ id: string; handle: string; visibility: "public" | "private" }> {
+  const existing = await withClient(async (c) => {
+    const r = await c.query<{ id: string; handle: string; visibility: "public" | "private" }>(
+      `SELECT id, handle, visibility FROM docos
+        WHERE workspace_id = $1 AND deleted_at IS NULL AND data->>'template_handle' = $2
+        ORDER BY created_at, id
+        LIMIT 1`,
+      [opts.workspace.id, opts.template],
+    );
+    return r.rows[0];
+  });
+  if (existing) return existing;
+  const created = await createDocoInWorkspace({
+    workspaceId: opts.workspace.id,
+    requestedHandle: `${opts.workspace.handle}-${opts.handleSuffix}`
+      .slice(0, 64)
+      .replace(/-+$/, ""),
+    createdByUserId: opts.userId,
+    templateHandle: opts.template,
+    autoSuffix: true,
+  });
+  return { id: created.docoId, handle: created.handle, visibility: "private" };
 }
