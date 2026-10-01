@@ -30,6 +30,17 @@ const QUIET_SLACK: SilenceAlert = {
   source: "slack",
 };
 
+const QUIET_AGENT: SilenceAlert = {
+  id: "alert_agent",
+  kind: "agent",
+  workspaceHandle: "torre",
+  quietSince: "2026-09-18T00:00:00.000Z",
+  usual: 12,
+  agentName: "Claude Code",
+  agentUser: "cy",
+  docoHandles: ["torre-decisions"],
+};
+
 function render(workspace: WorkspaceSummary, showName?: boolean): string {
   return renderToStaticMarkup(
     createElement(
@@ -132,6 +143,14 @@ describe("WorkspaceSummaryCard", () => {
     const rows = Array.from(alerts?.parentElement?.children ?? []);
     expect(rows[1]).toBe(alerts);
     expect(rows[2]?.querySelector('a[href="/workspaces/torre/agent"]')).not.toBeNull();
+  });
+
+  it("flags an agent that stopped reading and writing", () => {
+    const doc = new Window().document;
+    doc.body.innerHTML = render({ ...TORRE, alerts: [QUIET_AGENT] });
+    expect(doc.querySelector('ul[aria-label="Alerts"]')?.textContent).toContain(
+      "Claude Code (@cy) hasn't read or written in torre for",
+    );
   });
 
   it("shows no alert box when nothing has gone quiet", () => {
