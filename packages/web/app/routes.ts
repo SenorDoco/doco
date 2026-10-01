@@ -22,7 +22,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  * Hosted-multi-tenant route table:
  *
  *   /                              host home: the agent instructions, the same for everyone
- *   /workspaces                    signed-in home: Get started + one card per workspace (/dashboard redirects here)
+ *   /workspaces                    signed-in home: one card per workspace (/dashboard redirects here)
  *   /feedback                      owner-only bug/idea report review page (clears the header flags)
  *   /mentor/feedback               legacy redirect → /feedback
  *   /users/<username>              signed-in user's tiny profile placeholder
@@ -33,6 +33,8 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
  *   /integrations/github           GitHub setup: workspace + what to bring (pull requests, bugs) + repos
+ *   /workspaces/<workspace-handle>             a workspace's home: its onboarding steps until they're done, then its Docos and activity
+ *   /workspaces/<workspace-handle>/onboarding  the steps' one-click actions (POST) and where they stand (GET, polled)
  *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
  *   /<doco-handle>                 per-Doco recent + search input (a codebase or Notion Doco redirects to its reader)
@@ -143,6 +145,10 @@ export default [
   // every Doco the workspace owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
   route("workspaces/:workspaceHandle/agent", "routes/workspaces.$workspaceHandle.agent.tsx"),
+  route(
+    "workspaces/:workspaceHandle/onboarding",
+    "routes/workspaces.$workspaceHandle.onboarding.tsx",
+  ),
   route("workspaces/:workspaceHandle/settings", "routes/workspaces.$workspaceHandle.settings.tsx"),
   route(
     "workspaces/:workspaceHandle/integrations",
@@ -166,6 +172,8 @@ export default [
   route("integrations/notion/callback", "routes/integrations.notion.callback.tsx"),
   route("api/notion/mirror-sync", "routes/api.notion.mirror-sync.tsx"),
   route("api/embeddings/sweep", "routes/api.embeddings.sweep.tsx"),
+  // Vercel Cron: the reminder email 15 minutes into a workspace's steps.
+  route("api/onboarding/reminders", "routes/api.onboarding.reminders.tsx"),
   // Inbound Notion webhook (the public integration's one subscription).
   route("api/notion/webhook", "routes/api.notion.webhook.tsx"),
   route("users/:username", "routes/users.$username.tsx"),

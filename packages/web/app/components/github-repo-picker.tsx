@@ -227,6 +227,10 @@ const SETUP_NOTICES: Record<string, { text: string; error: boolean }> = {
   },
   signin_required: { text: "Sign in, then run Connect again.", error: true },
   connected: { text: "GitHub is connected. Choose the repositories below.", error: false },
+  importing: {
+    text: "GitHub is connected. Doco is importing in the background; each Doco shows how far it has got.",
+    error: false,
+  },
 };
 
 /** What the GitHub install callback reported (`?github=<outcome>`), if anything. */

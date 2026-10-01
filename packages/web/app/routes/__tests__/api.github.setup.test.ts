@@ -4,8 +4,10 @@ const mocks = vi.hoisted(() => ({
   getDocoByIdOrHandle: vi.fn(),
   getDocoLevelRole: vi.fn(),
   getCurrentPrincipalAsync: vi.fn(),
+  connectPicked: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   getInstallationAccount: vi.fn(),
+  listGitHubInstallationChoicesForDocos: vi.fn(),
   exchangeInstallationCode: vi.fn(),
   listUserInstallationIds: vi.fn(),
   importInstallationConnections: vi.fn(),
@@ -45,8 +47,13 @@ vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
     .signInstallState,
   verifyInstallState: (await importOriginal<typeof import("~/lib/github-connection.server")>())
     .verifyInstallState,
+  // The real picker: only what the installation offers is connected.
+  pickConnections: (await importOriginal<typeof import("~/lib/github-connection.server")>())
+    .pickConnections,
+  connectPicked: mocks.connectPicked,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   importInstallationConnections: mocks.importInstallationConnections,
+  listGitHubInstallationChoicesForDocos: mocks.listGitHubInstallationChoicesForDocos,
   recordInstallationAuthorization: mocks.recordInstallationAuthorization,
   setBackfillState: mocks.setBackfillState,
   subscribeInstallation: mocks.subscribeInstallation,
@@ -67,8 +74,17 @@ function signedState(
   userId = "user_1",
   docoIds = ["doco_1"],
   next = "/prs/integrations/github",
+  connectAll = false,
 ): string {
-  return signInstallState({ userId, docoIds, next, issuedAt: Date.now() }) ?? "";
+  return (
+    signInstallState({
+      userId,
+      docoIds,
+      next,
+      ...(connectAll ? { connectAll } : {}),
+      issuedAt: Date.now(),
+    }) ?? ""
+  );
 }
 
 function setupRequest(
@@ -216,5 +232,32 @@ describe("api.github.setup loader", () => {
     expect(mocks.importInstallationConnections).not.toHaveBeenCalled();
     expect(mocks.setBackfillState).not.toHaveBeenCalled();
     expect(mocks.waitUntil).not.toHaveBeenCalled();
+  });
+
+  // A workspace's one-click Connect GitHub: nothing left to pick once GitHub
+  // sends the person back, so every repository the installation grants, and
+  // the organization as a whole, start importing into each Doco.
+  it("connects everything the installation grants when the setup asked for it", async () => {
+    mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
+      { installation_id: 42, account: "acme", repositories: ["acme/app", "acme/api"] },
+      { installation_id: 7, account: "other", repositories: ["other/site"] },
+    ]);
+    mocks.connectPicked.mockResolvedValue(true);
+    const state = signedState("user_1", ["doco_1", "doco_2"], "/workspaces/acme", true);
+    const response = await loader({
+      request: setupRequest(`installation_id=42&code=gh-code&state=${encodeURIComponent(state)}`),
+    });
+
+    expect(response.headers.get("Location")).toBe("/workspaces/acme?github=importing");
+    for (const docoId of ["doco_1", "doco_2"]) {
+      expect(mocks.connectPicked).toHaveBeenCalledWith(docoId, {
+        connections: [
+          { repo: "acme/app", installation_id: 42 },
+          { repo: "acme/api", installation_id: 42 },
+        ],
+        installations: [expect.objectContaining({ installation_id: 42, account: "acme" })],
+      });
+      expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", docoId);
+    }
   });
 });

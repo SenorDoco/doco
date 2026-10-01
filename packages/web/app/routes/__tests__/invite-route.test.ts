@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   upsertDocoUser: vi.fn(),
   upsertWorkspaceUser: vi.fn(),
   withClient: vi.fn(),
-  loadOnboardingProgress: vi.fn(),
+  startOnboarding: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({
@@ -39,7 +39,7 @@ vi.mock("~/lib/session.server", () => ({
 }));
 
 vi.mock("~/lib/onboarding.server", () => ({
-  loadOnboardingProgress: mocks.loadOnboardingProgress,
+  startOnboarding: mocks.startOnboarding,
 }));
 
 import { createElement } from "react";
@@ -95,11 +95,6 @@ describe("/invite/:code", () => {
       rows: [{ id: "workspace_torre", handle: "torre" }],
     });
     mocks.withClient.mockImplementation((callback) => callback({ query: mocks.query }));
-    mocks.loadOnboardingProgress.mockResolvedValue({
-      workspace: true,
-      agent: false,
-      sources: false,
-    });
   });
 
   it("loads workspace-only invites without a doco anchor", async () => {
@@ -118,16 +113,11 @@ describe("/invite/:code", () => {
   });
 
   it("accepts workspace-only invites by granting workspace membership", async () => {
-    const result = await action({
+    await action({
       request: request("POST"),
       params: { code: "invite_code" },
     });
 
-    expect(result).toMatchObject({
-      ok: true,
-      continue_to: "/workspaces/torre",
-      target_label: "torre",
-    });
     expect(mocks.upsertWorkspaceUser).toHaveBeenCalledWith({
       workspace_id: "workspace_torre",
       user_id: "user_alice",
@@ -170,22 +160,41 @@ describe("/invite/:code", () => {
     });
   });
 
-  // A person who accepts an invite continues with the same steps as a person
-  // who creates a workspace: the joined workspace finishes step one, and the
-  // next step is connecting their agent.
-  it("walks the new member on to connecting their agent after they accept", async () => {
-    // VersionPill reads these vite-injected build-time globals during render.
-    vi.stubGlobal("__DOCO_VERSION__", "0.0.0-test");
-    vi.stubGlobal("__DOCO_RELEASE_AT__", "2026-01-01T00:00:00.000Z");
+  // Alexander, 2026-10-01: someone who joins a workspace from an invite has
+  // one thing to do, ask their agent to start using Doco, and the workspace
+  // keeps them on it until it's done.
+  it("starts the workspace's agent step for the new member and takes them there", async () => {
     const result = await action({
       request: request("POST"),
       params: { code: "invite_code" },
     });
-    expect(result).toMatchObject({
-      ok: true,
-      onboarding: { workspace: true, agent: false, sources: false },
+    expect(mocks.startOnboarding).toHaveBeenCalledWith(expect.anything(), {
+      workspaceId: "workspace_torre",
+      userId: "user_alice",
+      joinedAs: "invitee",
     });
-    expect(mocks.loadOnboardingProgress).toHaveBeenCalledWith(expect.anything(), "user_alice");
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).headers.get("Location")).toBe("/workspaces/torre");
+  });
+
+  it("shows a Doco invite's new member the way on to the Doco, with no workspace steps", async () => {
+    // VersionPill reads these vite-injected build-time globals during render.
+    vi.stubGlobal("__DOCO_VERSION__", "0.0.0-test");
+    vi.stubGlobal("__DOCO_RELEASE_AT__", "2026-01-01T00:00:00.000Z");
+    const docoInvite = {
+      ...WORKSPACE_INVITE,
+      level: "doco",
+      grants: [{ level: "doco", target_id: "doco_bugs", role: "writer", write_types: ["*"] }],
+    };
+    mocks.findInvite.mockResolvedValue(docoInvite);
+    mocks.consumeInvite.mockResolvedValue({ ...docoInvite, status: "consumed" });
+    mocks.getDocoById.mockResolvedValue({ id: "doco_bugs", handle: "torre-bugs" });
+    const result = await action({
+      request: request("POST"),
+      params: { code: "invite_code" },
+    });
+    expect(result).toMatchObject({ ok: true, continue_to: "/torre-bugs" });
+    expect(mocks.startOnboarding).not.toHaveBeenCalled();
 
     const html = renderToStaticMarkup(
       createElement(
@@ -198,9 +207,7 @@ describe("/invite/:code", () => {
       ),
     );
     expect(html).toContain("You&#x27;re in");
-    expect(html).toContain("Connect your agent");
-    expect(html).toContain('href="/#instructions"');
-    expect(html).toContain('href="/workspaces/torre"');
+    expect(html).toContain('href="/torre-bugs"');
     vi.unstubAllGlobals();
   });
 });

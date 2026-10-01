@@ -15,6 +15,7 @@ vi.mock("@doco/db", () => ({
 
 import {
   addConnection,
+  connectPicked,
   connectRepositories,
   detachReposEverywhere,
   getDocoConnectionsContext,
@@ -175,6 +176,28 @@ describe("connecting repositories", () => {
     expect(pickConnections([acme], { repos: [], installations: ["404"] })).toEqual({
       error: "That GitHub connection is not available to your account.",
     });
+  });
+
+  it("connects a picked organization whole: subscribed, with its repositories importing", async () => {
+    const picked = pickConnections([acme], { repos: [], installations: ["9"] });
+    if ("error" in picked) throw new Error(picked.error);
+    expect(await connectPicked("doco_prs", picked)).toBe(true);
+    expect(await listInstallations("doco_prs")).toEqual([
+      expect.objectContaining({ installation_id: 9, account: "acme" }),
+    ]);
+    const ctx = await getDocoConnectionsContext("doco_prs");
+    expect(ctx?.connections.map((c) => c.repo)).toEqual(["acme/app", "acme/api"]);
+    expect(ctx?.backfill).toMatchObject({ status: "running", queue: ["acme/app", "acme/api"] });
+  });
+
+  it("subscribes an organization with no repositories yet, with no import to start", async () => {
+    const picked = pickConnections([empty], { repos: [], installations: ["5"] });
+    if ("error" in picked) throw new Error(picked.error);
+    expect(await connectPicked("doco_prs", picked)).toBe(false);
+    expect(await listInstallations("doco_prs")).toEqual([
+      expect.objectContaining({ installation_id: 5, account: "empty" }),
+    ]);
+    expect(await listConnections("doco_prs")).toEqual([]);
   });
 
   it("connects each repository and queues its import", async () => {
