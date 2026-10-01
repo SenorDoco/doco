@@ -51,9 +51,9 @@ const DEVICE_ENV_KEYS = [
 ];
 
 const SERVER_INSTRUCTIONS = [
-  "Follow the Doco agent instructions: the block on the Doco home page",
-  "(https://doco.to/, or this project's Doco host), kept in this project's",
-  "AGENTS.md between the doco:begin and doco:end markers. They cover picking",
+  "Follow the Doco agent instructions at https://doco.to/agents (or /agents",
+  "on this project's Doco host), kept in this project's AGENTS.md between",
+  "the doco:begin and doco:end markers. They cover picking",
   "the project's workspace and the duties that hold in every session. What",
   "follows covers only this repo-local server's own mechanics.",
   "",
