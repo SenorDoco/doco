@@ -549,7 +549,7 @@ describe("skippedReposNote", () => {
     );
     expect(note).toContain("14 repositories couldn't be imported");
     expect(note).toContain(
-      "GitHub doesn't let Doco's GitHub App read their files: give the App Contents read access in GitHub.",
+      "GitHub hasn't given Doco's GitHub App access to their files yet. Accept the App's request for Contents access in GitHub.",
     );
   });
 });

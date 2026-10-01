@@ -119,7 +119,7 @@ describe("IntegrationStatusCard", () => {
     expect(html).not.toContain("All files imported");
     expect(html).toContain("14 of 14 repos skipped");
     expect(html).toContain(
-      "GitHub doesn&#x27;t let Doco&#x27;s GitHub App read their files: give the App Contents read access in GitHub. The import runs again once it&#x27;s accepted.",
+      "GitHub hasn&#x27;t given Doco&#x27;s GitHub App access to their files yet. Accept the App&#x27;s request for Contents access in GitHub. The import runs again once it&#x27;s accepted.",
     );
     // Skipped for another reason: re-importing may bring them.
     expect(render({ ...files, state: "done", repos: 3, skipped: 1, refused: false })).toContain(

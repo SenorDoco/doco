@@ -68,10 +68,18 @@ export function findGitHubImport(id: string): GitHubImport | undefined {
   return GITHUB_IMPORTS.find((i) => i.id === id);
 }
 
+/** Whether GitHub refused Doco's GitHub App a repository the import skipped
+ *  (403): the account hasn't accepted the access the App asks for. Pure. */
+export function refusedAccess(backfill: Pick<GitHubBackfillState, "errors">): boolean {
+  return (backfill.errors ?? []).some((e) => e.status === 403);
+}
+
 /** What to tell someone when GitHub refused Doco's GitHub App the repositories
- *  an import skipped: the permission that reads what the Doco brings. Pure. */
+ *  an import skipped: accept the App's request for the permission that reads
+ *  what the Doco brings. Only the App's owner can add a permission to the App;
+ *  everyone else accepts it in GitHub. Pure. */
 export function refusedAccessNote(brings: Pick<GitHubImport, "items" | "permission">): string {
-  return `GitHub doesn't let Doco's GitHub App read their ${brings.items}: give the App ${brings.permission} read access in GitHub.`;
+  return `GitHub hasn't given Doco's GitHub App access to their ${brings.items} yet. Accept the App's request for ${brings.permission} access in GitHub.`;
 }
 
 /** How many repositories an import skipped. A marker written before the count

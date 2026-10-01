@@ -9,7 +9,7 @@ import {
   listInstallationRepos,
   mintInstallationToken,
 } from "./github-app.server";
-import { GITHUB_IMPORTS, githubImportFor, skippedRepos } from "./github-imports";
+import { GITHUB_IMPORTS, githubImportFor, refusedAccess, skippedRepos } from "./github-imports";
 
 /**
  * SQL for what the Doco aliased `alias` brings from GitHub — the template of
@@ -537,7 +537,7 @@ export interface GitHubImportState {
   repos: number;
   /** Repositories the import skipped. */
   skipped: number;
-  /** GitHub refused Doco's GitHub App access to one of them (a permission it lacks). */
+  /** GitHub refused Doco's GitHub App access to one of them (a permission not accepted). */
   refused: boolean;
 }
 
@@ -561,7 +561,7 @@ export function githubImportState(
     reposDone: summary?.repos_done ?? 0,
     repos: summary?.repos ?? 0,
     skipped: summary?.skipped ?? 0,
-    refused: (summary?.errors ?? []).some((e) => e.status === 403),
+    refused: refusedAccess({ errors: summary?.errors }),
   };
 }
 

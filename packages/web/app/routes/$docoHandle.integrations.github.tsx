@@ -53,6 +53,7 @@ import {
 import {
   type GitHubImport,
   githubImportFor,
+  refusedAccess,
   refusedAccessNote,
   skippedRepos,
 } from "~/lib/github-imports";
@@ -308,7 +309,7 @@ export function skippedReposNote(
   const unnamed = count - Math.min(repos.length, 3);
   const more = unnamed > 0 ? ` and ${unnamed} more` : "";
   const one = count === 1;
-  const refused = errors.some((e) => e.status === 403) ? ` ${refusedAccessNote(brings)}` : "";
+  const refused = refusedAccess({ errors }) ? ` ${refusedAccessNote(brings)}` : "";
   return `${count} ${one ? "repository" : "repositories"} couldn't be imported and ${
     one ? "was" : "were"
   } skipped: ${shown}${more}.${refused}`;
@@ -462,7 +463,19 @@ export default function DocoGitHubIntegration() {
                   ))}
                 </ul>
               ) : null}
-              {skipped ? <p className="text-xs text-destructive">{skipped}</p> : null}
+              {skipped ? (
+                <p className="text-xs text-destructive">
+                  {skipped}
+                  {backfill && refusedAccess(backfill) && docoInstallUrl ? (
+                    <>
+                      {" "}
+                      <a href={docoInstallUrl} className="font-semibold underline">
+                        Review in GitHub
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
               {canManage && connections.length > 0 ? (
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">

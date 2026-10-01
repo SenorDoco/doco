@@ -69,6 +69,7 @@ const baseLoaderData = {
     description: "Every pull request.",
     item: "pull request",
     items: "pull requests",
+    permission: "Pull requests",
   },
   canManage: true,
   docoInstallUrl: "https://github.com/apps/doco/installations/new",
@@ -210,5 +211,25 @@ describe("connectLabel", () => {
     expect(connectLabel(1, [])).toBe("Connect 1 repository");
     expect(connectLabel(3, [])).toBe("Connect 3 repositories");
     expect(connectLabel(2, ["acme"])).toBe("Connect 2 repositories and every repository in acme");
+  });
+});
+
+describe("GitHub integration · access GitHub refused", () => {
+  it("links to GitHub to accept the access the App asks for", () => {
+    fixture.loaderData = {
+      ...baseLoaderData,
+      connections: [{ repo: "torre-labs/discovery", installation_id: 1 }],
+      backfill: {
+        status: "done",
+        repos: 1,
+        skipped: 1,
+        errors: [{ repo: "torre-labs/discovery", message: "403", at: "t", status: 403 }],
+      },
+    };
+    const html = renderToStaticMarkup(<DocoGitHubIntegration />);
+    expect(html).toContain("Accept the App&#x27;s request for Pull requests access in GitHub.");
+    expect(html).toMatch(
+      /<a href="https:\/\/github\.com\/apps\/doco\/installations\/new"[^>]*>Review in GitHub<\/a>/,
+    );
   });
 });
