@@ -89,8 +89,15 @@ const codeShell: ReaderShell = {
       },
     ],
     topContributors: [
-      { userId: "user_ana", username: "ana", lastAt: "2026-09-30T10:00:00.000Z", eventCount: 1 },
+      {
+        userId: "user_ana",
+        username: "ana",
+        via: "Claude Code",
+        count: 1,
+        lastAt: "2026-09-30T10:00:00.000Z",
+      },
     ],
+    topQueryers: [],
   },
 };
 
@@ -207,7 +214,8 @@ describe("ReaderLayout search and tree", () => {
 });
 
 // Like every other Doco, the reader shows the Doco's activity beside whatever
-// is open: the Activity chart, who contributed most, and the latest writes.
+// is open: the Activity chart, who wrote and queried most, and the latest
+// writes.
 describe("ReaderLayout activity column", () => {
   it("shows the Doco's activity beside an open file", () => {
     const html = render(codeShell, { url: "/acme-codebase/code/acme/app/README.md" });
@@ -215,7 +223,9 @@ describe("ReaderLayout activity column", () => {
     expect(html).toContain('aria-label="Doco activity"');
     expect(html).toContain(">Activity<");
     expect(html).toContain(">Top contributors<");
-    expect(html).toContain(">ana<");
+    expect(html).toContain("ana <span");
+    expect(html).toContain("via Claude Code");
+    expect(html).toContain(">Top queryers<");
     expect(html).toContain(">Latest activity<");
     expect(html).toContain("Keep the API in its own repository");
   });

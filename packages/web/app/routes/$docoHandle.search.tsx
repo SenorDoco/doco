@@ -1,4 +1,5 @@
 import { withClient } from "@doco/db";
+import { waitUntil } from "@vercel/functions";
 import type { ReactNode } from "react";
 // Per-Doco search — hybrid ranker (vector + full-text floor; ADR-052,
 // supersedes ADR-030) + left-sidebar filters for lifecycle / node type.
@@ -13,10 +14,11 @@ import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { SiteHeader } from "~/components/site-header";
-import { loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { isAgentRead, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
+import { recordQuery } from "~/lib/query-log.server";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -117,6 +119,18 @@ export async function loader({
         facets,
         pagination,
       };
+    }
+
+    // A search on the website is a query. (An agent's search is already logged
+    // by the read gate.)
+    if (!isAgentRead(request)) {
+      waitUntil(
+        recordQuery(
+          request,
+          { workspaceId: ctx.meta.workspaceId, docoId: ctx.meta.docoId },
+          me?.id ?? null,
+        ),
+      );
     }
 
     // Hybrid: semantic ranking with a full-text floor (see search.server.ts),

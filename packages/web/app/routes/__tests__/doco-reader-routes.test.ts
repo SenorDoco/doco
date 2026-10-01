@@ -98,7 +98,12 @@ describe("the Doco home of a reader Doco", () => {
 // whatever is open in it.
 describe("the reader's frame", () => {
   it("carries the Doco's activity", async () => {
-    const activity = { byDay: { "2026-09-30": 4 }, items: [], topContributors: [] };
+    const activity = {
+      byDay: { "2026-09-30": 4 },
+      items: [],
+      topContributors: [],
+      topQueryers: [],
+    };
     mocks.codeTreeAt.mockResolvedValue({ "": { items: [], more: 0 } });
     mocks.loadDocoActivity.mockResolvedValue(activity);
     const data = await readerFrame({

@@ -1,6 +1,7 @@
 // A Doco's activity, as its home's side column shows it: how much happened
 // each day (nodes captured and what it copied from its source), the latest
-// recorded writes, and who made them. PGlite runs the real schema.
+// recorded writes, and who wrote and queried it most. PGlite runs the real
+// schema.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +54,16 @@ beforeEach(async () => {
        ('ev_2', $2, 'user_ana', 'doco_notion', 'policy', 'policy_1', 'entity.create', '{}')`,
     [daysAgo(3), daysAgo(2)],
   );
+  await db.query(
+    `INSERT INTO changesets (doco_id, actor, source, metadata, recorded_at)
+       VALUES ('doco_notion', 'user_ana', 'api', '{"auth": "oauth", "token_name": "Claude Code"}', $1)`,
+    [daysAgo(3)],
+  );
+  await db.query(
+    `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata, at)
+       VALUES ('user_ana', 'workspace_1', 'doco_notion', 'ui', '{"surface": "website"}', $1)`,
+    [daysAgo(1)],
+  );
 });
 
 describe("loadDocoActivity", () => {
@@ -63,6 +74,11 @@ describe("loadDocoActivity", () => {
     expect(activity.items.map((it) => [it.id, it.summary, it.op])).toEqual([
       ["decision_1", "Keep the handbook in Notion", "entity.create"],
     ]);
-    expect(activity.topContributors.map((c) => [c.username, c.eventCount])).toEqual([["ana", 1]]);
+    expect(activity.topContributors.map((a) => [a.username, a.via, a.count])).toEqual([
+      ["ana", "Claude Code", 1],
+    ]);
+    expect(activity.topQueryers.map((a) => [a.username, a.via, a.count])).toEqual([
+      ["ana", null, 1],
+    ]);
   });
 });

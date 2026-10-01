@@ -46,6 +46,7 @@ import {
   capRoleForRequest,
   filterDocosToWorkspaceBoundary,
   getDocoLevelRoleForRequest,
+  isAgentRead,
   isSenorDocoRequest,
   listAccessibleDocoIdsInWorkspace,
   listVisibleDocoIdsForRequest,
@@ -186,6 +187,32 @@ describe("isSenorDocoRequest", () => {
     expect(isSenorDocoRequest(humanRequest())).toBe(false);
     expect(isSenorDocoRequest(senorDocoRequest("mcp"))).toBe(false);
     expect(isSenorDocoRequest(senorDocoRequest("website"))).toBe(false);
+  });
+});
+
+describe("isAgentRead", () => {
+  it("counts a GET with a token as an agent read", () => {
+    const request = new Request("https://doco.test/acme/search.json?q=x", {
+      headers: { authorization: "Bearer doco_at_x" },
+    });
+    expect(isAgentRead(request)).toBe(true);
+  });
+
+  it("counts Señor Doco's GETs as agent reads", () => {
+    expect(isAgentRead(senorDocoRequest())).toBe(true);
+    expect(isAgentRead(senorDocoRequest("slack"))).toBe(true);
+  });
+
+  it("doesn't count a person opening a page on the website", () => {
+    expect(isAgentRead(humanRequest())).toBe(false);
+  });
+
+  it("doesn't count writes", () => {
+    const request = new Request("https://doco.test/acme/api/decisions.json", {
+      method: "POST",
+      headers: { authorization: "Bearer doco_at_x" },
+    });
+    expect(isAgentRead(request)).toBe(false);
   });
 });
 

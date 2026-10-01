@@ -1,6 +1,6 @@
 // A Doco's activity, as the side column of its home shows it: the Activity
 // chart's count per day (nodes captured, and what the Doco copied from its
-// source), the latest recorded writes, and who made the most of them. A
+// source), the latest recorded writes, and who wrote and queried it most. A
 // reader Doco (codebase, Notion) shows the same column beside whatever is open.
 //
 // Activity reflects nodes only: policies are Doco-level metadata with their
@@ -10,19 +10,12 @@
 import type { ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { HEATMAP_WEEKS } from "~/components/activity-heatmap";
 import { NODE_TYPES_FOR_STATS_SQL, copiesByDay } from "./doco-stats.server";
+import { TOP_ACTORS_LIMIT, type TopActor, listTopActors } from "./top-actors.server";
 
 const FEED_LIMIT = 20;
-const TOP_CONTRIBUTORS_LIMIT = 10;
 
 export interface DocoFeedItem extends ActivityFeedLineItem {
   event_id: string;
-}
-
-export interface TopContributor {
-  userId: string;
-  username: string;
-  lastAt: string;
-  eventCount: number;
 }
 
 export interface DocoActivity {
@@ -30,7 +23,10 @@ export interface DocoActivity {
   byDay: Record<string, number>;
   /** The latest recorded writes, newest first. */
   items: DocoFeedItem[];
-  topContributors: TopContributor[];
+  /** Who wrote to the Doco most, per person and agent. */
+  topContributors: TopActor[];
+  /** Who queried the Doco most, per person and agent. */
+  topQueryers: TopActor[];
 }
 
 type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
@@ -128,35 +124,11 @@ export async function loadDocoActivity(c: QueryClient, docoId: string): Promise<
   const byDay = await copiesByDay(c, [docoId], sinceIso);
   for (const r of activityRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
 
-  const contributorRows = (
-    await c.query<{
-      user_id: string;
-      user_name: string;
-      last_at: Date | string;
-      event_count: string;
-    }>(
-      `SELECT ae.by_user AS user_id,
-              COALESCE(c.github_login, c.email, c.id) AS user_name,
-              MAX(ae.at) AS last_at,
-              COUNT(*)::text AS event_count
-         FROM audit_events ae
-         JOIN users c ON c.id = ae.by_user
-        WHERE ae.doco_id = $1
-          AND ae.entity_type NOT IN ('policy')
-        GROUP BY ae.by_user, c.github_login, c.email, c.id
-        ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
-        LIMIT $2`,
-      [docoId, TOP_CONTRIBUTORS_LIMIT],
-    )
-  ).rows;
-  const topContributors: TopContributor[] = contributorRows.map((r) => ({
-    userId: r.user_id,
-    username: r.user_name,
-    lastAt: iso(r.last_at),
-    eventCount: Number(r.event_count),
-  }));
+  const scope = { docoIds: [docoId] };
+  const topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
+  const topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
 
-  return { byDay, items, topContributors };
+  return { byDay, items, topContributors, topQueryers };
 }
 
 function stringField(
