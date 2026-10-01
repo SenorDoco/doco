@@ -67,6 +67,10 @@ describe("SiteHeader fits its row", () => {
     const version = classOf(markup, /<span class="([^"]*)">Alpha /);
     expect(version).toMatch(/(?:^|\s)truncate(?:\s|$)/);
 
+    // The strip's tagline is the product's longer line; the home page carries
+    // the shorter headline.
+    expect(markup).toContain(">Shared knowledge and context for AI and teams</span>");
+
     // The tagline wraps onto at most two balanced lines (both fit the 56px row
     // under the version line) rather than staying on one line that can't fit.
     const tagline = classOf(markup, new RegExp(`<span class="([^"]*)">${DOCO_TAGLINE}<`));

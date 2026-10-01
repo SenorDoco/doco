@@ -1,16 +1,25 @@
 import { getPublicBaseUrl } from "@doco/shared";
+import { redirect } from "react-router";
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { DocoMark } from "~/components/doco-mark";
 import { agentInstructions } from "~/lib/agent-instructions";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import { TAGLINE } from "~/lib/tagline";
 
 /**
- * Host home — the same page whether or not the visitor is signed in: what
- * Doco is, and the instructions to give an agent, with a Copy button. Agents
- * read this page too; it is their entry point, and the copy they keep in
- * AGENTS.md is checked against it.
+ * Host home for signed-out visitors: what Doco is, and the instructions to
+ * give an agent, with a Copy button. Agents read this page too; it is their
+ * entry point, and the copy they keep in AGENTS.md is checked against it.
+ * Signed in, a person's home is their workspaces, so "/" sends them there.
  */
-export function loader({ request }: { request: Request }) {
+export async function loader({ request }: { request: Request }) {
+  let signedIn = false;
+  try {
+    signedIn = Boolean(await getCurrentPrincipal(request));
+  } catch (error) {
+    console.warn("Home session lookup failed; showing the signed-out home.", error);
+  }
+  if (signedIn) throw redirect("/workspaces");
   return { instructions: agentInstructions(getPublicBaseUrl(request)) };
 }
 
