@@ -21,6 +21,9 @@ export interface TopActorScope {
   workspaceId?: string;
 }
 
+/** How many rows each list shows. */
+export const TOP_ACTORS_LIMIT = 10;
+
 type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
 
 const LOGS = {
