@@ -1,36 +1,37 @@
-// A Doco's activity, as the side column of its home shows it: the Activity
-// chart's count per day (nodes captured, and what the Doco copied from its
-// source), the latest recorded writes, and who made the most of them. A
-// reader Doco (codebase, Notion) shows the same column beside whatever is open.
+// A Doco's activity, as the side column of its home shows it: its writes and
+// queries per day (the Activity calendars), the latest recorded writes, and
+// who wrote and queried it most. A reader Doco (codebase, Notion) shows the
+// same column beside whatever is open.
 //
-// Activity reflects nodes only: policies are Doco-level metadata with their
-// own surface, and counting their bulk-imported writes here makes a fresh
-// Doco look like work has been captured when none has.
+// Activity leaves policies out: they are Doco-level settings with their own
+// surface, and counting their bulk-imported writes here makes a fresh Doco
+// look like work has been captured when none has.
 
 import type { ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { HEATMAP_WEEKS } from "~/components/activity-heatmap";
-import { NODE_TYPES_FOR_STATS_SQL, copiesByDay } from "./doco-stats.server";
+import {
+  type DailyActivity,
+  TOP_ACTORS_LIMIT,
+  type TopActor,
+  countByDay,
+  listTopActors,
+} from "./activity-log.server";
 
 const FEED_LIMIT = 20;
-const TOP_CONTRIBUTORS_LIMIT = 10;
 
 export interface DocoFeedItem extends ActivityFeedLineItem {
   event_id: string;
 }
 
-export interface TopContributor {
-  userId: string;
-  username: string;
-  lastAt: string;
-  eventCount: number;
-}
-
 export interface DocoActivity {
-  /** How much happened each day of the chart's year, keyed by YYYY-MM-DD. */
-  byDay: Record<string, number>;
+  /** Writes and queries each day of the calendars' year. */
+  byDay: DailyActivity;
   /** The latest recorded writes, newest first. */
   items: DocoFeedItem[];
-  topContributors: TopContributor[];
+  /** Who wrote to the Doco most, per person and agent. */
+  topContributors: TopActor[];
+  /** Who queried the Doco most, per person and agent. */
+  topQueryers: TopActor[];
 }
 
 type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
@@ -109,54 +110,12 @@ export async function loadDocoActivity(c: QueryClient, docoId: string): Promise<
 
   const since = new Date();
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
-  const sinceIso = since.toISOString();
-  const activityRows = (
-    await c.query<{ day: string; n: string }>(
-      // Post-collapse: one scan of `nodes` over the 10 node types
-      // (9 prose types + principals; no policies).
-      `SELECT day, COUNT(*)::text AS n FROM (
-         SELECT to_char(created_at, 'YYYY-MM-DD') AS day
-           FROM nodes
-          WHERE doco_id = $1
-            AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})
-       ) t WHERE day >= $2
-       GROUP BY day`,
-      [docoId, sinceIso.slice(0, 10)],
-    )
-  ).rows;
-  // What the Doco copied from its source is activity too.
-  const byDay = await copiesByDay(c, [docoId], sinceIso);
-  for (const r of activityRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
+  const scope = { docoIds: [docoId] };
+  const byDay = await countByDay(c, scope, since.toISOString());
+  const topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
+  const topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
 
-  const contributorRows = (
-    await c.query<{
-      user_id: string;
-      user_name: string;
-      last_at: Date | string;
-      event_count: string;
-    }>(
-      `SELECT ae.by_user AS user_id,
-              COALESCE(c.github_login, c.email, c.id) AS user_name,
-              MAX(ae.at) AS last_at,
-              COUNT(*)::text AS event_count
-         FROM audit_events ae
-         JOIN users c ON c.id = ae.by_user
-        WHERE ae.doco_id = $1
-          AND ae.entity_type NOT IN ('policy')
-        GROUP BY ae.by_user, c.github_login, c.email, c.id
-        ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
-        LIMIT $2`,
-      [docoId, TOP_CONTRIBUTORS_LIMIT],
-    )
-  ).rows;
-  const topContributors: TopContributor[] = contributorRows.map((r) => ({
-    userId: r.user_id,
-    username: r.user_name,
-    lastAt: iso(r.last_at),
-    eventCount: Number(r.event_count),
-  }));
-
-  return { byDay, items, topContributors };
+  return { byDay, items, topContributors, topQueryers };
 }
 
 function stringField(

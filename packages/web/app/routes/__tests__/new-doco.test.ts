@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  addWorkspaceByHandle: vi.fn(),
+  createWorkspace: vi.fn(),
   createDocoInWorkspace: vi.fn(),
   ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),
@@ -18,7 +18,6 @@ vi.mock("~/lib/workspace-helpers.server", () => ({
 }));
 
 vi.mock("~/lib/redeem.server", () => ({
-  addWorkspaceByHandle: mocks.addWorkspaceByHandle,
   createDocoInWorkspace: mocks.createDocoInWorkspace,
   ensurePersonalWorkspace: mocks.ensurePersonalWorkspace,
   findAvailableDocoHandle: mocks.findAvailableDocoHandle,
@@ -26,6 +25,10 @@ vi.mock("~/lib/redeem.server", () => ({
 
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: mocks.getCurrentPrincipal,
+}));
+
+vi.mock("~/lib/workspace-create.server", () => ({
+  createWorkspace: mocks.createWorkspace,
 }));
 
 import { action } from "../new-doco";

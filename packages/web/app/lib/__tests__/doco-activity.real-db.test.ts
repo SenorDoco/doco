@@ -1,6 +1,6 @@
-// A Doco's activity, as its home's side column shows it: how much happened
-// each day (nodes captured and what it copied from its source), the latest
-// recorded writes, and who made them. PGlite runs the real schema.
+// A Doco's activity, as its home's side column shows it: its writes (with what
+// it copied from its source) and queries each day, the latest recorded writes,
+// and who wrote and queried it most. PGlite runs the real schema.
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
@@ -46,16 +46,35 @@ beforeEach(async () => {
        ('ev_2', $2, 'user_ana', 'doco_notion', 'policy', 'policy_1', 'entity.create', '{}')`,
     [daysAgo(3), daysAgo(2)],
   );
+  await db.query(
+    `INSERT INTO changesets (doco_id, actor, source, metadata, recorded_at)
+       VALUES ('doco_notion', 'user_ana', 'api', '{"auth": "oauth", "token_name": "Claude Code"}', $1)`,
+    [daysAgo(3)],
+  );
+  await db.query(
+    `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata, at)
+       VALUES ('user_ana', 'workspace_1', 'doco_notion', 'ui', '{"surface": "website"}', $1)`,
+    [daysAgo(1)],
+  );
 });
 
 describe("loadDocoActivity", () => {
-  it("counts each day's copies and captures, and lists the latest writes and who made them", async () => {
+  it("counts each day's writes and queries, and lists the latest writes and who made them", async () => {
     const activity = await loadDocoActivity(db as never, "doco_notion");
-    expect(activity.byDay).toEqual({ [day(daysAgo(3))]: 3, [day(daysAgo(10))]: 1 });
+    // Writes: the recorded change, plus the pages copied from Notion.
+    expect(activity.byDay).toEqual({
+      writes: { [day(daysAgo(3))]: 3, [day(daysAgo(10))]: 1 },
+      queries: { [day(daysAgo(1))]: 1 },
+    });
     // Policy writes are the Doco's settings, not its activity.
     expect(activity.items.map((it) => [it.id, it.summary, it.op])).toEqual([
       ["decision_1", "Keep the handbook in Notion", "entity.create"],
     ]);
-    expect(activity.topContributors.map((c) => [c.username, c.eventCount])).toEqual([["ana", 1]]);
+    expect(activity.topContributors.map((a) => [a.username, a.via, a.count])).toEqual([
+      ["ana", "Claude Code", 1],
+    ]);
+    expect(activity.topQueryers.map((a) => [a.username, a.via, a.count])).toEqual([
+      ["ana", null, 1],
+    ]);
   });
 });

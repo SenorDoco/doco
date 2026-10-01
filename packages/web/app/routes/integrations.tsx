@@ -25,18 +25,16 @@ import {
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import {
   type AccountIntegrationsRollup,
   type DocoPicker,
   loadAccountIntegrationsRollup,
   loadDocoPicker,
 } from "~/lib/integrations-summary.server";
-import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import { listSlackInstallations, removeSlackInstallation } from "~/lib/slack.server";
 
 interface IntegrationsPageData {
-  me: CurrentPrincipal;
   notice: string | null;
   slackConfirmation: SlackConfirmation | null;
   rollup: AccountIntegrationsRollup;
@@ -61,7 +59,6 @@ export async function loader({ request }: { request: Request }): Promise<Integra
   });
 
   return {
-    me,
     slackConfirmation: readSlackConfirmation(url),
     notice: readNotice(url),
     rollup,
@@ -118,7 +115,7 @@ export function meta() {
 }
 
 export default function IntegrationsPage({ loaderData }: { loaderData: IntegrationsPageData }) {
-  const { me, notice, slackConfirmation, rollup, docoPicker } = loaderData;
+  const { notice, slackConfirmation, rollup, docoPicker } = loaderData;
 
   // Slack teams bound to no workspace have nowhere to nest in the per-workspace
   // rollup, so they get a small "not linked" list of their own (Remove only).
@@ -126,186 +123,178 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
 
   if (slackConfirmation) {
     return (
-      <div className="flex min-h-screen flex-col bg-background text-foreground">
-        <SiteHeader me={me} />
-        <SingleColumnPageMain className="space-y-8 py-8">
-          <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
-          <section className="max-w-2xl space-y-5">
-            <CheckCircle2 className="h-8 w-8 text-primary" aria-hidden="true" />
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold">Señor Doco is ready in Slack</h1>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                You&apos;re done here. Default permissions are saved for{" "}
-                {slackConfirmation.workspaceName}. Open Slack and say hello to Señor Doco from
-                anywhere.
-              </p>
-            </div>
-            <a
-              href="/integrations"
-              className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              Back to integrations
-            </a>
-          </section>
-        </SingleColumnPageMain>
-      </div>
+      <SingleColumnPageMain className="space-y-8 py-8">
+        <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
+        <section className="max-w-2xl space-y-5">
+          <CheckCircle2 className="h-8 w-8 text-primary" aria-hidden="true" />
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold">Señor Doco is ready in Slack</h1>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              You&apos;re done here. Default permissions are saved for{" "}
+              {slackConfirmation.workspaceName}. Open Slack and say hello to Señor Doco from
+              anywhere.
+            </p>
+          </div>
+          <a
+            href="/integrations"
+            className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to integrations
+          </a>
+        </section>
+      </SingleColumnPageMain>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="space-y-6 py-6">
-        <PageHeader
-          breadcrumb={hostBreadcrumb({ pageLabel: "App integrations" })}
-          title="App integrations"
-        >
-          <p className="text-sm text-muted-foreground">
-            A rollup of every workspace you can reach and the connections under it — each
-            doco&apos;s GitHub repos and any Slack team. Open a workspace to manage them.
-          </p>
-        </PageHeader>
+    <SingleColumnPageMain className="space-y-6 py-6">
+      <PageHeader
+        breadcrumb={hostBreadcrumb({ pageLabel: "App integrations" })}
+        title="App integrations"
+      >
+        <p className="text-sm text-muted-foreground">
+          A rollup of every workspace you can reach and the connections under it — each doco&apos;s
+          GitHub repos and any Slack team. Open a workspace to manage them.
+        </p>
+      </PageHeader>
 
-        {notice ? (
-          <div className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
-            {notice}
-          </div>
-        ) : null}
+      {notice ? (
+        <div className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
+          {notice}
+        </div>
+      ) : null}
 
-        <DocoPickerCard picker={docoPicker} />
+      <DocoPickerCard picker={docoPicker} />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">
-              Connected on your account
-            </h2>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">Connected on your account</h2>
 
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
+              <CardDescription>
+                Each workspace rolls up its docos&apos; GitHub repos and any Slack team bound to it;
+                open one to manage.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {rollup.workspaces.length > 0 ? (
+                <ConnectionList>
+                  {rollup.workspaces.map((o) => {
+                    const docosWithIntegrations = rollup.docos.filter(
+                      (d) => d.workspaceHandle === o.handle,
+                    );
+                    const slackTeams = rollup.slack.filter(
+                      (team) => team.docoWorkspaceId === o.workspaceId,
+                    );
+                    const detailParts: string[] = [];
+                    if (docosWithIntegrations.length > 0) {
+                      detailParts.push(
+                        `${docosWithIntegrations.length} doco${
+                          docosWithIntegrations.length === 1 ? "" : "s"
+                        } with connections`,
+                      );
+                    }
+                    if (slackTeams.length > 0) {
+                      detailParts.push(
+                        `${slackTeams.length} Slack team${slackTeams.length === 1 ? "" : "s"}`,
+                      );
+                    }
+                    return (
+                      <ConnectionRow
+                        key={o.workspaceId}
+                        title={o.handle}
+                        titleHref={`/workspaces/${o.handle}/integrations`}
+                        detail={
+                          detailParts.length > 0 ? detailParts.join(" · ") : "No connections yet"
+                        }
+                        action={{
+                          label: "Manage",
+                          href: `/workspaces/${o.handle}/integrations`,
+                          icon: ArrowRight,
+                        }}
+                      >
+                        {docosWithIntegrations.length > 0 || slackTeams.length > 0 ? (
+                          <ul className="mt-2 space-y-1 pl-3 text-xs">
+                            {docosWithIntegrations.map((d) => (
+                              <li key={d.docoId} className="flex items-center gap-2">
+                                <span className="text-muted-foreground">↳</span>
+                                <Link
+                                  to={`/${d.handle}/integrations`}
+                                  className="font-mono hover:text-primary"
+                                >
+                                  {d.handle}
+                                </Link>
+                                <span className="text-muted-foreground">
+                                  {d.githubRepoCount} GitHub repo
+                                  {d.githubRepoCount === 1 ? "" : "s"}
+                                </span>
+                              </li>
+                            ))}
+                            {slackTeams.map((team) => (
+                              <li key={team.workspaceId} className="flex items-center gap-2">
+                                <span className="text-muted-foreground">↳</span>
+                                <Link
+                                  to={`/workspaces/${o.handle}/integrations`}
+                                  className="font-mono hover:text-primary"
+                                >
+                                  {team.workspaceName}
+                                </Link>
+                                <span className="text-muted-foreground">Slack</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </ConnectionRow>
+                    );
+                  })}
+                </ConnectionList>
+              ) : (
+                <p className="px-4 py-3 text-sm text-muted-foreground">
+                  You aren&apos;t a member of any workspaces yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {unlinkedSlack.length > 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">App integrations across your workspaces</CardTitle>
+                <CardTitle className="text-base">Slack teams not linked to a workspace</CardTitle>
                 <CardDescription>
-                  Each workspace rolls up its docos&apos; GitHub repos and any Slack team bound to
-                  it; open one to manage.
+                  These installs aren&apos;t bound to any workspace, so Señor Doco can&apos;t reach
+                  a doco from them. Remove them here, or reconnect from Slack to bind one.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                {rollup.workspaces.length > 0 ? (
-                  <ConnectionList>
-                    {rollup.workspaces.map((o) => {
-                      const docosWithIntegrations = rollup.docos.filter(
-                        (d) => d.workspaceHandle === o.handle,
-                      );
-                      const slackTeams = rollup.slack.filter(
-                        (team) => team.docoWorkspaceId === o.workspaceId,
-                      );
-                      const detailParts: string[] = [];
-                      if (docosWithIntegrations.length > 0) {
-                        detailParts.push(
-                          `${docosWithIntegrations.length} doco${
-                            docosWithIntegrations.length === 1 ? "" : "s"
-                          } with connections`,
-                        );
+                <ConnectionList>
+                  {unlinkedSlack.map((team) => (
+                    <ConnectionRow
+                      key={team.workspaceId}
+                      title={team.workspaceName}
+                      detail="Not linked to any workspace"
+                      secondaryAction={
+                        <RemoveSlackButton
+                          teamId={team.workspaceId}
+                          teamName={team.workspaceName}
+                        />
                       }
-                      if (slackTeams.length > 0) {
-                        detailParts.push(
-                          `${slackTeams.length} Slack team${slackTeams.length === 1 ? "" : "s"}`,
-                        );
-                      }
-                      return (
-                        <ConnectionRow
-                          key={o.workspaceId}
-                          title={o.handle}
-                          titleHref={`/workspaces/${o.handle}/integrations`}
-                          detail={
-                            detailParts.length > 0 ? detailParts.join(" · ") : "No connections yet"
-                          }
-                          action={{
-                            label: "Manage",
-                            href: `/workspaces/${o.handle}/integrations`,
-                            icon: ArrowRight,
-                          }}
-                        >
-                          {docosWithIntegrations.length > 0 || slackTeams.length > 0 ? (
-                            <ul className="mt-2 space-y-1 pl-3 text-xs">
-                              {docosWithIntegrations.map((d) => (
-                                <li key={d.docoId} className="flex items-center gap-2">
-                                  <span className="text-muted-foreground">↳</span>
-                                  <Link
-                                    to={`/${d.handle}/integrations`}
-                                    className="font-mono hover:text-primary"
-                                  >
-                                    {d.handle}
-                                  </Link>
-                                  <span className="text-muted-foreground">
-                                    {d.githubRepoCount} GitHub repo
-                                    {d.githubRepoCount === 1 ? "" : "s"}
-                                  </span>
-                                </li>
-                              ))}
-                              {slackTeams.map((team) => (
-                                <li key={team.workspaceId} className="flex items-center gap-2">
-                                  <span className="text-muted-foreground">↳</span>
-                                  <Link
-                                    to={`/workspaces/${o.handle}/integrations`}
-                                    className="font-mono hover:text-primary"
-                                  >
-                                    {team.workspaceName}
-                                  </Link>
-                                  <span className="text-muted-foreground">Slack</span>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </ConnectionRow>
-                      );
-                    })}
-                  </ConnectionList>
-                ) : (
-                  <p className="px-4 py-3 text-sm text-muted-foreground">
-                    You aren&apos;t a member of any workspaces yet.
-                  </p>
-                )}
+                    />
+                  ))}
+                </ConnectionList>
               </CardContent>
             </Card>
+          ) : null}
+        </section>
 
-            {unlinkedSlack.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Slack teams not linked to a workspace</CardTitle>
-                  <CardDescription>
-                    These installs aren&apos;t bound to any workspace, so Señor Doco can&apos;t
-                    reach a doco from them. Remove them here, or reconnect from Slack to bind one.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <ConnectionList>
-                    {unlinkedSlack.map((team) => (
-                      <ConnectionRow
-                        key={team.workspaceId}
-                        title={team.workspaceName}
-                        detail="Not linked to any workspace"
-                        secondaryAction={
-                          <RemoveSlackButton
-                            teamId={team.workspaceId}
-                            teamName={team.workspaceName}
-                          />
-                        }
-                      />
-                    ))}
-                  </ConnectionList>
-                </CardContent>
-              </Card>
-            ) : null}
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
-            <AvailableIntegrations pageScope="account" />
-          </section>
-        </div>
-      </SingleColumnPageMain>
-    </div>
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">Available integrations</h2>
+          <AvailableIntegrations pageScope="account" />
+        </section>
+      </div>
+    </SingleColumnPageMain>
   );
 }
 

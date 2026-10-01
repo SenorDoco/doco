@@ -8,9 +8,11 @@
 // "Accept" only after they are signed in:
 //
 //   - If signed in: the invite is redeemed, the human Principal is
-//     joined to the doco or Workspace. The success card shows the same
-//     Get started steps a workspace creator sees (connect your agent,
-//     connect sources) and a "Continue" button to the target.
+//     joined to the doco or Workspace. Joining a workspace starts its one
+//     onboarding step for them (ask your agent to start using Doco) and goes
+//     straight to the workspace, which keeps them on that step until it's
+//     done; any other invite shows a success card with a "Continue" button
+//     to the target.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
 //     sign in and come back here to accept; agents get the plain-text
 //     instructions for redeeming the same invite.
@@ -26,12 +28,9 @@ import { type EntityId, WRITE_ALL } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { DocoMark } from "~/components/doco-mark";
-import { OnboardingCard } from "~/components/onboarding-card";
-import { VersionPill } from "~/components/version-pill";
 import { rootDir } from "~/lib/db.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
-import { type OnboardingProgress, loadOnboardingProgress } from "~/lib/onboarding.server";
+import { startOnboarding } from "~/lib/onboarding.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 type LoaderError =
@@ -134,7 +133,6 @@ type ActionResult =
       ok: true;
       continue_to: string;
       target_label: string;
-      onboarding: OnboardingProgress;
     };
 
 export async function action({
@@ -181,6 +179,13 @@ export async function action({
         role: g.role,
         write_types: writeTypesForRedeemedGrant(g),
       });
+      await withClient((c) =>
+        startOnboarding(c, {
+          workspaceId: g.target_id,
+          userId: principal.id,
+          joinedAs: "invitee",
+        }),
+      );
     } else if (g.level === "doco") {
       await upsertDocoUser({
         doco_id: g.target_id,
@@ -191,12 +196,11 @@ export async function action({
     }
   }
 
-  return {
-    ok: true,
-    continue_to: continueTo,
-    target_label: targetLabel,
-    onboarding: await withClient((c) => loadOnboardingProgress(c, principal.id)),
-  };
+  // Joining one workspace: straight to it, where its step waits.
+  if (consumed.grants.length === 1 && consumed.grants[0].level === "workspace") {
+    return redirect(continueTo);
+  }
+  return { ok: true, continue_to: continueTo, target_label: targetLabel };
 }
 
 export function meta() {
@@ -212,7 +216,7 @@ export default function InviteLanding({
 }) {
   if (actionData && "ok" in actionData) {
     return (
-      <Shell>
+      <InviteMain>
         <Card>
           <CardHeader>
             <CardTitle>You're in</CardTitle>
@@ -229,26 +233,25 @@ export default function InviteLanding({
             </Link>
           </CardContent>
         </Card>
-        <OnboardingCard progress={actionData.onboarding} />
-      </Shell>
+      </InviteMain>
     );
   }
 
   if ("error" in loaderData) {
     return (
-      <Shell>
+      <InviteMain>
         <Card>
           <CardHeader>
             <CardTitle>{errorTitle(loaderData.error)}</CardTitle>
             <CardDescription>{errorDescription(loaderData.error)}</CardDescription>
           </CardHeader>
         </Card>
-      </Shell>
+      </InviteMain>
     );
   }
 
   return (
-    <Shell>
+    <InviteMain>
       <Card>
         <CardHeader>
           <CardTitle>
@@ -316,7 +319,7 @@ export default function InviteLanding({
           )}
         </CardContent>
       </Card>
-    </Shell>
+    </InviteMain>
   );
 }
 
@@ -341,21 +344,11 @@ function errorDescription(err: LoaderError["error"]): string {
   return "The doco it pointed at has been deleted.";
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function InviteMain({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <header>
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
-            <DocoMark height={28} />
-          </Link>
-          <VersionPill />
-        </div>
-      </header>
-      <main className="mx-auto max-w-xl px-6 py-12 w-full space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
-        {children}
-      </main>
-    </div>
+    <main className="mx-auto max-w-xl px-6 py-12 w-full space-y-4">
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
+      {children}
+    </main>
   );
 }

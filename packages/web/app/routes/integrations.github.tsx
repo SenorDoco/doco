@@ -27,15 +27,13 @@ import {
   buildInstallationPickerChoices,
 } from "~/components/github-repo-picker";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import {
   buildInstallUrl,
-  connectRepositories,
+  connectPicked,
   getDocoConnectionsContext,
   listGitHubInstallationChoicesForDocos,
   pickConnections,
-  subscribeInstallation,
 } from "~/lib/github-connection.server";
 import { GITHUB_IMPORTS, type GitHubImport } from "~/lib/github-imports";
 import { type ImportTarget, ensureImportDocos, listImportDocos } from "~/lib/github-setup.server";
@@ -90,7 +88,6 @@ export async function loader({ request }: { request: Request }) {
   if (!workspace || bring.length === 0 || targets.length < bring.length) {
     return {
       step: "choose" as const,
-      me,
       workspaceHandle: workspace?.handle ?? (workspaces.length === 1 ? workspaces[0].handle : null),
       // Everything starts picked, so one setup brings it all into its Docos.
       bring: (bring.length > 0 ? bring : GITHUB_IMPORTS).map((i) => i.id),
@@ -107,7 +104,6 @@ export async function loader({ request }: { request: Request }) {
   );
   return {
     step: "repos" as const,
-    me,
     workspaceHandle: workspace.handle,
     bring: bring.map((i) => i.id),
     targets,
@@ -173,20 +169,9 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     installations: form.getAll("installation").map(String),
   });
   if ("error" in picked) return picked;
-  const connectedAt = new Date().toISOString();
   const origin = new URL(request.url).origin;
   for (const doco of docos) {
-    for (const choice of picked.installations) {
-      await subscribeInstallation(doco.id, {
-        installation_id: choice.installation_id,
-        account: choice.account,
-        connected_at: connectedAt,
-      });
-    }
-    if (picked.connections.length > 0) {
-      await connectRepositories(doco.id, picked.connections);
-      waitUntil(kickBackfillRun(origin, doco.id));
-    }
+    if (await connectPicked(doco.id, picked)) waitUntil(kickBackfillRun(origin, doco.id));
   }
   throw redirect(`${next}&github=importing&count=${picked.connections.length}`);
 }
@@ -204,7 +189,6 @@ export default function GitHubSetup() {
   if (data.step === "repos" && outcome === "importing") {
     return (
       <GitHubImportStarted
-        me={data.me}
         count={Number(searchParams.get("count") ?? 0)}
         docos={data.targets.map((t) => ({ handle: t.doco.handle, items: t.import.items }))}
       />
@@ -212,40 +196,37 @@ export default function GitHubSetup() {
   }
 
   return (
-    <div>
-      <SiteHeader me={data.me} />
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
-        <PageHeader
-          breadcrumb={hostBreadcrumb({
-            section: { label: "App integrations", to: "/integrations" },
-            pageLabel: "GitHub",
-          })}
-          title="Set up GitHub"
-        >
-          <p className="text-sm text-muted-foreground">
-            Bring what you need from GitHub into a workspace. Each thing you bring comes into its
-            own doco.
-          </p>
-        </PageHeader>
-        <GitHubSetupNotice outcome={outcome} />
-        <ActionNotice data={actionData ?? null} />
-        {data.step === "choose" ? (
-          <ChooseStep
-            workspaces={data.workspaces}
-            workspaceHandle={data.workspaceHandle}
-            bring={data.bring}
-          />
-        ) : (
-          <ReposStep
-            workspaceHandle={data.workspaceHandle}
-            bring={data.bring}
-            targets={data.targets}
-            choices={data.choices}
-            installUrl={data.installUrl}
-          />
-        )}
-      </main>
-    </div>
+    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+      <PageHeader
+        breadcrumb={hostBreadcrumb({
+          section: { label: "App integrations", to: "/integrations" },
+          pageLabel: "GitHub",
+        })}
+        title="Set up GitHub"
+      >
+        <p className="text-sm text-muted-foreground">
+          Bring what you need from GitHub into a workspace. Each thing you bring comes into its own
+          doco.
+        </p>
+      </PageHeader>
+      <GitHubSetupNotice outcome={outcome} />
+      <ActionNotice data={actionData ?? null} />
+      {data.step === "choose" ? (
+        <ChooseStep
+          workspaces={data.workspaces}
+          workspaceHandle={data.workspaceHandle}
+          bring={data.bring}
+        />
+      ) : (
+        <ReposStep
+          workspaceHandle={data.workspaceHandle}
+          bring={data.bring}
+          targets={data.targets}
+          choices={data.choices}
+          installUrl={data.installUrl}
+        />
+      )}
+    </main>
   );
 }
 

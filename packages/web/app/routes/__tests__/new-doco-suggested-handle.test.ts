@@ -4,10 +4,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoutesStub } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import NewDoco, { suggestedDocoHandle } from "../new-doco";
-
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 describe("suggestedDocoHandle", () => {
   it("names a Doco after its workspace and template", () => {

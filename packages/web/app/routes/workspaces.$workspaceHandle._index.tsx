@@ -1,7 +1,9 @@
-// /workspaces/:workspaceHandle — per-Workspace home. On top, the same summary
-// card the Workspaces page shows for it (Doco icons, New Doco or source /
-// Invite person / Invite agent, latest activity), then the detailed list of
-// its Docos. Below those, a wide two-column layout
+// /workspaces/:workspaceHandle — per-Workspace home. On top, until they're
+// done, the steps that get the workspace going for the signed-in person
+// (components/onboarding-stepper.tsx), on the first one not done. Then the
+// same summary card the Workspaces page shows for it (Doco icons, silence
+// alerts, New Doco or source / Invite person / Invite agent, latest activity),
+// then the detailed list of its Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
 // collapses to a hamburger — it renders as a single column so the constitution
 // keeps a readable measure instead of being crushed beside the 420px sidebar.
@@ -12,7 +14,8 @@
 // Right column (compact sidebar):
 //   - Search box (submits to /workspaces/:workspaceHandle/search)
 //   - Activity heatmap (52w)
-//   - Top contributors across the workspace's Docos
+//   - Top contributors and Top queryers across the workspace's Docos, one row
+//     per person and agent (or the website)
 
 import { getWorkspaceRole, updateWorkspaceConstitution, withClient } from "@doco/db";
 import { entityUrl } from "@doco/shared";
@@ -23,8 +26,9 @@ import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { ActivityCard } from "~/components/doco-activity";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
+import { OnboardingStepper } from "~/components/onboarding-stepper";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
+import { TopActorsList } from "~/components/top-actors-list";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import {
   activityRowLifecycle,
@@ -35,16 +39,24 @@ import {
   shouldStrikeActivityTarget,
   verbFromAuditOp,
 } from "~/lib/activity-feed";
+import {
+  type DailyActivity,
+  TOP_ACTORS_LIMIT,
+  type TopActor,
+  countByDay,
+  listTopActors,
+} from "~/lib/activity-log.server";
 import { cn } from "~/lib/cn";
-import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
+import { EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
 import { lifecycleColor } from "~/lib/node-colors";
+import { loadOnboardingView } from "~/lib/onboarding-view.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
 const FEED_LIMIT = 20;
-const TOP_CONTRIBUTORS_LIMIT = 10;
 
 interface WorkspaceDoco {
   docoId: string;
@@ -53,13 +65,6 @@ interface WorkspaceDoco {
   template: string | null;
   items: number;
   lastUpdatedAt: string | null;
-}
-
-interface TopContributor {
-  userId: string;
-  username: string;
-  lastAt: string;
-  eventCount: number;
 }
 
 interface FeedItem {
@@ -90,6 +95,7 @@ export async function loader({
     docos: docoRows,
   } = await loadWorkspaceForRead(params.workspaceHandle, me?.id ?? null);
   const canInviteUsers = myRole === "owner";
+  const onboarding = me ? await loadOnboardingView({ request, workspace, userId: me.id }) : null;
 
   return withClient(async (c) => {
     const docoIds = docoRows.map((r) => r.id);
@@ -116,56 +122,20 @@ export async function loader({
         return a.handle.localeCompare(b.handle);
       });
 
-    let byDay: Record<string, number> = {};
-    let topContributors: TopContributor[] = [];
+    let byDay: DailyActivity = { writes: {}, queries: {} };
+    let topContributors: TopActor[] = [];
+    let topQueryers: TopActor[] = [];
     let items: FeedItem[] = [];
 
     if (docoIds.length > 0) {
+      // A search across the workspace spans its private Docos too, so only
+      // members see who ran one, and only members count it.
+      const scope = { docoIds, workspaceId: myRole ? workspace.id : undefined };
       const since = new Date();
       since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
-      const sinceIso = since.toISOString();
-      const heatRows = (
-        await c.query<{ day: string; n: string }>(
-          `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
-             FROM audit_events
-            WHERE doco_id = ANY($1::text[]) AND at >= $2
-            GROUP BY day`,
-          [docoIds, sinceIso],
-        )
-      ).rows;
-      // What the Docos copied from their sources is activity too.
-      byDay = await copiesByDay(c, docoIds, sinceIso);
-      for (const r of heatRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
-
-      const contributorRows = (
-        await c.query<{
-          user_id: string;
-          user_name: string;
-          last_at: Date | string;
-          event_count: string;
-        }>(
-          `SELECT ae.by_user AS user_id,
-                  COALESCE(c.github_login, c.email, c.id) AS user_name,
-                  MAX(ae.at) AS last_at,
-                  COUNT(*)::text AS event_count
-             FROM audit_events ae
-             JOIN users c ON c.id = ae.by_user
-            WHERE ae.doco_id = ANY($1::text[])
-            GROUP BY ae.by_user, c.github_login, c.email, c.id
-            ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
-            LIMIT $2`,
-          [docoIds, TOP_CONTRIBUTORS_LIMIT],
-        )
-      ).rows;
-      topContributors = contributorRows.map((r) => ({
-        userId: String(r.user_id),
-        username: String(r.user_name),
-        lastAt:
-          r.last_at instanceof Date
-            ? r.last_at.toISOString()
-            : new Date(String(r.last_at)).toISOString(),
-        eventCount: Number(r.event_count),
-      }));
+      byDay = await countByDay(c, scope, since.toISOString());
+      topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
+      topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
 
       const feedRows = (
         await c.query<{
@@ -239,17 +209,19 @@ export async function loader({
       role: myRole,
       docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
       lastActivityAt: items[0]?.at ?? null,
+      alerts: await loadSilenceAlerts(c, docoIds),
     };
 
     return {
       workspace,
       summary,
-      me,
+      onboarding,
       canInviteUsers,
       canEditConstitution: canInviteUsers,
       docos,
       byDay,
       topContributors,
+      topQueryers,
       items,
     };
   });
@@ -295,12 +267,13 @@ export default function WorkspaceHome({
   const {
     workspace,
     summary,
-    me,
+    onboarding,
     canInviteUsers,
     canEditConstitution,
     docos,
     byDay,
     topContributors,
+    topQueryers,
     items,
   } = loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
@@ -315,137 +288,117 @@ export default function WorkspaceHome({
   }));
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
-        <PageHeader
-          breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle })}
-          title={workspace.handle}
-          actions={
-            canInviteUsers ? (
-              <Link
-                to={`/workspaces/${workspace.handle}/settings`}
-                className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
-              >
-                Settings
-              </Link>
-            ) : null
-          }
-        >
-          <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
-        </PageHeader>
-
-        <WorkspaceSummaryCard workspace={summary} showName={false} />
-
-        <DocoListCard
-          title="Docos in this workspace"
-          docos={docoItems}
-          showOwner={false}
-          empty={
-            <p className="text-xs italic text-muted-foreground">
-              This workspace doesn't own any Docos yet.
-            </p>
-          }
-        />
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-          {/* Left column — the constitution gets the full available width, with
-              the latest activity feed beneath it. Below `lg` this column
-              dissolves into the grid (`contents`) so the feed can be ordered
-              past the sidebar to the bottom of the stacked page; at `lg` it
-              reflows as a real column and the feed returns to its spot beneath
-              the constitution. */}
-          <section className="contents lg:block lg:min-w-0 lg:space-y-4">
-            <WorkspaceConstitutionCard
-              workspaceHandle={workspace.handle}
-              constitution={workspace.constitution}
-              canEdit={canEditConstitution}
-            />
-
-            <Card className="order-last lg:order-none">
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {items.length === 0 ? (
-                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet across this workspace's Docos.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map((it) => (
-                      <WorkspaceFeedLine key={it.event_id} event={it} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          {/* Right column — search, then the activity matrix and top
-              contributors. */}
-          <aside className="min-w-0 space-y-4">
-            <Form
-              method="get"
-              action={`/workspaces/${workspace.handle}/search`}
-              className="flex gap-2"
+    <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
+      <PageHeader
+        breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle })}
+        title={workspace.handle}
+        actions={
+          canInviteUsers ? (
+            <Link
+              to={`/workspaces/${workspace.handle}/settings`}
+              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
-              <input
-                name="q"
-                type="search"
-                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
-                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
-              >
-                Search
-              </button>
-            </Form>
+              Settings
+            </Link>
+          ) : null
+        }
+      >
+        <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
+      </PageHeader>
 
-            <ActivityCard byDay={byDay} />
+      {onboarding ? <OnboardingStepper view={onboarding} /> : null}
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Top contributors</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {topContributors.length === 0 ? (
-                  <p className="text-xs italic text-muted-foreground">
-                    No recorded contributions yet.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {topContributors.map((c) => (
-                      <li
-                        key={c.userId}
-                        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-xs"
-                      >
-                        <span className="truncate" title={c.username}>
-                          {c.username}
-                        </span>
-                        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                          {c.eventCount}
-                        </span>
-                        <time
-                          dateTime={c.lastAt}
-                          title={c.lastAt}
-                          suppressHydrationWarning
-                          className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
-                        >
-                          {timeAgo(c.lastAt)}
-                        </time>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </aside>
-        </div>
-      </main>
-    </div>
+      <WorkspaceSummaryCard workspace={summary} showName={false} />
+
+      <DocoListCard
+        title="Docos in this workspace"
+        docos={docoItems}
+        showOwner={false}
+        empty={
+          <p className="text-xs italic text-muted-foreground">
+            This workspace doesn't own any Docos yet.
+          </p>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+        {/* Left column — the constitution gets the full available width, with
+            the latest activity feed beneath it. Below `lg` this column
+            dissolves into the grid (`contents`) so the feed can be ordered
+            past the sidebar to the bottom of the stacked page; at `lg` it
+            reflows as a real column and the feed returns to its spot beneath
+            the constitution. */}
+        <section className="contents lg:block lg:min-w-0 lg:space-y-4">
+          <WorkspaceConstitutionCard
+            workspaceHandle={workspace.handle}
+            constitution={workspace.constitution}
+            canEdit={canEditConstitution}
+          />
+
+          <Card className="order-last lg:order-none">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Latest activity</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {items.length === 0 ? (
+                <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                  No recorded activity yet across this workspace's Docos.
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {items.map((it) => (
+                    <WorkspaceFeedLine key={it.event_id} event={it} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Right column — search, then the activity matrix and top
+            contributors. */}
+        <aside className="min-w-0 space-y-4">
+          <Form
+            method="get"
+            action={`/workspaces/${workspace.handle}/search`}
+            className="flex gap-2"
+          >
+            <input
+              name="q"
+              type="search"
+              placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
+              className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <button
+              type="submit"
+              className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+            >
+              Search
+            </button>
+          </Form>
+
+          <ActivityCard byDay={byDay} />
+
+          <Card>
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Top contributors</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TopActorsList actors={topContributors} empty="No recorded contributions yet." />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Top queryers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TopActorsList actors={topQueryers} empty="No recorded queries yet." />
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+    </main>
   );
 }
 

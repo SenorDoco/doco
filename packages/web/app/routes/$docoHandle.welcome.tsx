@@ -2,7 +2,6 @@ import { Link, redirect } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { loadPostCreateDocoRouteForRead } from "~/lib/doco-access.server";
 import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 
@@ -28,7 +27,6 @@ export async function loader({
   );
   if (!me) throw redirect(`/sign-in?next=%2F${canonicalHandle}%2Fwelcome`);
   return {
-    me,
     handle: canonicalHandle,
     ownerSlug,
     createdDocoId,
@@ -44,7 +42,7 @@ export default function NewDocoStep4({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, handle, ownerSlug, createdDocoId } = loaderData;
+  const { handle, ownerSlug, createdDocoId } = loaderData;
   // Continue lands the user on the doco home. There's no separate
   // bootstrap step — the invite + API-key affordances it used to
   // carry are reachable from the doco page itself. createdDocoId
@@ -54,43 +52,40 @@ export default function NewDocoStep4({
     ? withCreatedDocoId(`/${handle}`, createdDocoId)
     : `/${handle}`;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <DocoPageMain className="py-8 space-y-4">
-        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Key Doco concepts:</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <ul className="ml-5 list-disc space-y-2">
-              <li>Doco helps keep people, agents, and work aligned</li>
-              <li>
-                Docos are made of nodes (any type of information) and edges (connections between
-                nodes)
-              </li>
-              <li>
-                Users, agents, and tools can query docos and add information (nodes) to them (if
-                they have the permission)
-              </li>
-              <li>
-                AI agents collaborating on a doco are always reminded of its policies — a list
-                telling them how to behave
-              </li>
-              <li>An workspace can have multiple interconnected docos</li>
-            </ul>
-          </CardContent>
-        </Card>
+    <DocoPageMain className="py-8 space-y-4">
+      <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Welcome" })} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Key Doco concepts:</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <ul className="ml-5 list-disc space-y-2">
+            <li>Doco helps keep people, agents, and work aligned</li>
+            <li>
+              Docos are made of nodes (any type of information) and edges (connections between
+              nodes)
+            </li>
+            <li>
+              Users, agents, and tools can query docos and add information (nodes) to them (if they
+              have the permission)
+            </li>
+            <li>
+              AI agents collaborating on a doco are always reminded of its policies — a list telling
+              them how to behave
+            </li>
+            <li>An workspace can have multiple interconnected docos</li>
+          </ul>
+        </CardContent>
+      </Card>
 
-        <div className="flex items-center gap-2">
-          <Link
-            to={docoHomePath}
-            className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
-          >
-            Open your doco -&gt;
-          </Link>
-        </div>
-      </DocoPageMain>
-    </div>
+      <div className="flex items-center gap-2">
+        <Link
+          to={docoHomePath}
+          className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
+        >
+          Open your doco -&gt;
+        </Link>
+      </div>
+    </DocoPageMain>
   );
 }

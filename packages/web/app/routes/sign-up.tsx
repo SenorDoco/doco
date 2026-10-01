@@ -1,8 +1,6 @@
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { DocoMark } from "~/components/doco-mark";
-import { VersionPill } from "~/components/version-pill";
 import { isValidSignupInviteCode, setSignupInviteCookie } from "~/lib/invite.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
@@ -44,57 +42,47 @@ export default function SignUp({
 }) {
   const error = actionData?.error ?? loaderData.error;
   return (
-    <div>
-      <header>
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
-            <DocoMark height={28} />
-          </Link>
-          <VersionPill />
-        </div>
-      </header>
-      <main className="mx-auto max-w-md px-6 py-10 space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign up" }]} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Create an account</CardTitle>
-            <CardDescription>Enter your invite code, then continue with GitHub.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form method="post" className="space-y-3">
-              <label className="block text-xs">
-                <span className="mb-1 block text-muted-foreground">Invite code</span>
-                <input
-                  type="text"
-                  name="invite_code"
-                  required
-                  autoComplete="one-time-code"
-                  className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                />
-              </label>
-              {error ? (
-                <p className="text-xs text-destructive" role="alert">
-                  {error}
-                </p>
-              ) : null}
-              <button
-                type="submit"
-                className="neu-button bg-primary text-primary-foreground hover:opacity-90 flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
-              >
-                <GitHubMark />
-                Continue with GitHub
-              </button>
-            </Form>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Already have an account?{" "}
-              <Link to="/sign-in" className="text-primary hover:underline">
-                Sign in
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <main className="mx-auto max-w-md px-6 py-10 space-y-4">
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign up" }]} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Create an account</CardTitle>
+          <CardDescription>Enter your invite code, then continue with GitHub.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form method="post" className="space-y-3">
+            <label className="block text-xs">
+              <span className="mb-1 block text-muted-foreground">Invite code</span>
+              <input
+                type="text"
+                name="invite_code"
+                required
+                autoComplete="one-time-code"
+                className="w-full rounded-md px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              />
+            </label>
+            {error ? (
+              <p className="text-xs text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              className="neu-button bg-primary text-primary-foreground hover:opacity-90 flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
+            >
+              <GitHubMark />
+              Continue with GitHub
+            </button>
+          </Form>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Already have an account?{" "}
+            <Link to="/sign-in" className="text-primary hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
 

@@ -10,7 +10,6 @@ import {
   PolicyView,
   toPolicyItem,
 } from "~/components/policy-view";
-import { SiteHeader } from "~/components/site-header";
 import { canEditPolicies, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { AGENT_EXPOSURE_NOTE, POLICIES_EXPLAINER } from "~/lib/policy-copy";
@@ -45,7 +44,6 @@ export async function loader({
     ownerSlug,
     docoSlug,
     handle,
-    me: ctx.me,
     host: await loadHostConfig(),
     canEdit: await canEditPolicies(ctx.meta, ctx.me?.id ?? null),
     activePolicies: policies.filter((p) => !isRetired(p)),
@@ -62,42 +60,39 @@ export default function Policies({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { ownerSlug, handle, me, canEdit, activePolicies, retiredPolicies } = loaderData;
+  const { ownerSlug, handle, canEdit, activePolicies, retiredPolicies } = loaderData;
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Policies" })}
-          title="Policies"
-        >
-          <p className="text-sm text-muted-foreground">
-            {POLICIES_EXPLAINER} {AGENT_EXPOSURE_NOTE}
-          </p>
-        </PageHeader>
+    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Policies" })}
+        title="Policies"
+      >
+        <p className="text-sm text-muted-foreground">
+          {POLICIES_EXPLAINER} {AGENT_EXPOSURE_NOTE}
+        </p>
+      </PageHeader>
 
+      <PolicySection
+        title="Active policies"
+        policies={activePolicies}
+        handle={handle}
+        canEdit={canEdit}
+        emptyLabel="No active policies yet."
+        showAdd={canEdit}
+      />
+
+      {retiredPolicies.length > 0 ? (
         <PolicySection
-          title="Active policies"
-          policies={activePolicies}
+          title="Retired policies"
+          policies={retiredPolicies}
           handle={handle}
           canEdit={canEdit}
-          emptyLabel="No active policies yet."
-          showAdd={canEdit}
+          emptyLabel="No retired policies."
+          showAdd={false}
         />
-
-        {retiredPolicies.length > 0 ? (
-          <PolicySection
-            title="Retired policies"
-            policies={retiredPolicies}
-            handle={handle}
-            canEdit={canEdit}
-            emptyLabel="No retired policies."
-            showAdd={false}
-          />
-        ) : null}
-      </main>
-    </div>
+      ) : null}
+    </main>
   );
 }
 

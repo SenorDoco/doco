@@ -21,6 +21,7 @@ import {
   isWritableType,
   normalizeWriteTypes,
 } from "@doco/shared";
+import { waitUntil } from "@vercel/functions";
 import { redirect } from "react-router";
 import { AUTHORING_SURFACE_HEADER } from "./authoring-source.server";
 import { docoPath } from "./db.server";
@@ -28,6 +29,7 @@ import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { readCreatedDocoIdSearchParam } from "./post-create-doco-route";
 import { type ProjectToken, isProjectToken, validateProjectToken } from "./project-tokens.server";
+import { recordQuery } from "./query-log.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
 
 /**
@@ -53,6 +55,15 @@ export function isSenorDocoRequest(request: Request): boolean {
   if (surface === "senor-doco-web" || surface === "slack") return true;
   const ua = request.headers.get("user-agent") ?? "";
   return /Doco-In-Page-Assistant|Doco-Slack-Assistant/i.test(ua);
+}
+
+/**
+ * An agent reading a Doco: a GET made with a token (MCP, the REST API, a
+ * project token) or by Señor Doco. Each one is a query in the query log; a
+ * person opening a page on the website isn't.
+ */
+export function isAgentRead(request: Request): boolean {
+  return request.method === "GET" && (!!extractBearer(request) || isSenorDocoRequest(request));
 }
 
 /**
@@ -813,6 +824,9 @@ export async function loadDocoForRead(
     minRole,
   });
   if (projectTokenResult.handled) {
+    if (isAgentRead(request)) {
+      waitUntil(recordQuery(request, { workspaceId: row.workspace_id, docoId: row.id }, null));
+    }
     return {
       dir,
       meta,
@@ -834,6 +848,11 @@ export async function loadDocoForRead(
   const me = await getCurrentPrincipalAsync(request);
   if (!(await canAccessDoco(meta, me?.id ?? null))) {
     throw accessDeniedResponse(row.handle, row.owner_slug, !!me);
+  }
+  if (isAgentRead(request)) {
+    waitUntil(
+      recordQuery(request, { workspaceId: row.workspace_id, docoId: row.id }, me?.id ?? null),
+    );
   }
   return {
     dir,

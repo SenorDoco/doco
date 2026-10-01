@@ -23,7 +23,6 @@ import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { OAuthAccessApprovalForm } from "~/components/oauth-access-approval-form";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import {
   type ApprovalDocoOption,
   type ApprovalWorkspaceOption,
@@ -60,7 +59,7 @@ export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
 
   if (!user_code) {
-    return { user_code: "", stage: "enter-code" as const, me };
+    return { user_code: "", stage: "enter-code" as const };
   }
 
   const row = await getDeviceAuthorizationByUserCode(user_code);
@@ -69,7 +68,6 @@ export async function loader({ request }: { request: Request }) {
       user_code,
       stage: "unknown" as const,
       message: "That code isn't recognized. Double-check what your client showed you.",
-      me,
     };
   }
   if (row.expires_at.getTime() <= Date.now()) {
@@ -77,7 +75,6 @@ export async function loader({ request }: { request: Request }) {
       user_code,
       stage: "expired" as const,
       message: "This code has expired. Ask your client to start a new device authorization.",
-      me,
     };
   }
   if (row.status === "denied") {
@@ -85,7 +82,6 @@ export async function loader({ request }: { request: Request }) {
       user_code,
       stage: "denied" as const,
       message: "This authorization was already denied.",
-      me,
     };
   }
   if (row.status === "approved") {
@@ -93,7 +89,6 @@ export async function loader({ request }: { request: Request }) {
       user_code,
       stage: "done" as const,
       message: "Approved.",
-      me,
     };
   }
 
@@ -120,7 +115,6 @@ export async function loader({ request }: { request: Request }) {
       user_code,
       stage: "target-not-owned" as const,
       target_doco_handle: view.targetDocoHandle,
-      me,
     };
   }
 
@@ -137,7 +131,6 @@ export async function loader({ request }: { request: Request }) {
     docos: view.docos,
     workspaces: view.workspaces,
     requested_role: requestedRole,
-    me,
   };
 }
 
@@ -203,13 +196,10 @@ export function meta() {
 export default function DevicePage() {
   const data = useLoaderData() as LoaderData;
   return (
-    <div>
-      <SiteHeader me={data.me} />
-      <SingleColumnPageMain className="py-8 space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Authorize device" }]} />
-        <Card>{renderStage(data)}</Card>
-      </SingleColumnPageMain>
-    </div>
+    <SingleColumnPageMain className="py-8 space-y-4">
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Authorize device" }]} />
+      <Card>{renderStage(data)}</Card>
+    </SingleColumnPageMain>
   );
 }
 

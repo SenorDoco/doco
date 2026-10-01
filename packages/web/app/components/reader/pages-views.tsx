@@ -1,5 +1,5 @@
-// What the pages reader shows in the middle: a Notion Doco's home (the pages
-// edited most recently, then the top-level pages), a page rendered from its
+// What the pages reader shows: a Notion Doco's home (the pages edited most
+// recently, as Notion's Recents; there is no tree), a page rendered from its
 // Markdown with its outline and its links beside it, or search hits. Before
 // any page is copied, it says whether pages are on their way, and if not, why.
 import { ExternalLink } from "lucide-react";
@@ -12,7 +12,6 @@ import type { IntegrationStatus } from "~/lib/integration-status.server";
 import { notionIdFromUrl } from "~/lib/notion-markdown";
 import type {
   NotionPageRef,
-  NotionPageSummary,
   NotionReaderPage,
   NotionSearchHit,
   PagesView,
@@ -94,71 +93,31 @@ function HomeView({
   view: Extract<PagesView, { view: "home" }>;
 }) {
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      {view.recent.length > 0 ? (
-        <section className="space-y-2">
-          <h2 className={SECTION_TITLE}>Recently edited</h2>
-          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-            {view.recent.map((page) => (
-              <li key={page.pageId}>
-                <Link
-                  to={readerHref(handle, "pages", page.pageId)}
-                  className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-sm hover:bg-input"
-                >
-                  <PageIcon page={page} />
-                  <span className="font-medium">{page.title || "Untitled"}</span>
-                  {page.where ? (
-                    <span className="truncate text-xs text-muted-foreground">{page.where}</span>
-                  ) : null}
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {page.lastEditedAt ? timeAgo(page.lastEditedAt) : null}
-                    {page.lastEditedBy ? ` · ${page.lastEditedBy}` : null}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      {view.top.length > 0 ? (
-        <section className="space-y-2">
-          <h2 className={SECTION_TITLE}>Top-level pages</h2>
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-2">
-            {view.top.map((page) => (
-              <li key={page.pageId}>
-                <TopCard handle={handle} page={page} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+    <div className="p-4 sm:p-6">
+      <section className="space-y-2">
+        <h2 className={SECTION_TITLE}>Recently edited</h2>
+        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {view.recent.map((page) => (
+            <li key={page.pageId}>
+              <Link
+                to={readerHref(handle, "pages", page.pageId)}
+                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-sm hover:bg-input"
+              >
+                <PageIcon page={page} />
+                <span className="font-medium">{page.title || "Untitled"}</span>
+                {page.where ? (
+                  <span className="truncate text-xs text-muted-foreground">{page.where}</span>
+                ) : null}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {page.lastEditedAt ? timeAgo(page.lastEditedAt) : null}
+                  {page.lastEditedBy ? ` · ${page.lastEditedBy}` : null}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
-  );
-}
-
-function TopCard({ handle, page }: { handle: string; page: NotionPageSummary }) {
-  return (
-    <Link
-      to={readerHref(handle, "pages", page.pageId)}
-      className={cn(
-        "flex h-full flex-col gap-1 rounded-lg border border-border p-3 hover:bg-input",
-        !page.copied && "italic text-muted-foreground",
-      )}
-    >
-      <span className="flex items-center gap-2 text-sm font-medium">
-        <PageIcon page={page} />
-        <span className="truncate">{page.title || "Untitled"}</span>
-      </span>
-      <span className="text-xs not-italic text-muted-foreground">
-        {page.children > 0
-          ? `${plural(page.children, "page", "pages")} inside`
-          : page.lastEditedAt
-            ? `Edited ${timeAgo(page.lastEditedAt)}`
-            : page.copied
-              ? null
-              : "Not copied yet"}
-      </span>
-    </Link>
   );
 }
 
@@ -383,7 +342,7 @@ export function PagesReaderView({
 }) {
   if (view.view === "page") return <PageView handle={handle} page={view.page} />;
   if (view.view === "search") return <SearchView handle={handle} view={view} />;
-  if (view.recent.length === 0 && view.top.length === 0) {
+  if (view.recent.length === 0) {
     return <NoPagesYet handle={handle} status={status} />;
   }
   return <HomeView handle={handle} view={view} />;

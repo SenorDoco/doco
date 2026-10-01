@@ -104,6 +104,9 @@ export interface SlackOAuthState {
   /** Set when the install turns on the public-channel mirror for this Doco.
    * Only the mirror consent form mints it, so it also records that consent. */
   mirrorDocoId?: string;
+  /** Where to send the installer once the mirror is on, instead of the Doco's
+   *  Slack page: a workspace's onboarding, which offers the next source. */
+  next?: string;
   nonce: string;
   issuedAt: number;
 }
@@ -321,7 +324,7 @@ export function buildSlackInstallUrl(
   request: Request,
   installerId: string,
   docoWorkspaceId: string,
-  opts: { mirrorDocoId?: string } = {},
+  opts: { mirrorDocoId?: string; next?: string } = {},
 ): string | null {
   const config = getSlackConfig();
   if (!config.configured || !config.clientId || !config.signingSecret) return null;
@@ -331,6 +334,7 @@ export function buildSlackInstallUrl(
       installerId,
       docoWorkspaceId,
       ...(opts.mirrorDocoId ? { mirrorDocoId: opts.mirrorDocoId } : {}),
+      ...(opts.next ? { next: opts.next } : {}),
       nonce: randomBytes(16).toString("base64url"),
       issuedAt: Date.now(),
     },

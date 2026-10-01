@@ -114,7 +114,6 @@ describe("/workspaces/:workspaceHandle/integrations", () => {
       params: { workspaceHandle: "acme" },
     });
 
-    expect(data.me).toEqual({ id: "user_alice", username: "alice" });
     expect(data.workspace).toEqual({
       id: "workspace_acme",
       handle: "acme",

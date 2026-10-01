@@ -1,14 +1,12 @@
-// /workspaces/:workspaceHandle/agent — step 2 of Get started for one
-// workspace: the instructions to give an agent, ending with the line that
-// connects the project to this workspace. Creating a workspace lands here,
-// and each workspace's Invite agent button opens it.
+// /workspaces/:workspaceHandle/agent — each workspace's Invite agent button:
+// the message that asks an agent to start using Doco in this workspace, the
+// same one its onboarding's last step and reminder email hand over.
 
 import { getPublicBaseUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { loadWorkspaceForRead } from "~/lib/workspace-helpers.server";
@@ -26,7 +24,6 @@ export async function loader({
   }
   const { workspace } = await loadWorkspaceForRead(params.workspaceHandle, me.id);
   return {
-    me,
     workspace: { handle: workspace.handle },
     instructions: agentInstructionsForWorkspace(getPublicBaseUrl(request), workspace.handle),
   };
@@ -41,31 +38,28 @@ export default function WorkspaceAgentPage({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, workspace, instructions } = loaderData;
+  const { workspace, instructions } = loaderData;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
-        <PageHeader
-          breadcrumb={workspaceBreadcrumb({
-            workspaceSlug: workspace.handle,
-            pageLabel: "Connect your agent",
-          })}
-          title={`Connect your agent to ${workspace.handle}`}
-          actions={
-            <Link
-              to={`/workspaces/${workspace.handle}`}
-              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
-            >
-              Go to workspace
-            </Link>
-          }
-        />
-        <AgentInstructionsBlock
-          title="Give your agent these instructions. The last line connects the project to this workspace."
-          instructions={instructions}
-        />
-      </main>
-    </div>
+    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+      <PageHeader
+        breadcrumb={workspaceBreadcrumb({
+          workspaceSlug: workspace.handle,
+          pageLabel: "Connect your agent",
+        })}
+        title={`Connect your agent to ${workspace.handle}`}
+        actions={
+          <Link
+            to={`/workspaces/${workspace.handle}`}
+            className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+          >
+            Go to workspace
+          </Link>
+        }
+      />
+      <AgentInstructionsBlock
+        title={`Send your agent this message. It asks your agent to start using Doco in ${workspace.handle}.`}
+        instructions={instructions}
+      />
+    </main>
   );
 }

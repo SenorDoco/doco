@@ -13,7 +13,6 @@ import { Form, redirect, useActionData, useLoaderData, useSearchParams } from "r
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { monthYear } from "~/lib/month-year";
 import {
@@ -30,7 +29,6 @@ export async function loader({ request, params }: RouteArgs) {
   const { me, meta, ownerSlug } = await loadDocoRouteForRead(request, params);
   const canManage = me ? (await getWorkspaceRole(meta.workspaceId, me.id)) === "owner" : false;
   return {
-    me,
     handle: meta.handle,
     ownerSlug,
     visibility: meta.visibility,
@@ -99,59 +97,56 @@ const ERROR_NOTICE =
   "rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive";
 
 export default function DocoSlackMirrorPage() {
-  const { me, handle, ownerSlug, visibility, canManage, slackConfigured, historyYears, status } =
+  const { handle, ownerSlug, visibility, canManage, slackConfigured, historyYears, status } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
   const flash = searchParams.get("slack");
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({
-            ownerSlug,
-            handle,
-            parent: { label: "App integrations", to: `/${handle}/integrations` },
-            pageLabel: "Slack",
-          })}
-          title="Slack"
-        >
-          <p className="text-sm text-muted-foreground">
-            A read-only copy of a Slack workspace&apos;s public channels, kept in sync.
-          </p>
-        </PageHeader>
+    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({
+          ownerSlug,
+          handle,
+          parent: { label: "App integrations", to: `/${handle}/integrations` },
+          pageLabel: "Slack",
+        })}
+        title="Slack"
+      >
+        <p className="text-sm text-muted-foreground">
+          A read-only copy of a Slack workspace&apos;s public channels, kept in sync.
+        </p>
+      </PageHeader>
 
-        {flash === "mirroring" ? (
-          <p className={NOTICE}>
-            Mirroring is on. Doco is joining the public channels now; new messages are copied as
-            they are posted, and older history fills in, newest first.
-          </p>
-        ) : null}
-        {flash === "not_slack_admin" ? (
-          <p className={ERROR_NOTICE}>
-            Only a Slack workspace admin or owner can approve copying its channels. Ask one to turn
-            mirroring on from this page.
-          </p>
-        ) : null}
-        {actionData && "error" in actionData ? (
-          <p className={ERROR_NOTICE}>{actionData.error}</p>
-        ) : null}
-        {actionData && "ok" in actionData ? <p className={NOTICE}>{actionData.message}</p> : null}
+      {flash === "mirroring" ? (
+        <p className={NOTICE}>
+          Mirroring is on. Doco is joining the public channels now; new messages are copied as they
+          are posted, and older history fills in, newest first.
+        </p>
+      ) : null}
+      {flash === "not_slack_admin" ? (
+        <p className={ERROR_NOTICE}>
+          Only a Slack workspace admin or owner can approve copying its channels. Ask one to turn
+          mirroring on from this page.
+        </p>
+      ) : null}
+      {actionData && "error" in actionData ? (
+        <p className={ERROR_NOTICE}>{actionData.error}</p>
+      ) : null}
+      {actionData && "ok" in actionData ? <p className={NOTICE}>{actionData.message}</p> : null}
 
-        {status ? (
-          <MirrorStatus status={status} canManage={canManage} />
-        ) : (
-          <TurnOnMirror
-            historyYears={historyYears}
-            canManage={canManage}
-            slackConfigured={slackConfigured}
-            isPrivate={visibility === "private"}
-          />
-        )}
-      </main>
-    </div>
+      {status ? (
+        <MirrorStatus status={status} canManage={canManage} />
+      ) : (
+        <TurnOnMirror
+          historyYears={historyYears}
+          canManage={canManage}
+          slackConfigured={slackConfigured}
+          isPrivate={visibility === "private"}
+        />
+      )}
+    </main>
   );
 }
 

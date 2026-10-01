@@ -25,7 +25,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { UserInviteCards } from "~/components/user-invite-cards";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { focusFirstError, validateGrantForm } from "~/lib/grant-form-validation";
@@ -366,75 +365,72 @@ export default function UsersPage({
   const existingByPrincipal = useMemo(() => existingGrantsByPrincipal(loaderData), [loaderData]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <SiteHeader me={loaderData.me} />
-      <SingleColumnPageMain className="py-6 space-y-6">
-        <PageHeader
-          breadcrumb={hostBreadcrumb({ pageLabel: "Collaborators" })}
-          title="Collaborators"
+    <SingleColumnPageMain className="py-6 space-y-6">
+      <PageHeader
+        breadcrumb={hostBreadcrumb({ pageLabel: "Collaborators" })}
+        title="Collaborators"
+      />
+
+      <Card>
+        <CardContent className="pt-4">
+          <UserInviteCards invite={loaderData.invite} />
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-base font-semibold">Show collaborators for</span>
+          <select
+            value={scope}
+            onChange={(e) => applyScope(e.currentTarget.value)}
+            data-testid="scope-filter"
+            className="w-auto rounded-md px-3 py-2"
+          >
+            <option value="all">All collaborators</option>
+            {loaderData.workspaceSections.length > 0 ? (
+              <optgroup label="By workspace">
+                {loaderData.workspaceSections.map((s) => (
+                  <option key={s.workspace.id} value={`workspace:${s.workspace.id}`}>
+                    {s.workspace.handle}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {loaderData.docoSections.length > 0 ? (
+              <optgroup label="By doco">
+                {loaderData.docoSections.map((s) => (
+                  <option key={s.doco.id} value={`doco:${s.doco.id}`}>
+                    {s.doco.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+        </label>
+      </div>
+
+      {showWorkspaceSection ? (
+        <Section
+          title="Workspace-wide collaborators"
+          empty="You don't have any workspace grants yet."
+          rows={workspaceRows}
+          myPrincipalId={loaderData.me.id}
+          grantCatalog={grantCatalog}
+          existingByPrincipal={existingByPrincipal}
         />
+      ) : null}
 
-        <Card>
-          <CardContent className="pt-4">
-            <UserInviteCards invite={loaderData.invite} />
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-base font-semibold">Show collaborators for</span>
-            <select
-              value={scope}
-              onChange={(e) => applyScope(e.currentTarget.value)}
-              data-testid="scope-filter"
-              className="w-auto rounded-md px-3 py-2"
-            >
-              <option value="all">All collaborators</option>
-              {loaderData.workspaceSections.length > 0 ? (
-                <optgroup label="By workspace">
-                  {loaderData.workspaceSections.map((s) => (
-                    <option key={s.workspace.id} value={`workspace:${s.workspace.id}`}>
-                      {s.workspace.handle}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              {loaderData.docoSections.length > 0 ? (
-                <optgroup label="By doco">
-                  {loaderData.docoSections.map((s) => (
-                    <option key={s.doco.id} value={`doco:${s.doco.id}`}>
-                      {s.doco.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          </label>
-        </div>
-
-        {showWorkspaceSection ? (
-          <Section
-            title="Workspace-wide collaborators"
-            empty="You don't have any workspace grants yet."
-            rows={workspaceRows}
-            myPrincipalId={loaderData.me.id}
-            grantCatalog={grantCatalog}
-            existingByPrincipal={existingByPrincipal}
-          />
-        ) : null}
-
-        {showDocoSection ? (
-          <Section
-            title="Per-doco collaborators"
-            empty={docoSectionEmpty}
-            rows={docoRows}
-            myPrincipalId={loaderData.me.id}
-            grantCatalog={grantCatalog}
-            existingByPrincipal={existingByPrincipal}
-          />
-        ) : null}
-      </SingleColumnPageMain>
-    </div>
+      {showDocoSection ? (
+        <Section
+          title="Per-doco collaborators"
+          empty={docoSectionEmpty}
+          rows={docoRows}
+          myPrincipalId={loaderData.me.id}
+          grantCatalog={grantCatalog}
+          existingByPrincipal={existingByPrincipal}
+        />
+      ) : null}
+    </SingleColumnPageMain>
   );
 }
 

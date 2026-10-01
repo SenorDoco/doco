@@ -4,7 +4,7 @@
 // `<workspace>-<choice id>`, when the workspace has none.
 import { withClient } from "@doco/db";
 import { GITHUB_IMPORTS, type GitHubImport } from "./github-imports";
-import { createDocoInWorkspace } from "./redeem.server";
+import { ensureWorkspaceDoco } from "./workspace-helpers.server";
 
 export interface ImportDoco {
   id: string;
@@ -47,24 +47,18 @@ export interface ImportTarget {
 /** The workspace's Doco for each choice, creating the ones it lacks. */
 export async function ensureImportDocos(opts: {
   workspace: { id: string; handle: string };
-  imports: GitHubImport[];
+  imports: readonly GitHubImport[];
   userId: string;
 }): Promise<ImportTarget[]> {
-  const existing = (await listImportDocos([opts.workspace.id]))[opts.workspace.id] ?? {};
   const targets: ImportTarget[] = [];
   for (const choice of opts.imports) {
-    let doco = existing[choice.id];
-    if (!doco) {
-      const created = await createDocoInWorkspace({
-        workspaceId: opts.workspace.id,
-        requestedHandle: `${opts.workspace.handle}-${choice.id}`.slice(0, 64).replace(/-+$/, ""),
-        createdByUserId: opts.userId,
-        templateHandle: choice.template,
-        autoSuffix: true,
-      });
-      doco = { id: created.docoId, handle: created.handle };
-    }
-    targets.push({ import: choice, doco });
+    const { id, handle } = await ensureWorkspaceDoco({
+      workspace: opts.workspace,
+      template: choice.template,
+      handleSuffix: choice.id,
+      userId: opts.userId,
+    });
+    targets.push({ import: choice, doco: { id, handle } });
   }
   return targets;
 }

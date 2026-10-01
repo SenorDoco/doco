@@ -4,9 +4,10 @@
 // two markers, and compares that copy with the home page to stay current.
 //
 // This is the one agent-instructions template in Doco. The home page, each
-// workspace's Connect your agent page, the Tokens page, the hosted MCP
-// server's instructions and the agent bootstrap all hand over this block;
-// everything else that talks to agents points here.
+// workspace's onboarding and Invite agent page, the onboarding reminder email,
+// the Tokens page, the hosted MCP server's instructions and the agent
+// bootstrap all hand over this block; everything else that talks to agents
+// points here.
 //
 // The duties lead and hold without a repo copy, because an agent may meet
 // this block only through the connector. Claude Code keeps just the first
@@ -70,11 +71,19 @@ ${INSTRUCTIONS_END}
 }
 
 /**
- * The same block, followed by the line that connects the project to one
- * workspace. Offered right after a workspace is created, and from each
- * workspace's Invite agent button.
+ * What a person sends their agent to start using Doco in one workspace: a
+ * request naming the workspace and asking the agent to note in its Agents
+ * chats Doco that it got the instructions (which finishes the workspace's
+ * onboarding step), then the same block, then the line that connects the
+ * project to the workspace. The request and the line sit outside the block,
+ * so the block an MCP client keeps stays the same everywhere and under its
+ * length cap. A workspace's onboarding, its Invite agent page and the reminder
+ * email all hand over this text.
  */
 export function agentInstructionsForWorkspace(baseUrl: string, workspaceHandle: string): string {
   const host = baseUrl.replace(/\/+$/, "");
-  return `${agentInstructions(host)}Doco workspace: ${host}/workspaces/${workspaceHandle}\n`;
+  return `Start using Doco in this project, in the workspace ${workspaceHandle}: follow the instructions below, with ${workspaceHandle} as the project's workspace. Once Doco's tools work, \`doco_capture\` a Log in ${workspaceHandle}'s Agents chats Doco saying you received these instructions.
+
+${agentInstructions(host)}Doco workspace: ${host}/workspaces/${workspaceHandle}
+`;
 }

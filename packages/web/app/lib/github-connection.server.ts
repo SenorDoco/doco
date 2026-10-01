@@ -10,6 +10,7 @@ import {
   mintInstallationToken,
 } from "./github-app.server";
 import { GITHUB_IMPORTS, githubImportFor, refusedAccess, skippedRepos } from "./github-imports";
+import { isLocalPath } from "./local-path";
 
 /**
  * SQL for what the Doco aliased `alias` brings from GitHub — the template of
@@ -105,13 +106,11 @@ export interface InstallState {
   docoIds: string[];
   /** Where the callback sends the user back to: a path on this site. */
   next: string;
+  /** Connect every repository the installation grants to each Doco, and the
+   *  organization as a whole, as soon as GitHub sends the user back, instead
+   *  of having them pick (a workspace's one-click Connect GitHub). */
+  connectAll?: boolean;
   issuedAt: number;
-}
-
-/** A path on this site: one slash, never `//host` or `/\host`, which a
- *  browser would follow off-site. Pure. */
-function isLocalPath(path: unknown): path is string {
-  return typeof path === "string" && /^\/(?![/\\])/.test(path);
 }
 
 const INSTALL_STATE_TTL_MS = 60 * 60 * 1000;
@@ -152,7 +151,13 @@ export function verifyInstallState(raw: string, now = Date.now()): InstallState 
     if (!Number.isFinite(state.issuedAt) || now - state.issuedAt > INSTALL_STATE_TTL_MS) {
       return null;
     }
-    return { userId: state.userId, docoIds, next: state.next, issuedAt: state.issuedAt };
+    return {
+      userId: state.userId,
+      docoIds,
+      next: state.next,
+      ...(state.connectAll === true ? { connectAll: true } : {}),
+      issuedAt: state.issuedAt,
+    };
   } catch {
     return null;
   }
@@ -333,6 +338,32 @@ export async function connectRepositories(
     failed: 0,
     cursor_at: connectedAt,
   });
+}
+
+/**
+ * Connect what a person picked to a Doco: subscribe it to each organization
+ * picked as a whole, so repositories GitHub gives Doco later come in too, and
+ * queue the import of every picked repository. True when an import is queued
+ * for the caller to kick (`kickBackfillRun`).
+ */
+export async function connectPicked(
+  docoId: string,
+  picked: {
+    connections: Array<Pick<GitHubConnection, "repo" | "installation_id">>;
+    installations: Array<Pick<GitHubInstallationSub, "installation_id" | "account">>;
+  },
+): Promise<boolean> {
+  const connectedAt = new Date().toISOString();
+  for (const choice of picked.installations) {
+    await subscribeInstallation(docoId, {
+      installation_id: choice.installation_id,
+      account: choice.account,
+      connected_at: connectedAt,
+    });
+  }
+  if (picked.connections.length === 0) return false;
+  await connectRepositories(docoId, picked.connections);
+  return true;
 }
 
 /** Remove a connection by repo. Returns the remaining list. */
@@ -780,6 +811,17 @@ async function listKnownGitHubInstallationsForDocos(
       rows.map((row) => ({ handle: row.handle, githubIntegration: row.gh })),
     );
   });
+}
+
+/** The GitHub accounts (organizations and users) Doco already reaches through
+ *  these Docos, without asking GitHub for their repositories. */
+export async function listKnownGitHubAccounts(
+  docoIds: string[],
+): Promise<Array<Pick<GitHubInstallationChoice, "installation_id" | "account">>> {
+  return (await listKnownGitHubInstallationsForDocos(docoIds)).map((choice) => ({
+    installation_id: choice.installation_id,
+    account: choice.account,
+  }));
 }
 
 /**

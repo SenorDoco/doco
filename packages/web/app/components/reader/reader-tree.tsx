@@ -1,7 +1,8 @@
-// The reader's tree: what a codebase or Notion Doco copied, opening in place.
-// It starts with the listings the server sent for the open item's place, and
-// fetches a folder's or page's children (tree.json) the first time it opens,
-// so moving around never reloads the tree.
+// The reader's tree: what a codebase Doco copied, opening in place. It starts
+// with the listings the server sent for the open item's place, and fetches a
+// folder's children (tree.json) the first time it opens, so moving around
+// never reloads the tree. A Notion copy has none (reader-layout.tsx); the
+// icons here serve its search list too.
 import {
   ChevronDown,
   ChevronRight,
@@ -10,13 +11,12 @@ import {
   FileText,
   Folder,
   FolderOpen,
-  House,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { GitHubIcon } from "~/components/brand-icons";
 import { cn } from "~/lib/cn";
-import { type ReaderKind, type ReaderListing, type ReaderTreeItem, readerHref } from "~/lib/reader";
+import { type ReaderListing, type ReaderTreeItem, readerHref } from "~/lib/reader";
 
 const ROW =
   "flex h-7 min-w-0 items-center gap-1.5 rounded-md pr-2 text-[13px] text-foreground hover:bg-input";
@@ -59,19 +59,17 @@ export function fetchJson<T>(url: string): Promise<T | null> {
 
 export function ReaderTree({
   handle,
-  reader,
   listings: initial,
   trail,
   current,
   onNavigate,
 }: {
   handle: string;
-  reader: ReaderKind;
   /** Listings the server sent: the top ("") and the open item's place. */
   listings: Record<string, ReaderListing>;
   /** The open item's place: its ancestors, then itself. */
   trail: string[];
-  /** The open item's id ("" for the home), null while searching. */
+  /** The open item's id ("" for the repositories), null while searching. */
   current: string | null;
   /** Called when a link in the tree is followed (the phone drawer closes). */
   onNavigate?: () => void;
@@ -166,7 +164,7 @@ export function ReaderTree({
                   <span aria-hidden className="w-4 shrink-0" />
                 )}
                 <Link
-                  to={readerHref(handle, reader, item.id)}
+                  to={readerHref(handle, "code", item.id)}
                   aria-current={on ? "page" : undefined}
                   onClick={onNavigate}
                   title={item.pending ? "Not copied yet" : undefined}
@@ -201,21 +199,7 @@ export function ReaderTree({
   };
 
   return (
-    <nav
-      aria-label={reader === "code" ? "Files" : "Pages"}
-      className="min-h-0 flex-1 overflow-auto px-1.5 py-2.5"
-    >
-      {reader === "pages" ? (
-        <Link
-          to={readerHref(handle, reader)}
-          aria-current={current === "" ? "page" : undefined}
-          onClick={onNavigate}
-          className={cn(ROW, "pl-[26px]", current === "" && ROW_ON)}
-        >
-          <House aria-hidden className="h-3.5 w-3.5 shrink-0" />
-          Home
-        </Link>
-      ) : null}
+    <nav aria-label="Files" className="min-h-0 flex-1 overflow-auto px-1.5 py-2.5">
       {renderListing("", 0)}
     </nav>
   );

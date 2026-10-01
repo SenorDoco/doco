@@ -19,7 +19,15 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/alerts/silence-check",
+      "schedule": "7 * * * *"
+    },
+    {
       "path": "/api/embeddings/sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/onboarding/reminders",
       "schedule": "* * * * *"
     },
     {

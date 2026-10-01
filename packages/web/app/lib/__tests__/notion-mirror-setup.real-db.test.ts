@@ -93,6 +93,15 @@ describe("the signed OAuth state", () => {
     expect(verifyNotionState("garbage", "secret", 1_000_000)).toBeNull();
   });
 
+  it("keeps where to return on the site, and drops one off it", () => {
+    const back = { ...state, next: "/workspaces/acme" };
+    expect(verifyNotionState(signNotionState(back, "secret"), "secret", 1_000_000)).toEqual(back);
+    for (const next of ["//evil.test/x", "https://evil.test/x", "/\\evil.test"]) {
+      const signed = signNotionState({ ...state, next }, "secret");
+      expect(verifyNotionState(signed, "secret", 1_000_000)).toEqual(state);
+    }
+  });
+
   it("is carried by the authorization URL the consent form redirects to", () => {
     const url = buildNotionAuthorizeUrl(new Request("https://doco.test/acme-notion/x"), {
       docoId: "doco_notion",

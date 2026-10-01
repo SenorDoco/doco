@@ -1,4 +1,5 @@
 import { withClient } from "@doco/db";
+import { waitUntil } from "@vercel/functions";
 import type { ReactNode } from "react";
 // Per-Doco search — hybrid ranker (vector + full-text floor; ADR-052,
 // supersedes ADR-030) + left-sidebar filters for lifecycle / node type.
@@ -12,11 +13,11 @@ import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
-import { SiteHeader } from "~/components/site-header";
-import { loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { isAgentRead, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { lifecycleColor, nodeTypePlural } from "~/lib/node-colors";
+import { recordQuery } from "~/lib/query-log.server";
 import {
   type FilterFacets,
   type SearchFilters,
@@ -25,7 +26,6 @@ import {
 } from "~/lib/search-filters.server";
 import type { SearchHit } from "~/lib/search.server";
 import { hybridSearch, loadFilteredSearchHits } from "~/lib/search.server";
-import { getCurrentPrincipal } from "~/lib/session.server";
 
 function relativeTimeIso(iso: string | null): string {
   if (!iso) return "—";
@@ -89,7 +89,6 @@ export async function loader({
   const { ownerSlug, docoSlug, handle } = ctx;
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim();
-  const me = await getCurrentPrincipal(request);
   const host = await loadHostConfig();
 
   return withClient(async (c) => {
@@ -112,11 +111,22 @@ export async function loader({
         docoSlug,
         handle,
         host,
-        me,
         filters,
         facets,
         pagination,
       };
+    }
+
+    // A search on the website is a query. (An agent's search is already logged
+    // by the read gate.)
+    if (!isAgentRead(request)) {
+      waitUntil(
+        recordQuery(
+          request,
+          { workspaceId: ctx.meta.workspaceId, docoId: ctx.meta.docoId },
+          ctx.me?.id ?? null,
+        ),
+      );
     }
 
     // Hybrid: semantic ranking with a full-text floor (see search.server.ts),
@@ -141,7 +151,6 @@ export async function loader({
       docoSlug,
       handle,
       host,
-      me,
       filters,
       facets,
       pagination,
@@ -182,7 +191,7 @@ export default function SearchInDoco({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { q, hits, warning, ownerSlug, docoSlug, handle, host, me, filters, facets, pagination } =
+  const { q, hits, warning, ownerSlug, docoSlug, handle, host, filters, facets, pagination } =
     loaderData;
   const [sp] = useSearchParams();
   const activeQ = sp.get("q") ?? q;
@@ -192,111 +201,108 @@ export default function SearchInDoco({
   );
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
-        <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Search" })} />
-        {/* Two columns: the search box + facet filters live in a left sidebar
-            so they stop pushing the results down the page; results fill the
-            wider right column. Collapses to a single stack below md. */}
-        <div className="grid gap-8 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
-          <aside className="space-y-4">
-            <Form method="get" className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground" htmlFor="q">
-                  Search
-                </label>
-                <input
-                  id="q"
-                  name="q"
-                  defaultValue={activeQ}
-                  placeholder="Find anything…"
-                  className="w-full rounded-md border bg-background px-2 py-1 text-sm"
-                />
-                {preservedSearchParams.map(([key, value]) => (
-                  <input key={`${key}-${value}`} type="hidden" name={key} value={value} />
-                ))}
-              </div>
-            </Form>
-            <div className="space-y-4">
-              <FacetGroup
-                label="Types"
-                name="node_type"
-                searchParams={sp}
-                options={facets.nodeType.map((f) => ({
-                  value: f.value,
-                  label: nodeTypePlural(f.value),
-                  count: f.count,
-                  icon: <NodeTypeIcon nodeType={f.value} />,
-                }))}
-                selected={new Set(filters.nodeType ?? [])}
-                wildcardActive={filters.nodeType === null}
+    <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+      <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Search" })} />
+      {/* Two columns: the search box + facet filters live in a left sidebar
+          so they stop pushing the results down the page; results fill the
+          wider right column. Collapses to a single stack below md. */}
+      <div className="grid gap-8 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+        <aside className="space-y-4">
+          <Form method="get" className="space-y-3">
+            <div>
+              <label className="text-xs text-muted-foreground" htmlFor="q">
+                Search
+              </label>
+              <input
+                id="q"
+                name="q"
+                defaultValue={activeQ}
+                placeholder="Find anything…"
+                className="w-full rounded-md border bg-background px-2 py-1 text-sm"
               />
-              <FacetGroup
-                label="Life cycles"
-                name="lifecycle"
-                searchParams={sp}
-                options={facets.lifecycle.map((f) => ({
-                  value: f.value,
-                  label: f.value,
-                  count: f.count,
-                  color: lifecycleColor(f.value),
-                }))}
-                selected={new Set(filters.lifecycle ?? [])}
-                wildcardActive={filters.lifecycle === null}
-              />
+              {preservedSearchParams.map(([key, value]) => (
+                <input key={`${key}-${value}`} type="hidden" name={key} value={value} />
+              ))}
             </div>
-          </aside>
+          </Form>
+          <div className="space-y-4">
+            <FacetGroup
+              label="Types"
+              name="node_type"
+              searchParams={sp}
+              options={facets.nodeType.map((f) => ({
+                value: f.value,
+                label: nodeTypePlural(f.value),
+                count: f.count,
+                icon: <NodeTypeIcon nodeType={f.value} />,
+              }))}
+              selected={new Set(filters.nodeType ?? [])}
+              wildcardActive={filters.nodeType === null}
+            />
+            <FacetGroup
+              label="Life cycles"
+              name="lifecycle"
+              searchParams={sp}
+              options={facets.lifecycle.map((f) => ({
+                value: f.value,
+                label: f.value,
+                count: f.count,
+                color: lifecycleColor(f.value),
+              }))}
+              selected={new Set(filters.lifecycle ?? [])}
+              wildcardActive={filters.lifecycle === null}
+            />
+          </div>
+        </aside>
 
-          <section className="space-y-4">
-            <ResultsSummary pagination={pagination} />
-            {warning ? (
-              <Card>
-                <CardContent className="pt-4 text-sm text-muted-foreground">{warning}</CardContent>
-              </Card>
-            ) : null}
-            {hits.length === 0 && !warning ? (
-              <Card>
-                <CardContent className="pt-4 text-sm text-muted-foreground">
-                  {activeQ
-                    ? "No hits."
-                    : hasFilters
-                      ? "No nodes match these filters."
-                      : "Type a query to search."}
+        <section className="space-y-4">
+          <ResultsSummary pagination={pagination} />
+          {warning ? (
+            <Card>
+              <CardContent className="pt-4 text-sm text-muted-foreground">{warning}</CardContent>
+            </Card>
+          ) : null}
+          {hits.length === 0 && !warning ? (
+            <Card>
+              <CardContent className="pt-4 text-sm text-muted-foreground">
+                {activeQ
+                  ? "No hits."
+                  : hasFilters
+                    ? "No nodes match these filters."
+                    : "Type a query to search."}
+              </CardContent>
+            </Card>
+          ) : null}
+          {hits.map((hit) => {
+            const vectorScore = hit.vector_score;
+            return (
+              <Card key={hit.id}>
+                <CardHeader>
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
+                    <NodeTypeBadge nodeType={hit.node_type} />
+                    <Link
+                      to={`/${handle}/${hit.node_type}/${hit.id}`}
+                      className="break-all font-mono text-xs text-primary hover:underline"
+                    >
+                      {hit.id}
+                    </Link>
+                    {hit.lifecycle ? <LifecycleBadge lifecycle={hit.lifecycle} /> : null}
+                    <span className="text-xs text-muted-foreground">
+                      {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
+                      gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
                 </CardContent>
               </Card>
-            ) : null}
-            {hits.map((hit) => {
-              const vectorScore = hit.vector_score;
-              return (
-                <Card key={hit.id}>
-                  <CardHeader>
-                    <CardTitle className="flex flex-wrap items-center gap-2 text-sm">
-                      <NodeTypeBadge nodeType={hit.node_type} />
-                      <Link
-                        to={`/${handle}/${hit.node_type}/${hit.id}`}
-                        className="break-all font-mono text-xs text-primary hover:underline"
-                      >
-                        {hit.id}
-                      </Link>
-                      {hit.lifecycle ? <LifecycleBadge lifecycle={hit.lifecycle} /> : null}
-                      <span className="text-xs text-muted-foreground">
-                        {vectorScore === null ? "" : `cosine ${vectorScore.toFixed(4)} · `}
-                        gpr {hit.gpr.toFixed(4)} · {relativeTimeIso(hit.created_at)}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm">{hit.summary || hit.name || hit.id}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            <PaginationControls pagination={pagination} searchParams={sp} />
-          </section>
-        </div>
-      </main>
-    </div>
+            );
+          })}
+          <PaginationControls pagination={pagination} searchParams={sp} />
+        </section>
+      </div>
+    </main>
   );
 }
 

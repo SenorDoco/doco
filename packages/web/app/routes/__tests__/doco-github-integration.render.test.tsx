@@ -42,7 +42,6 @@ vi.mock("react-router", () => ({
   useSearchParams: () => [new URLSearchParams("")],
 }));
 
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 vi.mock("~/components/breadcrumb", () => ({
   Breadcrumb: () => null,
   docoBreadcrumb: () => [],

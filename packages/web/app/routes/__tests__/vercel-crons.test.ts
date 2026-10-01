@@ -16,9 +16,11 @@ describe("Vercel cron jobs", () => {
     expect(config.crons?.map((cron) => cron.path).sort()).toEqual([
       "/admin/agent-health-cron",
       "/admin/purge-deleted-docos",
+      "/api/alerts/silence-check",
       "/api/embeddings/sweep",
       "/api/github/backfill-sweep",
       "/api/notion/mirror-sync",
+      "/api/onboarding/reminders",
       "/api/slack/mirror-sync",
     ]);
   });
