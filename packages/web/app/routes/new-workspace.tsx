@@ -11,20 +11,17 @@ import {
   handleValidityMessage,
 } from "~/lib/handle-format";
 import { loadHostConfig } from "~/lib/host.server";
-import {
-  addWorkspaceByHandle,
-  ensurePersonalWorkspace,
-  findAvailableWorkspaceHandle,
-} from "~/lib/redeem.server";
+import { ensurePersonalWorkspace, findAvailableWorkspaceHandle } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { createWorkspace } from "~/lib/workspace-create.server";
 
 /**
  * /new-workspace — create an Workspace (v15 single-property model).
  *
  * The Workspace has one user-facing property: `handle`. The user
- * types the handle they want. On submit, if it's free, the workspace lands
- * and the person goes on to connect an agent to it at
- * `/workspaces/<handle>/agent`. If it's taken, the form re-renders with the
+ * types the handle they want. On submit, if it's free, the workspace lands,
+ * a welcome email goes out, and the person goes to the workspace, which walks
+ * them through setting it up. If it's taken, the form re-renders with the
  * next available suggestion (e.g. `acme-2`) and a one-click "Use
  * suggested" button (sets `accept_suggested=1` on the form submit).
  */
@@ -48,12 +45,12 @@ export async function action({ request }: { request: Request }) {
   if (!requested) return { error: "Handle is required.", suggested: null };
 
   try {
-    const { handle } = await addWorkspaceByHandle({
+    const { handle } = await createWorkspace({
       handle: requested,
       ownerUserId: me.id,
       autoSuffix: accept,
     });
-    throw redirect(`/workspaces/${handle}/agent`);
+    throw redirect(`/workspaces/${handle}`);
   } catch (e) {
     if (e instanceof Response) throw e;
     const message = (e as Error).message;

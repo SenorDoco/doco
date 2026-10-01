@@ -1,5 +1,7 @@
-// /workspaces/:workspaceHandle — per-Workspace home. On top, the same summary
-// card the Workspaces page shows for it (Doco icons, New Doco or source /
+// /workspaces/:workspaceHandle — per-Workspace home. On top, until they're
+// done, the steps that get the workspace going for the signed-in person
+// (components/onboarding-stepper.tsx), on the first one not done. Then the
+// same summary card the Workspaces page shows for it (Doco icons, New Doco or source /
 // Invite person / Invite agent, latest activity), then the detailed list of
 // its Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
@@ -22,6 +24,7 @@ import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
+import { OnboardingStepper } from "~/components/onboarding-stepper";
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
@@ -37,6 +40,7 @@ import {
 import { cn } from "~/lib/cn";
 import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
 import { lifecycleColor } from "~/lib/node-colors";
+import { loadOnboardingView } from "~/lib/onboarding-view.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -90,6 +94,7 @@ export async function loader({
     docos: docoRows,
   } = await loadWorkspaceForRead(params.workspaceHandle, me?.id ?? null);
   const canInviteUsers = myRole === "owner";
+  const onboarding = me ? await loadOnboardingView({ request, workspace, userId: me.id }) : null;
 
   return withClient(async (c) => {
     const docoIds = docoRows.map((r) => r.id);
@@ -245,6 +250,7 @@ export async function loader({
       workspace,
       summary,
       me,
+      onboarding,
       canInviteUsers,
       canEditConstitution: canInviteUsers,
       docos,
@@ -296,6 +302,7 @@ export default function WorkspaceHome({
     workspace,
     summary,
     me,
+    onboarding,
     canInviteUsers,
     canEditConstitution,
     docos,
@@ -334,6 +341,8 @@ export default function WorkspaceHome({
         >
           <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
         </PageHeader>
+
+        {onboarding ? <OnboardingStepper view={onboarding} /> : null}
 
         <WorkspaceSummaryCard workspace={summary} showName={false} />
 

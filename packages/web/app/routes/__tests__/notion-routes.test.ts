@@ -82,6 +82,11 @@ describe("/integrations/notion/callback", () => {
     });
   });
 
+  it("returns to the workspace's onboarding when the connect started there", async () => {
+    mocks.verifyNotionState.mockReturnValue({ ...state, next: "/workspaces/acme" });
+    expect(await callback("code=c1&state=signed")).toBe("/workspaces/acme");
+  });
+
   it("rejects a state it did not sign", async () => {
     mocks.verifyNotionState.mockReturnValue(null);
     expect(await callback("code=c1&state=forged")).toBe("/workspaces?notion=invalid_state");

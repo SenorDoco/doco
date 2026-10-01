@@ -6,6 +6,7 @@
 // (lib/notion-mirror.server.ts).
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { withClient } from "@doco/db";
+import { isLocalPath } from "./local-path";
 import { type NotionTokenResponse, getNotionConfig, notionAuthorizeUrl } from "./notion-api.server";
 import { decryptSecret, encryptSecret } from "./secret-box.server";
 
@@ -15,6 +16,9 @@ export interface NotionOAuthState {
   workspaceId: string;
   /** The Doco user who consented; the callback must be them. */
   userId: string;
+  /** Where to send them once the mirror is on, instead of the Doco's Notion
+   *  page: a workspace's onboarding, which offers the next source. */
+  next?: string;
   nonce: string;
   issuedAt: number;
 }
@@ -64,6 +68,7 @@ export function verifyNotionState(
     docoId: state.docoId,
     workspaceId: state.workspaceId,
     userId: state.userId,
+    ...(isLocalPath(state.next) ? { next: state.next } : {}),
     nonce: state.nonce,
     issuedAt: state.issuedAt,
   };
@@ -82,7 +87,7 @@ export function notionRedirectUri(request: Request): string {
  *  into a mirror; null when Notion isn't configured on this host. */
 export function buildNotionAuthorizeUrl(
   request: Request,
-  args: { docoId: string; workspaceId: string; userId: string },
+  args: { docoId: string; workspaceId: string; userId: string; next?: string },
 ): string | null {
   const config = getNotionConfig();
   if (!config.configured) return null;

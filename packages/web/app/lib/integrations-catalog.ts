@@ -18,6 +18,10 @@ export interface IntegrationDefinition {
   /** The integration's own setup page, which picks its Docos itself; without
    *  one, a Doco-level integration is set up from a Doco picker. */
   setupPath?: string;
+  /** For a source of knowledge that fills one Doco of its own: that Doco's
+   *  template. A new workspace offers every such source to connect in one
+   *  click (lib/knowledge-sources.server.ts says how each connects). */
+  template?: string;
 }
 
 export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
@@ -27,6 +31,7 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     description:
       "Connect a Slack team to one doco workspace. Señor Doco then works only in that workspace's docos; individual channels can be wired to specific docos after install.",
     scope: "workspace",
+    template: "slack",
   },
   {
     id: "github",
@@ -42,6 +47,7 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     description:
       "Mirror the Notion pages and databases you share with Doco into one doco, kept in sync, so they can be searched alongside its knowledge.",
     scope: "doco",
+    template: "notion",
   },
 ];
 
@@ -87,5 +93,14 @@ export function sourceIntegrationFor(
   template: string | null | undefined,
 ): SourceIntegration | null {
   if (GITHUB_IMPORTS.some((i) => i.template === template)) return "github";
-  return template === "slack" || template === "notion" ? template : null;
+  const source = INTEGRATION_CATALOG.find((i) => i.template && i.template === template);
+  return (source?.id as SourceIntegration | undefined) ?? null;
 }
+
+/** The sources of knowledge besides GitHub, each filling a Doco of its own
+ *  template, in catalog order. Pure. */
+export const KNOWLEDGE_SOURCE_INTEGRATIONS: readonly (IntegrationDefinition & {
+  template: string;
+})[] = INTEGRATION_CATALOG.filter((i): i is IntegrationDefinition & { template: string } =>
+  Boolean(i.template),
+);

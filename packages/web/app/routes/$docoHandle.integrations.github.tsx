@@ -38,7 +38,7 @@ import {
   type GitHubBackfillState,
   type GitHubInstallationChoice,
   buildInstallUrl,
-  connectRepositories,
+  connectPicked,
   getDocoConnectionsContext,
   githubOrgAccounts,
   listGitHubInstallationChoicesForDocos,
@@ -48,7 +48,6 @@ import {
   removeConnection,
   resumeCursorFromConnections,
   setBackfillState,
-  subscribeInstallation,
 } from "~/lib/github-connection.server";
 import {
   type GitHubImport,
@@ -145,16 +144,7 @@ export async function action({
       },
     );
     if ("error" in picked) return picked;
-    const connectedAt = new Date().toISOString();
-    for (const choice of picked.installations) {
-      await subscribeInstallation(meta.docoId, {
-        installation_id: choice.installation_id,
-        account: choice.account,
-        connected_at: connectedAt,
-      });
-    }
-    if (picked.connections.length > 0) {
-      await connectRepositories(meta.docoId, picked.connections);
+    if (await connectPicked(meta.docoId, picked)) {
       waitUntil(kickBackfillRun(new URL(request.url).origin, meta.docoId));
     }
     // Back to the Doco, which shows the import's progress as it fills.

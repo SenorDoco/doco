@@ -10,8 +10,7 @@ const mocks = vi.hoisted(() => ({
   listGitHubInstallationChoicesForDocos: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   buildInstallUrl: vi.fn(),
-  connectRepositories: vi.fn(),
-  subscribeInstallation: vi.fn(),
+  connectPicked: vi.fn(),
   kickBackfillRun: vi.fn(),
   waitUntil: vi.fn(),
 }));
@@ -40,8 +39,7 @@ vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
   listGitHubInstallationChoicesForDocos: mocks.listGitHubInstallationChoicesForDocos,
   getDocoConnectionsContext: mocks.getDocoConnectionsContext,
   buildInstallUrl: mocks.buildInstallUrl,
-  connectRepositories: mocks.connectRepositories,
-  subscribeInstallation: mocks.subscribeInstallation,
+  connectPicked: mocks.connectPicked,
 }));
 vi.mock("../api.github.backfill-run", () => ({ kickBackfillRun: mocks.kickBackfillRun }));
 
@@ -91,7 +89,7 @@ beforeEach(() => {
     installations: [],
   });
   mocks.buildInstallUrl.mockReturnValue("https://github.com/apps/doco/installations/new?state=s");
-  mocks.connectRepositories.mockResolvedValue(undefined);
+  mocks.connectPicked.mockResolvedValue(true);
   mocks.kickBackfillRun.mockResolvedValue(undefined);
 });
 
@@ -260,8 +258,14 @@ describe("/integrations/github action", () => {
       { repo: "acme/web", installation_id: 42 },
       { repo: "zeta/docs", installation_id: 7 },
     ];
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_prs", picked);
-    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_bugs", picked);
+    expect(mocks.connectPicked).toHaveBeenCalledWith("doco_prs", {
+      connections: picked,
+      installations: [],
+    });
+    expect(mocks.connectPicked).toHaveBeenCalledWith("doco_bugs", {
+      connections: picked,
+      installations: [],
+    });
     expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", "doco_prs");
     expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", "doco_bugs");
     expect(res.headers.get("Location")).toBe(
@@ -283,6 +287,6 @@ describe("/integrations/github action", () => {
         }),
       }),
     ).toEqual({ error: "evil/repo is not available from your GitHub connections." });
-    expect(mocks.connectRepositories).not.toHaveBeenCalled();
+    expect(mocks.connectPicked).not.toHaveBeenCalled();
   });
 });

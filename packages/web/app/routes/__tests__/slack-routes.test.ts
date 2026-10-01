@@ -244,6 +244,32 @@ describe("Slack integration routes", () => {
       });
     });
 
+    it("returns to the workspace's onboarding when the connect started there", async () => {
+      mocks.turnOnSlackMirror.mockResolvedValue({ ok: true, handle: "acme-slack" });
+      mocks.verifySlackState.mockReturnValue({
+        installerId: "user_alice",
+        docoWorkspaceId: "workspace_acme",
+        mirrorDocoId: "doco_slack",
+        next: "/workspaces/acme",
+      });
+      expect((await callback()).headers.get("Location")).toBe("/workspaces/acme");
+      await flushSlackBackgroundWork();
+    });
+
+    it("never returns anywhere off the site", async () => {
+      mocks.turnOnSlackMirror.mockResolvedValue({ ok: true, handle: "acme-slack" });
+      mocks.verifySlackState.mockReturnValue({
+        installerId: "user_alice",
+        docoWorkspaceId: "workspace_acme",
+        mirrorDocoId: "doco_slack",
+        next: "//evil.test/x",
+      });
+      expect((await callback()).headers.get("Location")).toBe(
+        "/acme-slack/integrations/slack?slack=mirroring",
+      );
+      await flushSlackBackgroundWork();
+    });
+
     it("explains when the Slack user who approved isn't a Slack admin", async () => {
       mocks.turnOnSlackMirror.mockResolvedValue({
         ok: false,
