@@ -24,7 +24,7 @@ import {
   clearGraphReferences,
   publishGraphReferences,
 } from "~/lib/graph-references";
-import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
+import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel, visibleLifecycleTotal } from "~/lib/perspective-count";
 import { timeAgo } from "~/lib/time-ago";
 import { usePerspectiveFocusScroll } from "~/lib/use-perspective-focus-scroll";
@@ -62,8 +62,9 @@ const NODE_TYPE_ORDER = new Map(
 // Canonical lifecycle progression (drafting → proposed → active → retired).
 // Used here as a tiebreaker sort within a node type so lists agree with
 // the lifecycle filter row and the doco-stats card on render order.
-const LIFECYCLE_RANK = new Map(
-  ["drafting", "queued", "active", "retired"].map((lifecycle, index) => [lifecycle, index]),
+const LIFECYCLES = ["drafting", "queued", "active", "retired"] as const;
+const LIFECYCLE_RANK = new Map<string, number>(
+  LIFECYCLES.map((lifecycle, index) => [lifecycle, index]),
 );
 
 const POLICY_TYPES = new Set(["policy"]);
@@ -184,7 +185,7 @@ export function ListPerspective({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {sorted.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
-            This Doco has no nodes yet.
+            {emptyListNote(nodes, totalByLifecycle, visibleLifecycles)}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -202,6 +203,29 @@ export function ListPerspective({
       </div>
     </div>
   );
+}
+
+/** Why the list shows nothing: the Doco has no nodes, or the Life cycle
+ *  filter hides every node it has (retired ones are hidden by default). */
+function emptyListNote(
+  nodes: readonly ListPerspectiveNode[],
+  totalByLifecycle: LifecycleCounts | undefined,
+  visible: Set<string> | undefined,
+): string {
+  const byStage = totalByLifecycle ?? { ...EMPTY_LIFECYCLE_COUNTS };
+  if (!totalByLifecycle) {
+    for (const node of nodes) {
+      const stage = (node.lifecycle ?? "active") as keyof LifecycleCounts;
+      if (stage in byStage) byStage[stage] += 1;
+    }
+  }
+  const hidden = LIFECYCLES.filter((stage) => visible && !visible.has(stage) && byStage[stage]);
+  const count = hidden.reduce((sum, stage) => sum + byStage[stage], 0);
+  if (count === 0) return "This Doco has no nodes yet.";
+  const stages = hidden.map((stage) => stage[0].toUpperCase() + stage.slice(1)).join(" or ");
+  return count === 1
+    ? `1 node is hidden by the Life cycle filter. Tick ${stages} to show it.`
+    : `${count.toLocaleString("en-US")} nodes are hidden by the Life cycle filter. Tick ${stages} to show them.`;
 }
 
 interface ListRowProps {
