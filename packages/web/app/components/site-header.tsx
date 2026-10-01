@@ -74,11 +74,13 @@ export function SiteHeader({
         <div className="ml-auto flex shrink-0 items-center gap-3 text-xs">
           {me ? (
             <>
-              {/* lg+: nav rendered inline. */}
-              <nav className="hidden items-center gap-3 lg:flex">
+              {/* xl+: nav rendered inline. An owner's nav (Feedback, Access
+                  requests, the feedback flags) needs ~1250px beside the logo
+                  and version strip; any narrower and it would run over them. */}
+              <nav className="hidden items-center gap-3 xl:flex">
                 <NavButtons me={me} accessRequestsPending={accessRequestsPending} />
               </nav>
-              {/* < lg: collapsed into a hamburger popover so the
+              {/* < xl: collapsed into a hamburger popover so the
                   buttons don't crowd the title / version pill. */}
               <MobileNavMenu me={me} accessRequestsPending={accessRequestsPending} />
             </>
@@ -250,7 +252,7 @@ function MobileNavMenu({
   }, [open]);
 
   return (
-    <div ref={wrapperRef} className="relative lg:hidden">
+    <div ref={wrapperRef} className="relative xl:hidden">
       <button
         type="button"
         aria-label="Open navigation menu"

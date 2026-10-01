@@ -28,7 +28,9 @@ export const DOCO_TAGLINE = "Keep people, agents, and work aligned";
 
 /**
  * Identity strip beside the DocoMark on every page: "Alpha <version> · <ago>"
- * with the project tagline underneath.
+ * with the project tagline underneath. It gives way when its row is tight: the
+ * version line ends in an ellipsis and the tagline wraps onto two lines, so it
+ * never runs under the header's nav.
  * Replaces the prior owner/doco slug breadcrumb (which only appeared on
  * Doco-scoped pages and re-stated info already in the URL). Build-time
  * constants come from vite.config.ts; the relative-time string refreshes
@@ -46,19 +48,17 @@ export function VersionPill({ className }: VersionPillProps) {
   return (
     <span
       className={cn(
-        "flex flex-col gap-0.5 font-normal text-xs leading-tight text-muted-foreground",
+        "flex min-w-0 flex-col gap-0.5 font-normal text-xs leading-tight text-muted-foreground",
         className,
       )}
       suppressHydrationWarning
     >
-      <span className="whitespace-nowrap opacity-50">
+      <span className="truncate opacity-50">
         Alpha {__DOCO_VERSION__} · {ago}
       </span>
-      {/* Tagline hides below sm so the app header keeps a single-row,
-          predictable height on small screens — otherwise the tagline
-          wraps onto 3–4 lines and pushes overlays (e.g. the node
-          dialog at top-20) into the middle of the visible header. */}
-      <span className="hidden whitespace-nowrap sm:inline">{DOCO_TAGLINE}</span>
+      {/* At most two lines, which fit the 56px header under the version
+          line. Hidden below sm, where two lines would crowd the logo. */}
+      <span className="hidden text-balance sm:line-clamp-2">{DOCO_TAGLINE}</span>
     </span>
   );
 }
