@@ -1,6 +1,6 @@
 // The cards of a Doco's activity column: the Activity chart, who contributed
-// most, and the latest recorded writes. Every Doco home shows them, the
-// reader's home (codebase, Notion) included.
+// most, and the latest recorded writes. Every Doco home shows them, and the
+// reader (codebase, Notion) shows them beside whatever is open.
 
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
@@ -88,7 +88,7 @@ export function LatestActivityCard({
   );
 }
 
-/** The whole column, for a home with nothing else to put in it. */
+/** The whole column, as the reader shows it. */
 export function ActivityColumn({ activity, handle }: { activity: DocoActivity; handle: string }) {
   return (
     <div className="min-w-0 space-y-5">

@@ -1,7 +1,7 @@
 // A Doco's activity, as the side column of its home shows it: the Activity
 // chart's count per day (nodes captured, and what the Doco copied from its
 // source), the latest recorded writes, and who made the most of them. A
-// reader Doco (codebase, Notion) shows the same column beside its reader home.
+// reader Doco (codebase, Notion) shows the same column beside whatever is open.
 //
 // Activity reflects nodes only: policies are Doco-level metadata with their
 // own surface, and counting their bulk-imported writes here makes a fresh

@@ -4,9 +4,7 @@ import { withClient } from "@doco/db";
 import { useLoaderData, useOutletContext } from "react-router";
 import { PagesReaderView } from "~/components/reader/pages-views";
 import type { ReaderShell } from "~/components/reader/reader-layout";
-import { ReaderHome } from "~/components/reader/reader-parts";
 import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";
-import { loadDocoActivity } from "~/lib/doco-activity.server";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadPagesView } from "~/lib/notion-mirror-read.server";
 import { readerFor } from "~/lib/reader";
@@ -23,17 +21,11 @@ export async function loader({
   const query = (new URL(request.url).searchParams.get("q") ?? "").trim();
   // Searching pages is hybrid: the query's embedding ranks alongside its words.
   const semantic = query ? (await embedQuery(query)).semantic : null;
-  const pageId = params["*"] ?? "";
-  // The home, like every Doco's home, shows the Doco's activity beside it.
-  const atHome = pageId === "" && !query;
-  const [view, activity] = await withClient((c) =>
-    Promise.all([
-      loadPagesView(c, ctx.meta.docoId, { pageId, query, semantic }),
-      atHome ? loadDocoActivity(c, ctx.meta.docoId) : null,
-    ]),
+  const view = await withClient((c) =>
+    loadPagesView(c, ctx.meta.docoId, { pageId: params["*"] ?? "", query, semantic }),
   );
   if (!view) throw new Response("Not found", { status: 404 });
-  return { handle: ctx.handle, view, activity };
+  return { handle: ctx.handle, view };
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
@@ -49,14 +41,7 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
 }
 
 export default function PagesReader() {
-  const { handle, view, activity } = useLoaderData<typeof loader>();
+  const { handle, view } = useLoaderData<typeof loader>();
   const shell = useOutletContext<ReaderShell>();
-  const reader = <PagesReaderView handle={handle} view={view} status={shell.status} />;
-  return activity ? (
-    <ReaderHome handle={handle} activity={activity}>
-      {reader}
-    </ReaderHome>
-  ) : (
-    reader
-  );
+  return <PagesReaderView handle={handle} view={view} status={shell.status} />;
 }
