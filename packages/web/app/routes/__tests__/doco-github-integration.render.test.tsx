@@ -178,6 +178,32 @@ describe("GitHub integration · connecting a new Doco", () => {
   });
 });
 
+// An organization can hold a hundred repositories: picking them one by one
+// doesn't work, so each organization can be picked as a whole.
+describe("GitHub integration · a whole organization at once", () => {
+  it("offers each organization as a whole, ahead of its repositories", () => {
+    fixture.loaderData = {
+      ...baseLoaderData,
+      installationChoices: [torreLabs, { ...torrenegra, repository_selection: "all" }],
+    };
+
+    const html = renderToStaticMarkup(<DocoGitHubIntegration />);
+
+    expect(
+      [...html.matchAll(/<input type="checkbox"[^>]*name="installation" value="(\d+)"/g)].map(
+        (m) => m[1],
+      ),
+    ).toEqual(["8", "7"]);
+    // GitHub shows Doco only the repositories chosen for it in torre-labs…
+    expect(html).toContain(
+      "Every repository Doco can see in torre-labs (2), including ones you give it later",
+    );
+    // …and every repository in torrenegra.
+    expect(html).toContain("Every repository in torrenegra (1), including ones added later");
+    expect(html.indexOf('value="8"')).toBeLessThan(html.indexOf('value="torre-labs/heda"'));
+  });
+});
+
 describe("connectLabel", () => {
   it("says what the button connects", () => {
     expect(connectLabel(0, [])).toBe("Connect repositories");

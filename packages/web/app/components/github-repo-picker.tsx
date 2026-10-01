@@ -17,8 +17,6 @@ export const NEUTRAL_BTN =
 export type InstallationPickerChoice = GitHubInstallationChoice & {
   selectableRepositories: string[];
   connectedRepositories: string[];
-  hasSelectableRepositories: boolean;
-  canConnectInstallation: boolean;
   isInstallationConnected: boolean;
 };
 
@@ -27,35 +25,30 @@ export function buildInstallationPickerChoices(
   connectedRepos: Set<string>,
   connectedInstallationIds = new Set<number>(),
 ): InstallationPickerChoice[] {
-  return choices.map((choice) => {
-    const connectedRepositories = choice.repositories.filter((repo) => connectedRepos.has(repo));
-    const selectableRepositories = choice.repositories.filter((repo) => !connectedRepos.has(repo));
-    const isInstallationConnected = connectedInstallationIds.has(choice.installation_id);
-    return {
-      ...choice,
-      selectableRepositories,
-      connectedRepositories,
-      hasSelectableRepositories: selectableRepositories.length > 0,
-      canConnectInstallation:
-        !isInstallationConnected &&
-        choice.repository_selection === "all" &&
-        selectableRepositories.length === 0 &&
-        connectedRepositories.length === 0,
-      isInstallationConnected,
-    };
-  });
+  return choices.map((choice) => ({
+    ...choice,
+    selectableRepositories: choice.repositories.filter((repo) => !connectedRepos.has(repo)),
+    connectedRepositories: choice.repositories.filter((repo) => connectedRepos.has(repo)),
+    isInstallationConnected: connectedInstallationIds.has(choice.installation_id),
+  }));
 }
 
-/** The choices still worth offering: org groups with repos left to pick, or
- *  an empty all-repos org to attach. Orgs fully connected drop out. Pure. */
+/** The organizations still worth offering: every one not yet connected as a
+ *  whole, since picking it brings the rest of its repositories and the ones
+ *  added later. Pure. */
 export function addableInstallationChoices(
   choices: InstallationPickerChoice[],
 ): InstallationPickerChoice[] {
-  return choices.filter(
-    (choice) =>
-      !choice.isInstallationConnected &&
-      (choice.hasSelectableRepositories || choice.canConnectInstallation),
-  );
+  return choices.filter((choice) => !choice.isInstallationConnected);
+}
+
+/** The checkbox that picks an organization as a whole. A "selected"
+ *  installation sees only the repositories chosen for Doco in GitHub. */
+function wholeAccountLabel(choice: GitHubInstallationChoice): string {
+  const count = choice.repositories.length > 0 ? ` (${choice.repositories.length})` : "";
+  return choice.repository_selection === "all"
+    ? `Every repository in ${choice.account}${count}, including ones added later`
+    : `Every repository Doco can see in ${choice.account}${count}, including ones you give it later`;
 }
 
 /** What the connect button says for what is picked. Pure. */
@@ -71,10 +64,10 @@ export function connectLabel(repos: number, wholeAccounts: string[]): string {
 
 /**
  * Every repository the user can connect, grouped by GitHub organization, in
- * one form with one button: it posts `intent=connect` with the picked `repo`s,
- * and the `installation` of each organization GitHub lists no repository
- * names for, picked as a whole. `fields` ride along as hidden inputs, and
- * `aside` sits next to the button (a way to skip the step, say).
+ * one form with one button: it posts `intent=connect` with the picked `repo`s
+ * and the `installation` of each organization picked as a whole (one click for
+ * an organization of a hundred repositories). `fields` ride along as hidden
+ * inputs, and `aside` sits next to the button (a way to skip the step, say).
  */
 export function RepositoryPicker({
   choices,
@@ -87,7 +80,11 @@ export function RepositoryPicker({
   fields?: Array<[name: string, value: string]>;
   aside?: ReactNode;
 }) {
-  const [picked, setPicked] = useState({ repos: 0, accounts: [] as string[] });
+  const [picked, setPicked] = useState({
+    repos: 0,
+    installations: [] as string[],
+    accounts: [] as string[],
+  });
   const grantMore = installUrl ? (
     <a href={installUrl} className="inline-flex items-center gap-1 font-semibold text-primary">
       Give Doco access to it in GitHub
@@ -110,11 +107,17 @@ export function RepositoryPicker({
       className="space-y-4"
       onChange={(event) => {
         const form = event.currentTarget;
+        const whole = [
+          ...form.querySelectorAll<HTMLInputElement>('input[name="installation"]:checked'),
+        ];
+        const installations = whole.map((input) => input.value);
         setPicked({
-          repos: form.querySelectorAll('input[name="repo"]:checked').length,
-          accounts: [
-            ...form.querySelectorAll<HTMLInputElement>('input[name="installation"]:checked'),
-          ].map((input) => input.dataset.account ?? ""),
+          // An organization picked as a whole hides its repositories.
+          repos: [...form.querySelectorAll<HTMLInputElement>('input[name="repo"]:checked')].filter(
+            (input) => !installations.includes(input.dataset.installation ?? ""),
+          ).length,
+          installations,
+          accounts: whole.map((input) => input.dataset.account ?? ""),
         });
       }}
     >
@@ -132,20 +135,26 @@ export function RepositoryPicker({
               GitHub didn&apos;t answer, so only the repositories Doco already knows are listed.
             </p>
           ) : null}
-          {choice.canConnectInstallation ? (
-            <RepositoryCheckbox
-              name="installation"
-              value={String(choice.installation_id)}
-              account={choice.account}
-              label={`Every repository in ${choice.account}, including ones added later`}
-            />
-          ) : (
+          <RepositoryCheckbox
+            name="installation"
+            value={String(choice.installation_id)}
+            account={choice.account}
+            label={wholeAccountLabel(choice)}
+          />
+          {choice.selectableRepositories.length > 0 &&
+          !picked.installations.includes(String(choice.installation_id)) ? (
             <div className="grid gap-2 sm:grid-cols-2">
               {choice.selectableRepositories.map((repo) => (
-                <RepositoryCheckbox key={repo} name="repo" value={repo} label={repo} />
+                <RepositoryCheckbox
+                  key={repo}
+                  name="repo"
+                  value={repo}
+                  label={repo}
+                  installation={String(choice.installation_id)}
+                />
               ))}
             </div>
-          )}
+          ) : null}
         </fieldset>
       ))}
       {grantMore ? (
@@ -170,11 +179,13 @@ function RepositoryCheckbox({
   value,
   label,
   account,
+  installation,
 }: {
   name: string;
   value: string;
   label: string;
   account?: string;
+  installation?: string;
 }) {
   return (
     <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs hover:bg-input">
@@ -183,6 +194,7 @@ function RepositoryCheckbox({
         name={name}
         value={value}
         data-account={account}
+        data-installation={installation}
         className="h-3.5 w-3.5 shrink-0 accent-primary"
       />
       <span

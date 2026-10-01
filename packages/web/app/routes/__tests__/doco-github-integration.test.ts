@@ -84,7 +84,10 @@ vi.mock("../api.github.backfill-run", () => ({
   kickBackfillRun: mocks.kickBackfillRun,
 }));
 
-import { buildInstallationPickerChoices } from "~/components/github-repo-picker";
+import {
+  addableInstallationChoices,
+  buildInstallationPickerChoices,
+} from "~/components/github-repo-picker";
 import {
   action,
   connectedOrgRepositories,
@@ -237,7 +240,42 @@ describe("/:docoHandle/integrations/github", () => {
     expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
   });
 
-  it("connects an all-repositories installation when GitHub returns no repo names", async () => {
+  it("connects a whole organization: every repository it lists, imported now, and later ones", async () => {
+    mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
+      {
+        installation_id: 42,
+        account: "torre-labs",
+        repository_selection: "selected",
+        repositories: ["torre-labs/heda", "torre-labs/vader"],
+        connected_repositories: [],
+        source_doco_handles: ["meta-pull-requests"],
+      },
+    ]);
+
+    const response = (await action({
+      request: postForm({ intent: "connect", installation: "42" }),
+      ...routeArgs,
+    }).catch((error: Response) => error)) as Response;
+
+    expect(response.headers.get("Location")).toBe("/meta-pull-requests");
+    // Subscribed, so repositories GitHub gives Doco later come in too…
+    expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
+      "doco_1",
+      expect.objectContaining({
+        installation_id: 42,
+        account: "torre-labs",
+        connected_at: expect.any(String),
+      }),
+    );
+    // …and every repository it lists now starts importing.
+    expect(mocks.connectRepositories).toHaveBeenCalledWith("doco_1", [
+      { repo: "torre-labs/heda", installation_id: 42 },
+      { repo: "torre-labs/vader", installation_id: 42 },
+    ]);
+    expect(mocks.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it("subscribes an organization GitHub lists no repositories for, with nothing to import yet", async () => {
     mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
       {
         installation_id: 42,
@@ -257,50 +295,45 @@ describe("/:docoHandle/integrations/github", () => {
     expect(response.headers.get("Location")).toBe("/meta-pull-requests");
     expect(mocks.subscribeInstallation).toHaveBeenCalledWith(
       "doco_1",
-      expect.objectContaining({
-        installation_id: 42,
-        account: "Doco-to",
-        connected_at: expect.any(String),
-      }),
+      expect.objectContaining({ installation_id: 42, account: "Doco-to" }),
     );
     expect(mocks.connectRepositories).not.toHaveBeenCalled();
     expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
 
-  it("marks an installed GitHub org with no repositories as not selectable", () => {
+  it("offers every organization as a whole, even one whose repositories are all connected", () => {
     const choices = buildInstallationPickerChoices(
       [
         {
           installation_id: 42,
-          account: "Doco-to",
-          repository_selection: "all",
-          repositories: [],
-          connected_repositories: [],
+          account: "torre-labs",
+          repository_selection: "selected",
+          repositories: ["torre-labs/heda"],
+          connected_repositories: ["torre-labs/heda"],
           source_doco_handles: ["meta-pull-requests"],
         },
       ],
-      new Set(),
+      new Set(["torre-labs/heda"]),
     );
 
-    expect(choices).toEqual([
+    expect(addableInstallationChoices(choices)).toEqual([
       expect.objectContaining({
-        account: "Doco-to",
+        account: "torre-labs",
         selectableRepositories: [],
-        connectedRepositories: [],
-        hasSelectableRepositories: false,
-        canConnectInstallation: true,
+        connectedRepositories: ["torre-labs/heda"],
+        isInstallationConnected: false,
       }),
     ]);
   });
 
-  it("does not offer an all-repositories installation that is already connected here", () => {
+  it("does not offer an organization that is already connected here as a whole", () => {
     const choices = buildInstallationPickerChoices(
       [
         {
           installation_id: 42,
           account: "Doco-to",
           repository_selection: "all",
-          repositories: [],
+          repositories: ["Doco-to/app"],
           connected_repositories: [],
           source_doco_handles: ["meta-pull-requests"],
         },
@@ -310,12 +343,9 @@ describe("/:docoHandle/integrations/github", () => {
     );
 
     expect(choices).toEqual([
-      expect.objectContaining({
-        account: "Doco-to",
-        isInstallationConnected: true,
-        canConnectInstallation: false,
-      }),
+      expect.objectContaining({ account: "Doco-to", isInstallationConnected: true }),
     ]);
+    expect(addableInstallationChoices(choices)).toEqual([]);
   });
 
   it("offers only not-yet-connected repos to add, in the order GitHub returned", () => {
@@ -334,7 +364,6 @@ describe("/:docoHandle/integrations/github", () => {
 
     expect(choice.selectableRepositories).toEqual(["acme/api", "acme/docs"]);
     expect(choice.connectedRepositories).toEqual(["acme/web"]);
-    expect(choice.hasSelectableRepositories).toBe(true);
   });
 
   it("lists the repositories covered by a connected org installation", () => {

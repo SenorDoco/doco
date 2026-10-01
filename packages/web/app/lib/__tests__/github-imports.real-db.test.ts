@@ -147,14 +147,20 @@ describe("connecting repositories", () => {
     });
   });
 
-  it("picks an organization GitHub lists no repositories for, as a whole", () => {
-    expect(pickConnections([acme, empty], { repos: [], installations: ["5"] })).toEqual({
-      connections: [],
-      installations: [empty],
-    });
-    // Only an all-repositories installation can be connected as a whole.
-    expect(pickConnections([acme], { repos: [], installations: ["9"] })).toEqual({
-      error: "Pick the repositories to connect from acme.",
+  it("picks a whole organization: every repository it lists now, and its later ones", () => {
+    const selected = { ...zeta, repository_selection: "selected" as const };
+    expect(
+      pickConnections([acme, selected, empty], {
+        repos: ["acme/api"],
+        installations: ["9", "7", "5"],
+      }),
+    ).toEqual({
+      connections: [
+        { repo: "acme/api", installation_id: 9 },
+        { repo: "acme/app", installation_id: 9 },
+        { repo: "zeta/web", installation_id: 7 },
+      ],
+      installations: [acme, selected, empty],
     });
   });
 

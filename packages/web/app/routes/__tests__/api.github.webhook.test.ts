@@ -7,8 +7,8 @@ const {
   hasBusinessProcessCodeReferences,
   mintInstallationToken,
   listPullRequestFiles,
-  backfillInstallationRepos,
-  addConnection,
+  connectRepositories,
+  kickBackfillRun,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
   findDocoByInstallation,
@@ -25,14 +25,8 @@ const {
   listPullRequestFiles: vi.fn(
     async (): Promise<Array<{ filename: string; patch: string | null }>> => [],
   ),
-  backfillInstallationRepos: vi.fn(async () => ({
-    repos: 1,
-    created: 0,
-    updated: 0,
-    unchanged: 0,
-    failed: 0,
-  })),
-  addConnection: vi.fn(async () => []),
+  connectRepositories: vi.fn(async () => {}),
+  kickBackfillRun: vi.fn(async () => {}),
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
@@ -56,9 +50,9 @@ vi.mock("~/lib/github-pr-import.server", () => ({
   upsertPullRequestReference,
   hasBusinessProcessCodeReferences,
 }));
-vi.mock("~/lib/github-backfill.server", () => ({ backfillInstallationRepos }));
+vi.mock("../api.github.backfill-run", () => ({ kickBackfillRun }));
 vi.mock("~/lib/github-connection.server", () => ({
-  addConnection,
+  connectRepositories,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
 }));
@@ -131,26 +125,24 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     });
     expect(await res.json()).toMatchObject({ ok: true, removed: 1 });
     expect(detachReposEverywhere).toHaveBeenCalledWith(["acme/old"]);
-    expect(backfillInstallationRepos).not.toHaveBeenCalled();
+    expect(connectRepositories).not.toHaveBeenCalled();
   });
 
-  it("installation_repositories added → records the connection AND backfills", async () => {
+  it("installation_repositories added → connects them and queues their import in the background", async () => {
+    // Choosing "All repositories" in GitHub adds a whole organization at once:
+    // far too many repositories to import inside the webhook.
     const res = await send("installation_repositories", {
       action: "added",
       installation: { id: 42 },
-      repositories_added: [{ full_name: "acme/new" }],
+      repositories_added: [{ full_name: "acme/new" }, { full_name: "acme/other" }],
     });
-    expect(await res.json()).toMatchObject({ ok: true, added: 1 });
-    // The new repo is recorded as a connection (so it shows on the page)…
-    expect(addConnection).toHaveBeenCalledWith(
-      "doco_1",
-      expect.objectContaining({ repo: "acme/new", installation_id: 42 }),
-    );
-    // …and its pre-existing items are backfilled, as what the Doco brings.
-    expect(backfillInstallationRepos).toHaveBeenCalledTimes(1);
-    expect(backfillInstallationRepos).toHaveBeenCalledWith(
-      expect.objectContaining({ docoId: "doco_1", template: "github-bugs", repos: ["acme/new"] }),
-    );
+    expect(await res.json()).toMatchObject({ ok: true, added: 2, matched: 1 });
+    expect(connectRepositories).toHaveBeenCalledWith("doco_1", [
+      { repo: "acme/new", installation_id: 42 },
+      { repo: "acme/other", installation_id: 42 },
+    ]);
+    expect(kickBackfillRun).toHaveBeenCalledWith("https://doco.to", "doco_1");
+    expect(waitUntil).toHaveBeenCalledTimes(1);
     expect(detachReposEverywhere).not.toHaveBeenCalled();
   });
 
