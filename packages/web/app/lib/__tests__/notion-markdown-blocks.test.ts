@@ -2,7 +2,12 @@
 // one block per line, tab-indented children, Notion's tags, and the
 // guarantee that a page's text never becomes markup.
 import { describe, expect, it } from "vitest";
-import { inlineText, parseInline, parseNotionMarkdown } from "../notion-markdown-blocks";
+import {
+  inlineText,
+  parseGitHubMarkdown,
+  parseInline,
+  parseNotionMarkdown,
+} from "../notion-markdown-blocks";
 
 const text = (value: string) => ({ type: "text" as const, text: value });
 const paragraph = (value: string) => ({ type: "paragraph" as const, children: [text(value)] });
@@ -220,5 +225,51 @@ describe("inlineText", () => {
     expect(
       inlineText(parseInline('**a** [b](https://x.test) <mention-user url="u">Ana</mention-user>')),
     ).toBe("a b @Ana");
+  });
+});
+
+describe("parseGitHubMarkdown", () => {
+  it("joins the lines of a wrapped paragraph, as GitHub does", () => {
+    expect(parseGitHubMarkdown("One sentence\nwrapped here.\n\nNext one.")).toEqual([
+      paragraph("One sentence wrapped here."),
+      paragraph("Next one."),
+    ]);
+  });
+
+  it("ends a paragraph where a heading, list, fence or rule starts", () => {
+    expect(parseGitHubMarkdown("Intro\n# Title\nText\n- item\n\nMore\n```\ncode\n```")).toEqual([
+      paragraph("Intro"),
+      { type: "heading", level: 1, children: [text("Title")] },
+      paragraph("Text"),
+      { type: "list", ordered: false, items: [{ checked: null, children: [paragraph("item")] }] },
+      paragraph("More"),
+      { type: "code", language: "", text: "code" },
+    ]);
+  });
+
+  it("reads pipe tables, with or without the outer pipes", () => {
+    expect(parseGitHubMarkdown("| Name | Role |\n|:---|---:|\n| Ana | Lead |\nBo | Dev")).toEqual([
+      {
+        type: "table",
+        header: [[text("Name")], [text("Role")]],
+        rows: [
+          [[text("Ana")], [text("Lead")]],
+          [[text("Bo")], [text("Dev")]],
+        ],
+      },
+    ]);
+  });
+
+  it("drops HTML comments", () => {
+    expect(parseGitHubMarkdown("<!-- a note\nover lines -->\nShown <!-- inline --> text")).toEqual([
+      paragraph("Shown  text"),
+    ]);
+  });
+
+  it("keeps Notion's one block per line out of Notion's own pages", () => {
+    expect(parseNotionMarkdown("One sentence\nwrapped here.")).toEqual([
+      paragraph("One sentence"),
+      paragraph("wrapped here."),
+    ]);
   });
 });

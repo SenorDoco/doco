@@ -5,7 +5,11 @@
 // tab-indented under their parent, a trailing `{color="…"}` attribute list
 // for block colors, Markdown for what Markdown has syntax for, and XML-like
 // tags for the rest (callouts, toggles, columns, tables, mentions, files).
-// A tag this parser doesn't know renders as its contents. Pure.
+// A tag this parser doesn't know renders as its contents.
+//
+// The same parser reads the Markdown files of a codebase as GitHub writes
+// them (parseGitHubMarkdown): a paragraph runs over several lines, tables
+// are pipes, and HTML comments say nothing. Pure.
 
 export type NotionInline =
   | { type: "text"; text: string }
@@ -131,8 +135,19 @@ function stripColumns(line: string, n: number): string {
   return " ".repeat(Math.max(0, col - n)) + line.slice(i);
 }
 
+/** How the text was written: by Notion, one block per line, or as on
+ *  GitHub, where a paragraph wraps over lines and tables are pipes. */
+type Dialect = "notion" | "github";
+
+const lines = (markdown: string): string[] => markdown.replace(/\r\n?/g, "\n").split("\n");
+
 export function parseNotionMarkdown(markdown: string): NotionBlock[] {
-  return parseBlocks(markdown.replace(/\r\n?/g, "\n").split("\n"));
+  return parseBlocks(lines(markdown), "notion");
+}
+
+/** A Markdown file as GitHub renders it. */
+export function parseGitHubMarkdown(markdown: string): NotionBlock[] {
+  return parseBlocks(lines(markdown.replace(/<!--[\s\S]*?(?:-->|$)/g, "")), "github");
 }
 
 /** The text of a run of inlines, marks dropped. */
@@ -164,7 +179,7 @@ export function inlineText(inlines: NotionInline[]): string {
     .join("");
 }
 
-function parseBlocks(input: string[]): NotionBlock[] {
+function parseBlocks(input: string[], dialect: Dialect): NotionBlock[] {
   const lines = [...input];
   const blocks: NotionBlock[] = [];
   let i = 0;
@@ -206,7 +221,14 @@ function parseBlocks(input: string[]): NotionBlock[] {
     }
     const tag = TAG_OPEN_RE.exec(line);
     if (tag && isBlockTag(tagName(tag[1]))) {
-      i = parseTagBlock(lines, i, tag, blocks);
+      i = parseTagBlock(lines, i, tag, blocks, dialect);
+      continue;
+    }
+    if (dialect === "github" && isPipeTableStart(lines, i)) {
+      let j = i + 2;
+      while (j < lines.length && lines[j].trim() !== "" && lines[j].includes("|")) j++;
+      blocks.push(parsePipeTable(lines.slice(i, j)));
+      i = j;
       continue;
     }
     const heading = HEADING_RE.exec(line);
@@ -228,21 +250,72 @@ function parseBlocks(input: string[]): NotionBlock[] {
         body.push(lines[j].replace(QUOTE_RE, ""));
         j++;
       }
-      blocks.push({ type: "quote", children: parseBlocks(body) });
+      blocks.push({ type: "quote", children: parseBlocks(body, dialect) });
       i = j;
       continue;
     }
     const item = LIST_RE.exec(line);
     if (item) {
       const end = listRegionEnd(lines, i, columns(item[1]), isOrdered(item[2]));
-      blocks.push(parseList(lines.slice(i, end)));
+      blocks.push(parseList(lines.slice(i, end), dialect));
       i = end;
       continue;
     }
-    blocks.push({ type: "paragraph", children: parseInline(stripAttrs(line.trim())) });
+    // On GitHub a paragraph runs on until a blank line or another block.
+    const text = [line.trim()];
     i++;
+    while (dialect === "github" && i < lines.length && continuesParagraph(lines, i)) {
+      text.push(lines[i].trim());
+      i++;
+    }
+    blocks.push({ type: "paragraph", children: parseInline(stripAttrs(text.join(" "))) });
   }
   return blocks;
+}
+
+/** Whether line `i` carries on the GitHub paragraph above it, rather than
+ *  ending it with a blank line or starting a block of its own. */
+function continuesParagraph(lines: string[], i: number): boolean {
+  const line = lines[i];
+  if (line.trim() === "") return false;
+  const tag = TAG_OPEN_RE.exec(line);
+  return !(
+    FENCE_RE.test(line) ||
+    HEADING_RE.test(line) ||
+    RULE_RE.test(line) ||
+    QUOTE_RE.test(line) ||
+    LIST_RE.test(line) ||
+    MATH_FENCE_RE.test(line) ||
+    (tag && isBlockTag(tagName(tag[1]))) ||
+    isPipeTableStart(lines, i)
+  );
+}
+
+const PIPE_DELIMITER_RE = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+
+/** A GitHub table: a row of cells, then a row of dashes under them. */
+function isPipeTableStart(lines: string[], i: number): boolean {
+  const next = lines[i + 1];
+  return (
+    lines[i].includes("|") &&
+    next !== undefined &&
+    next.includes("|") &&
+    PIPE_DELIMITER_RE.test(next)
+  );
+}
+
+/** A row's cells: split on the pipes not escaped, outer pipes dropped. */
+function pipeCells(row: string): NotionInline[][] {
+  const trimmed = row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/(?<!\\)\|$/, "");
+  return trimmed.split(/(?<!\\)\|/).map((cell) => parseInline(cell.trim().replace(/\\\|/g, "|")));
+}
+
+/** A GitHub table's header, delimiter and body rows. */
+function parsePipeTable(rows: string[]): NotionBlock {
+  return { type: "table", header: pipeCells(rows[0]), rows: rows.slice(2).map(pipeCells) };
 }
 
 function isFenceClose(line: string, marks: string): boolean {
@@ -284,7 +357,7 @@ function belongsToList(line: string, base: number, ordered: boolean): boolean {
   return indentOf(line) > base;
 }
 
-function parseList(region: string[]): NotionBlock {
+function parseList(region: string[], dialect: Dialect): NotionBlock {
   const first = LIST_RE.exec(region[0]);
   const base = first ? columns(first[1]) : 0;
   const ordered = isOrdered(first?.[2] ?? "");
@@ -306,7 +379,10 @@ function parseList(region: string[]): NotionBlock {
   return {
     type: "list",
     ordered,
-    items: items.map((item) => ({ checked: item.checked, children: parseBlocks(item.lines) })),
+    items: items.map((item) => ({
+      checked: item.checked,
+      children: parseBlocks(item.lines, dialect),
+    })),
   };
 }
 
@@ -347,6 +423,7 @@ function parseTagBlock(
   i: number,
   tag: RegExpExecArray,
   blocks: NotionBlock[],
+  dialect: Dialect,
 ): number {
   const name = tagName(tag[1]);
   const attrs = tag[2];
@@ -380,20 +457,24 @@ function parseTagBlock(
   } else if (name === "table") {
     blocks.push(parseTable(text, attr(attrs, "header-row") === "true"));
   } else if (name === "callout") {
-    blocks.push({ type: "callout", icon: attr(attrs, "icon"), children: parseBlocks(content) });
+    blocks.push({
+      type: "callout",
+      icon: attr(attrs, "icon"),
+      children: parseBlocks(content, dialect),
+    });
   } else if (name === "details" || name === "toggle") {
     const summary = /<summary\b[^>]*>([\s\S]*?)<\/summary\s*>/i.exec(text);
     const rest = summary ? text.replace(summary[0], "") : text;
     blocks.push({
       type: "details",
       summary: parseInline((summary?.[1] ?? "").trim()),
-      children: parseBlocks(rest.split("\n")),
+      children: parseBlocks(rest.split("\n"), dialect),
     });
   } else if (name === "columns") {
-    blocks.push({ type: "columns", columns: splitColumns(content) });
+    blocks.push({ type: "columns", columns: splitColumns(content, dialect) });
   } else {
     // column outside a column list, synced blocks, quote: contents in place.
-    blocks.push(...parseBlocks(content));
+    blocks.push(...parseBlocks(content, dialect));
   }
   return next;
 }
@@ -413,12 +494,12 @@ function parseTable(text: string, headerRow: boolean): NotionBlock {
   };
 }
 
-function splitColumns(content: string[]): NotionBlock[][] {
+function splitColumns(content: string[], dialect: Dialect): NotionBlock[][] {
   const lines = [...content];
   const columns: NotionBlock[][] = [];
   let loose: string[] = [];
   const flush = () => {
-    if (loose.some((l) => l.trim() !== "")) columns.push(parseBlocks(loose));
+    if (loose.some((l) => l.trim() !== "")) columns.push(parseBlocks(loose, dialect));
     loose = [];
   };
   let i = 0;
@@ -432,7 +513,7 @@ function splitColumns(content: string[]): NotionBlock[][] {
         trailing,
       } = elementContent(lines, i, "column", lines[i].slice(tag[0].length));
       if (trailing.trim()) lines.splice(next, 0, trailing);
-      columns.push(parseBlocks(inner));
+      columns.push(parseBlocks(inner, dialect));
       i = next;
       continue;
     }

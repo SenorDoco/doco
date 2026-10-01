@@ -26,6 +26,7 @@ import {
   listPerspectivesForDoco,
   setDefaultPerspective,
 } from "~/lib/perspectives.server";
+import { readerFor } from "~/lib/reader";
 import { reindex, renameDocoHandle, softDeleteDoco, updateDocoMeta } from "~/lib/redeem.server";
 import { isHumanPrincipal } from "~/lib/session.server";
 
@@ -65,8 +66,10 @@ export async function loader({
   params: { docoId: string };
 }) {
   const { handle, me, meta, ownerSlug } = await loadDocoRouteForAdmin(request, params);
-  await ensureDefaultsAttached(meta.docoId);
-  const perspectives = await listPerspectivesForDoco(meta.docoId);
+  // A codebase or Notion Doco opens in its reader, which has no perspectives.
+  const reader = readerFor(meta.template);
+  if (!reader) await ensureDefaultsAttached(meta.docoId);
+  const perspectives = reader ? [] : await listPerspectivesForDoco(meta.docoId);
   return {
     ownerSlug,
     handle,
@@ -75,6 +78,7 @@ export async function loader({
     workspaceId: meta.workspaceId,
     visibility: meta.visibility,
     goal: meta.goal,
+    reader,
     perspectives,
     availableOwnerWorkspaces: me ? await listWorkspacesOwnedOrAdminedBy(me.id) : [],
     me,
@@ -212,6 +216,7 @@ export default function DocoSettings({
     docoId,
     ownerId,
     workspaceId,
+    reader,
     perspectives,
     availableOwnerWorkspaces,
     me,
@@ -314,6 +319,20 @@ export default function DocoSettings({
 
         <Card>
           <CardHeader>
+            <CardTitle>Policies</CardTitle>
+            <CardDescription>
+              The rules agents follow when they read and write this doco.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link to={`/${handle}/policies`} className="text-sm text-primary hover:underline">
+              Manage policies →
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Project tokens</CardTitle>
             <CardDescription>
               Mint a committable, read-only token so agents that clone the repo can read this doco
@@ -327,48 +346,50 @@ export default function DocoSettings({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Default perspective</CardTitle>
-            <CardDescription>Choose the overview that opens first for this doco.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {perspectives.length > 0 ? (
-              <Form method="post" className="space-y-3">
-                <input type="hidden" name="intent" value="set-default-perspective" />
-                <div className="space-y-1 text-xs">
-                  <label className="inline-flex flex-col gap-1">
-                    <span className="font-semibold text-foreground">Perspective</span>
-                    <select
-                      name="perspective_id"
-                      defaultValue={
-                        perspectives.find((perspective) => perspective.isDefault)?.id ??
-                        perspectives[0].id
-                      }
-                      className="w-auto max-w-full rounded-md px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
-                    >
-                      {perspectives.map((perspective) => (
-                        <option key={perspective.id} value={perspective.id}>
-                          {perspective.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <button
-                  type="submit"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-                >
-                  Save perspective
-                </button>
-              </Form>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                No perspectives are attached to this doco yet.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        {reader ? null : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Default perspective</CardTitle>
+              <CardDescription>Choose the overview that opens first for this doco.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {perspectives.length > 0 ? (
+                <Form method="post" className="space-y-3">
+                  <input type="hidden" name="intent" value="set-default-perspective" />
+                  <div className="space-y-1 text-xs">
+                    <label className="inline-flex flex-col gap-1">
+                      <span className="font-semibold text-foreground">Perspective</span>
+                      <select
+                        name="perspective_id"
+                        defaultValue={
+                          perspectives.find((perspective) => perspective.isDefault)?.id ??
+                          perspectives[0].id
+                        }
+                        className="w-auto max-w-full rounded-md px-3 py-2 text-xs text-foreground outline-none focus:border-primary"
+                      >
+                        {perspectives.map((perspective) => (
+                          <option key={perspective.id} value={perspective.id}>
+                            {perspective.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <button
+                    type="submit"
+                    className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+                  >
+                    Save perspective
+                  </button>
+                </Form>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No perspectives are attached to this doco yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <section className="space-y-1 pt-2">
           <h1 className="text-base font-semibold text-destructive">Danger zone</h1>

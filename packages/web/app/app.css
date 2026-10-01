@@ -810,3 +810,26 @@ button[class*="bg-primary"]:active {
   font-style: italic;
   margin-top: 2px;
 }
+
+/* The code reader's token colors (code-highlight.server.ts): comment,
+   string, keyword, type, number, function, tag. */
+.tok-c {
+  color: oklch(0.56 0.02 248);
+  font-style: italic;
+}
+.tok-s {
+  color: oklch(0.48 0.12 150);
+}
+.tok-k {
+  color: oklch(0.5 0.17 324);
+}
+.tok-t,
+.tok-g {
+  color: oklch(0.5 0.11 200);
+}
+.tok-n {
+  color: oklch(0.55 0.13 60);
+}
+.tok-f {
+  color: oklch(0.48 0.14 262);
+}

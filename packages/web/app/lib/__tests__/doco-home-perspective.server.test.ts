@@ -9,8 +9,6 @@ const mocks = vi.hoisted(() => ({
   loadPullRequestsPerspective: vi.fn(),
   loadSlaPerspectiveData: vi.fn(),
   loadSlackPerspective: vi.fn(),
-  loadNotionPerspective: vi.fn(),
-  loadCodePerspective: vi.fn(),
   pageRank: vi.fn(),
   selectPerspectiveWindow: vi.fn(),
   window: {
@@ -44,12 +42,6 @@ vi.mock("../sla-perspective.server", () => ({
 }));
 vi.mock("../slack-mirror-read.server", () => ({
   loadSlackPerspective: mocks.loadSlackPerspective,
-}));
-vi.mock("../notion-mirror-read.server", () => ({
-  loadNotionPerspective: mocks.loadNotionPerspective,
-}));
-vi.mock("../codebase-read.server", () => ({
-  loadCodePerspective: mocks.loadCodePerspective,
 }));
 vi.mock("../pagerank", () => ({ pageRank: mocks.pageRank }));
 vi.mock("../perspective-window.server", () => ({
@@ -128,68 +120,6 @@ describe("loadDocoHomePerspectiveData", () => {
       semantic: null,
     });
     expect(data.slackData).toBe(slackData);
-    expect(data.graph).toBeNull();
-  });
-
-  it("loads the Notion reader from its URL state, without a node window", async () => {
-    const notionData = {
-      workspaceName: "Acme",
-      pages: 1,
-      tree: [],
-      moreRoots: 0,
-      page: null,
-      query: "",
-      hits: [],
-    };
-    mocks.loadNotionPerspective.mockResolvedValue(notionData);
-
-    const data = await loadDocoHomePerspectiveData(client, {
-      activeKind: "notion",
-      docoId: "doco_1",
-      handle: "acme",
-      focusNodeId: null,
-      notion: { pageId: "11111111-0000-4000-8000-000000000001", query: null },
-    });
-
-    expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
-    expect(mocks.loadNotionPerspective).toHaveBeenCalledWith(client, "doco_1", {
-      pageId: "11111111-0000-4000-8000-000000000001",
-      query: null,
-      limit: 50,
-      semantic: null,
-    });
-    expect(data.notionData).toBe(notionData);
-    expect(data.graph).toBeNull();
-  });
-
-  it("loads the codebase browser from its URL state, without a node window", async () => {
-    const codeData = {
-      repos: [],
-      repo: null,
-      dir: "",
-      entries: [],
-      file: null,
-      query: "",
-      hits: [],
-    };
-    mocks.loadCodePerspective.mockResolvedValue(codeData);
-
-    const data = await loadDocoHomePerspectiveData(client, {
-      activeKind: "code",
-      docoId: "doco_1",
-      handle: "acme",
-      focusNodeId: null,
-      code: { repo: "acme/app", path: "src", query: null },
-    });
-
-    expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
-    expect(mocks.loadCodePerspective).toHaveBeenCalledWith(client, "doco_1", {
-      repo: "acme/app",
-      path: "src",
-      query: null,
-      limit: 50,
-    });
-    expect(data.codeData).toBe(codeData);
     expect(data.graph).toBeNull();
   });
 

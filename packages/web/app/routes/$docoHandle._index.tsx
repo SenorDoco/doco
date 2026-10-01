@@ -18,7 +18,7 @@ import { ArrowRight, RefreshCw } from "lucide-react";
 // "new version — Refresh" banner; clicking it pulls the new version in. We only
 // poll while the tab is visible.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useRevalidator, useSearchParams } from "react-router";
+import { Link, redirect, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
@@ -43,10 +43,8 @@ import { PageHeader } from "~/components/page-header";
 import { PerspectiveFrame } from "~/components/perspective-frame";
 import { PerspectiveSearchOverlay } from "~/components/perspective-search-overlay";
 import { PerspectiveTabs } from "~/components/perspective-tabs";
-import { CodePerspective } from "~/components/perspectives/code-perspective";
 import { GlossaryPerspective } from "~/components/perspectives/glossary-perspective";
 import { ListPerspective } from "~/components/perspectives/list-perspective";
-import { NotionPerspective } from "~/components/perspectives/notion-perspective";
 import { OrgTreePerspective } from "~/components/perspectives/org-tree-perspective";
 import { ProcessPerspective } from "~/components/perspectives/process-perspective";
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
@@ -97,6 +95,7 @@ import {
   togglePrLifecycleParam,
   visiblePrLifecycles,
 } from "~/lib/pull-requests";
+import { readerFor, readerHref } from "~/lib/reader";
 import { computeFilterFacets } from "~/lib/search-filters.server";
 import { timeAgo } from "~/lib/time-ago";
 import { useFullscreen } from "~/lib/use-fullscreen";
@@ -170,6 +169,11 @@ export async function loader({
 }) {
   const ctx = await loadDocoRouteForRead(request, params);
   const { handle } = ctx;
+  // A codebase or Notion Doco opens in its reader instead.
+  const reader = readerFor(ctx.meta.template);
+  if (reader && !params.type && !params.id && !params.edgeKey) {
+    throw redirect(readerHref(handle, reader));
+  }
   const me = ctx.me;
   const dir = docoPath(handle);
   const requestedEntityType =
@@ -365,17 +369,9 @@ export async function loader({
       before: params.get("slack_before"),
       query: params.get("slack_q"),
     };
-    // Notion perspective URL state: `?notion_page=<id>&notion_q=…`.
-    const notion = { pageId: params.get("notion_page"), query: params.get("notion_q") };
-    // Code perspective URL state: `?code_repo=<owner/name>&code_path=…&code_q=…`.
-    const code = {
-      repo: params.get("code_repo"),
-      path: params.get("code_path"),
-      query: params.get("code_q"),
-    };
-    // A mirror perspective's search is hybrid: embed the query once here.
-    const mirrorQuery = (notion.query ?? slack.query ?? "").trim();
-    const semantic = mirrorQuery ? (await embedQuery(mirrorQuery)).semantic : null;
+    // Its search is hybrid: embed the query once here.
+    const slackQuery = (slack.query ?? "").trim();
+    const semantic = slackQuery ? (await embedQuery(slackQuery)).semantic : null;
     const {
       graph,
       pageRanks,
@@ -385,8 +381,6 @@ export async function loader({
       glossaryData,
       pullRequestsData,
       slackData,
-      notionData,
-      codeData,
     } = await loadDocoHomePerspectiveData(c, {
       activeKind,
       docoId: ctx.meta.docoId,
@@ -394,8 +388,6 @@ export async function loader({
       focusNodeId,
       pullRequestLifecycles,
       slack,
-      notion,
-      code,
       semantic,
     });
 
@@ -451,8 +443,6 @@ export async function loader({
       glossaryData,
       pullRequestsData,
       slackData,
-      notionData,
-      codeData,
       focusedNodeId: selectedNode?.id ?? null,
       focusedEdgeId: selectedEdge?.id ?? null,
       focusedEdge: selectedEdge,
@@ -597,8 +587,6 @@ export default function DocoHome({
     glossaryData,
     pullRequestsData,
     slackData,
-    notionData,
-    codeData,
     focusedNodeId,
     focusedEdge,
     selectedNode,
@@ -1569,11 +1557,9 @@ export default function DocoHome({
                 lifecycleFilter={
                   // The Pull requests list runs its own filter — GitHub states
                   // (Open / Merged / Closed), narrowed server-side, kept in the
-                  // URL. Slack messages, Notion pages and code files have no
-                  // lifecycle. Every other perspective uses the page-level set.
-                  effectivePerspectiveKind === "slack" ||
-                  effectivePerspectiveKind === "notion" ||
-                  effectivePerspectiveKind === "code"
+                  // URL. Slack messages have no lifecycle. Every other
+                  // perspective uses the page-level set.
+                  effectivePerspectiveKind === "slack"
                     ? undefined
                     : effectivePerspectiveKind === "pull-requests"
                       ? {
@@ -1624,14 +1610,6 @@ export default function DocoHome({
                   />
                 ) : effectivePerspectiveKind === "slack" && slackData ? (
                   <SlackPerspective data={slackData} handle={handle} />
-                ) : effectivePerspectiveKind === "notion" && notionData ? (
-                  <NotionPerspective data={notionData} handle={handle} />
-                ) : effectivePerspectiveKind === "code" && codeData ? (
-                  <CodePerspective
-                    data={codeData}
-                    handle={handle}
-                    source={integrations.find((status) => status.integration === "github")}
-                  />
                 ) : effectivePerspectiveKind === "sla" && slaData ? (
                   <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
                 ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (

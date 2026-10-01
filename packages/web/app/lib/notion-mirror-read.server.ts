@@ -1,5 +1,5 @@
-// Reading the Notion mirror: the Doco home's Notion perspective (the page
-// tree, the open page, search across the copy) and Notion results in the
+// Reading the Notion mirror: the pages reader (its page tree, Go to page, its
+// home, the open page, search across the copy) and Notion results in the
 // Doco's search. Search is hybrid: full-text over titles and text fused with
 // the nearest embedded chunks when the caller brings a query embedding, the
 // matching chunk serving as the snippet. Everything here is scoped to one
@@ -8,6 +8,7 @@ import { type SemanticQuery, rankEmbeddings } from "@doco/db";
 import { chunkSnippet } from "./notion-chunks";
 import { notionLinkedIds } from "./notion-markdown";
 import { fuseRankings } from "./rank-fusion";
+import { type ReaderListing, type ReaderTreeItem, listingsAlong } from "./reader";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -23,13 +24,15 @@ export interface NotionPageRef {
   copied: boolean;
 }
 
-export interface NotionTreeNode extends NotionPageRef {
+/** A page as the reader's home lists it. */
+export interface NotionPageSummary extends NotionPageRef {
   object: "page" | "data_source";
-  hasChildren: boolean;
-  /** Listed while the node is on the open page's path; null when collapsed. */
-  children: NotionTreeNode[] | null;
-  /** Children beyond the ones listed. */
-  more: number;
+  /** Ancestor titles: "Handbook / Onboarding"; empty at the top. */
+  where: string;
+  lastEditedAt: string | null;
+  lastEditedBy: string | null;
+  /** Pages directly inside it. */
+  children: number;
 }
 
 export interface NotionReaderPage extends NotionPageRef {
@@ -62,19 +65,13 @@ export interface NotionSearchHit {
   copied: boolean;
 }
 
-export interface NotionPerspectiveData {
-  /** Null for a Doco that doesn't mirror Notion. */
-  workspaceName: string | null;
-  pages: number;
-  tree: NotionTreeNode[];
-  /** Roots beyond the ones listed. */
-  moreRoots: number;
-  /** The page being read (null while searching or with no pages). */
-  page: NotionReaderPage | null;
-  /** The active search, "" when reading a page. */
-  query: string;
-  hits: NotionSearchHit[];
-}
+/** What the pages reader shows at an address. `trail` is the open page's
+ *  place in the tree (its ancestors, then itself), empty on the home and
+ *  while searching. */
+export type PagesView =
+  | { view: "home"; recent: NotionPageSummary[]; top: NotionPageSummary[]; trail: string[] }
+  | { view: "page"; page: NotionReaderPage; trail: string[] }
+  | { view: "search"; query: string; hits: NotionSearchHit[]; trail: string[] };
 
 const ROOT_LIMIT = 500;
 const CHILD_LIMIT = 200;
@@ -112,7 +109,6 @@ export function notionSnippet(text: string, query: string, width = SNIPPET_WIDTH
 
 interface TreeRow {
   page_id: string;
-  parent_id: string | null;
   title: string;
   icon: string | null;
   object: "page" | "data_source";
@@ -124,76 +120,107 @@ interface TreeRow {
 const HAS_CHILDREN = `EXISTS (SELECT 1 FROM notion_pages ch
   WHERE ch.doco_id = p.doco_id AND ch.parent_id = p.page_id) AS has_children`;
 
-/** The page tree: every root (a page whose parent isn't mirrored), opened
- *  along `openIds` (the open page and its ancestors) to list their children. */
-async function loadTree(
+function treeItem(row: Omit<TreeRow, "total">, where = ""): ReaderTreeItem {
+  return {
+    id: row.page_id,
+    name: row.title,
+    kind: row.object === "data_source" ? "database" : "page",
+    icon: row.icon,
+    hasChildren: row.has_children,
+    files: null,
+    pending: !row.copied,
+    where,
+  };
+}
+
+/** What is directly under one item of the page tree: at the top (""),
+ *  every page whose parent isn't in the copy, by title; under a page, its
+ *  children by title, and under a database, its rows newest first. */
+export async function listPageTree(
   c: QueryClient,
   docoId: string,
-  openIds: string[],
-): Promise<{ tree: NotionTreeNode[]; moreRoots: number }> {
-  const roots = (
-    await c.query<TreeRow>(
-      `SELECT page_id, parent_id, title, icon, object, copied, has_children, total FROM (
-         SELECT p.page_id, p.parent_id, p.title, p.icon, p.object,
-                p.synced_at IS NOT NULL AS copied, ${HAS_CHILDREN},
-                row_number() OVER (ORDER BY p.title, p.page_id) AS rn,
-                count(*) OVER () AS total
-           FROM notion_pages p
-           LEFT JOIN notion_pages parent
-             ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
-          WHERE p.doco_id = $1 AND parent.page_id IS NULL
-       ) r
-       WHERE rn <= $2 OR page_id = ANY($3::text[])
-       ORDER BY rn`,
-      [docoId, ROOT_LIMIT, openIds],
+  under: string,
+): Promise<ReaderListing> {
+  const rows = under
+    ? (
+        await c.query<TreeRow>(
+          `SELECT p.page_id, p.title, p.icon, p.object, p.synced_at IS NOT NULL AS copied,
+                  ${HAS_CHILDREN}, count(*) OVER () AS total
+             FROM notion_pages p
+             JOIN notion_pages parent
+               ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
+            WHERE p.doco_id = $1 AND p.parent_id = $2
+            ORDER BY CASE WHEN parent.object = 'data_source'
+                          THEN p.last_edited_time END DESC NULLS LAST,
+                     p.title, p.page_id
+            LIMIT ${CHILD_LIMIT}`,
+          [docoId, under],
+        )
+      ).rows
+    : (
+        await c.query<TreeRow>(
+          `SELECT p.page_id, p.title, p.icon, p.object, p.synced_at IS NOT NULL AS copied,
+                  ${HAS_CHILDREN}, count(*) OVER () AS total
+             FROM notion_pages p
+             LEFT JOIN notion_pages parent
+               ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
+            WHERE p.doco_id = $1 AND parent.page_id IS NULL
+            ORDER BY p.title, p.page_id
+            LIMIT ${ROOT_LIMIT}`,
+          [docoId],
+        )
+      ).rows;
+  return {
+    items: rows.map((row) => treeItem(row)),
+    more: rows.length > 0 ? Math.max(0, Number(rows[0].total) - rows.length) : 0,
+  };
+}
+
+/** The page tree's first listings with `pageId` open: the top-level pages,
+ *  then each page down to it. */
+export async function pageTreeAt(
+  c: QueryClient,
+  docoId: string,
+  pageId: string,
+): Promise<Record<string, ReaderListing>> {
+  const ancestors = pageId ? ((await ancestorPaths(c, docoId, [pageId])).get(pageId) ?? []) : [];
+  const trail = pageId ? [...ancestors.map((ref) => ref.pageId), pageId] : [];
+  return listingsAlong(trail, (under) => listPageTree(c, docoId, under));
+}
+
+/** Pages whose title holds `query`, for Go to page: those whose title
+ *  starts with it first, then by title. */
+export async function findPages(
+  c: QueryClient,
+  docoId: string,
+  query: string,
+  limit: number,
+): Promise<ReaderTreeItem[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const rows = (
+    await c.query<Omit<TreeRow, "total">>(
+      `SELECT p.page_id, p.title, p.icon, p.object, p.synced_at IS NOT NULL AS copied,
+              ${HAS_CHILDREN}
+         FROM notion_pages p
+        WHERE p.doco_id = $1 AND strpos(lower(p.title), $2) > 0
+        ORDER BY CASE WHEN left(lower(p.title), length($2)) = $2 THEN 0 ELSE 1 END,
+                 p.title, p.page_id
+        LIMIT $3`,
+      [docoId, q, limit],
     )
   ).rows;
-  const children =
-    openIds.length === 0
-      ? []
-      : (
-          await c.query<TreeRow>(
-            `SELECT page_id, parent_id, title, icon, object, copied, has_children, total FROM (
-               SELECT p.page_id, p.parent_id, p.title, p.icon, p.object,
-                      p.synced_at IS NOT NULL AS copied, ${HAS_CHILDREN},
-                      row_number() OVER (
-                        PARTITION BY p.parent_id
-                        ORDER BY CASE WHEN parent.object = 'data_source'
-                                      THEN p.last_edited_time END DESC NULLS LAST,
-                                 p.title, p.page_id) AS rn,
-                      count(*) OVER (PARTITION BY p.parent_id) AS total
-                 FROM notion_pages p
-                 JOIN notion_pages parent
-                   ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
-                WHERE p.doco_id = $1 AND p.parent_id = ANY($3::text[])
-             ) r
-             WHERE rn <= $2
-             ORDER BY parent_id, rn`,
-            [docoId, CHILD_LIMIT, openIds],
-          )
-        ).rows;
-  const open = new Set(openIds);
-  const byParent = new Map<string, TreeRow[]>();
-  for (const row of children) {
-    const siblings = byParent.get(row.parent_id ?? "") ?? [];
-    siblings.push(row);
-    byParent.set(row.parent_id ?? "", siblings);
-  }
-  const node = (row: TreeRow): NotionTreeNode => {
-    const listed = open.has(row.page_id) ? (byParent.get(row.page_id) ?? []) : null;
-    return {
-      pageId: row.page_id,
-      title: row.title,
-      icon: row.icon,
-      copied: row.copied,
-      object: row.object,
-      hasChildren: row.has_children,
-      children: listed ? listed.map(node) : null,
-      more: listed && listed.length > 0 ? Math.max(0, Number(listed[0].total) - listed.length) : 0,
-    };
-  };
-  const moreRoots = roots.length > 0 ? Math.max(0, Number(roots[0].total) - roots.length) : 0;
-  return { tree: roots.map(node), moreRoots };
+  const paths = await ancestorPaths(
+    c,
+    docoId,
+    rows.map((row) => row.page_id),
+  );
+  return rows.map((row) => treeItem(row, titlePath(paths.get(row.page_id) ?? [])));
+}
+
+/** Ancestor titles joined as a path: "Handbook / Onboarding". */
+function titlePath(refs: NotionPageRef[]): string {
+  return refs.map((ref) => ref.title || "Untitled").join(" / ");
 }
 
 /** Each page's mirrored ancestors, the root first. */
@@ -386,7 +413,7 @@ async function matchingPages(
       type: "notion_page",
       page_id: row.page_id,
       title: row.title,
-      path: (paths.get(row.page_id) ?? []).map((ref) => ref.title || "Untitled").join(" / "),
+      path: titlePath(paths.get(row.page_id) ?? []),
       url: row.url,
       last_edited_time: iso(row.last_edited_time),
       snippet: chunk ? chunkSnippet(chunk) : notionSnippet(row.plain_text, query),
@@ -405,52 +432,88 @@ async function mirrorName(c: QueryClient, docoId: string): Promise<string | null
   return row ? row.workspace_name : null;
 }
 
-export async function loadNotionPerspective(
-  c: QueryClient,
-  docoId: string,
-  opts: {
-    pageId?: string | null;
-    query?: string | null;
-    limit?: number;
-    semantic?: SemanticQuery | null;
-  },
-): Promise<NotionPerspectiveData> {
-  const query = opts.query?.trim() ?? "";
-  const workspaceName = await mirrorName(c, docoId);
-  if (workspaceName === null) {
-    return { workspaceName, pages: 0, tree: [], moreRoots: 0, page: null, query, hits: [] };
-  }
-  const pages = Number(
-    (
-      await c.query<{ n: number | string }>(
-        "SELECT count(*) AS n FROM notion_pages WHERE doco_id = $1",
-        [docoId],
-      )
-    ).rows[0]?.n ?? 0,
-  );
-  if (query) {
-    const hits = await matchingPages(c, docoId, query, opts.limit ?? 50, opts.semantic ?? null);
-    const { tree, moreRoots } = await loadTree(c, docoId, []);
-    return { workspaceName, pages, tree, moreRoots, page: null, query, hits };
-  }
-  // The requested page, else the most recently edited one.
-  let page = opts.pageId ? await loadPage(c, docoId, opts.pageId) : null;
-  if (!page) {
-    const latest = (
-      await c.query<{ page_id: string }>(
-        `SELECT page_id FROM notion_pages WHERE doco_id = $1
-          ORDER BY last_edited_time DESC NULLS LAST, title, page_id LIMIT 1`,
-        [docoId],
-      )
-    ).rows[0];
-    page = latest ? await loadPage(c, docoId, latest.page_id) : null;
-  }
-  const { tree, moreRoots } = await loadTree(
+const RECENT_LIMIT = 8;
+const TOP_LIMIT = 60;
+
+interface SummaryRow {
+  page_id: string;
+  object: "page" | "data_source";
+  title: string;
+  icon: string | null;
+  copied: boolean;
+  last_edited_time: Date | string | null;
+  editor: string | null;
+  children: number | string;
+}
+
+const SUMMARY_COLUMNS = `p.page_id, p.object, p.title, p.icon, p.synced_at IS NOT NULL AS copied,
+  p.last_edited_time, u.name AS editor,
+  (SELECT count(*) FROM notion_pages ch
+    WHERE ch.doco_id = p.doco_id AND ch.parent_id = p.page_id) AS children`;
+const SUMMARY_FROM = `notion_pages p
+  LEFT JOIN notion_users u ON u.doco_id = p.doco_id AND u.user_id = p.last_edited_by`;
+
+/** The reader's home: the copied pages edited most recently, and the
+ *  pages at the top of the tree. */
+async function loadPagesHome(c: QueryClient, docoId: string): Promise<PagesView> {
+  const recent = (
+    await c.query<SummaryRow>(
+      `SELECT ${SUMMARY_COLUMNS} FROM ${SUMMARY_FROM}
+        WHERE p.doco_id = $1 AND p.synced_at IS NOT NULL
+        ORDER BY p.last_edited_time DESC NULLS LAST, p.title, p.page_id
+        LIMIT ${RECENT_LIMIT}`,
+      [docoId],
+    )
+  ).rows;
+  const top = (
+    await c.query<SummaryRow>(
+      `SELECT ${SUMMARY_COLUMNS} FROM ${SUMMARY_FROM}
+         LEFT JOIN notion_pages parent
+           ON parent.doco_id = p.doco_id AND parent.page_id = p.parent_id
+        WHERE p.doco_id = $1 AND parent.page_id IS NULL
+        ORDER BY p.title, p.page_id
+        LIMIT ${TOP_LIMIT}`,
+      [docoId],
+    )
+  ).rows;
+  const paths = await ancestorPaths(
     c,
     docoId,
-    page ? [...page.path.map((ref) => ref.pageId), page.pageId] : [],
+    recent.map((row) => row.page_id),
   );
-  return { workspaceName, pages, tree, moreRoots, page, query, hits: [] };
+  const summary = (row: SummaryRow): NotionPageSummary => ({
+    pageId: row.page_id,
+    object: row.object,
+    title: row.title,
+    icon: row.icon,
+    copied: row.copied,
+    where: titlePath(paths.get(row.page_id) ?? []),
+    lastEditedAt: iso(row.last_edited_time),
+    lastEditedBy: row.editor,
+    children: Number(row.children),
+  });
+  return { view: "home", recent: recent.map(summary), top: top.map(summary), trail: [] };
+}
+
+/**
+ * What the pages reader shows: search results while there is a query, the
+ * page `pageId` names, or the reader's home without one. Null for a page
+ * the copy doesn't have.
+ */
+export async function loadPagesView(
+  c: QueryClient,
+  docoId: string,
+  opts: { pageId: string; query: string; semantic?: SemanticQuery | null },
+): Promise<PagesView | null> {
+  const query = opts.query.trim();
+  if (query) {
+    const hits = await searchNotionMirror(c, docoId, query, 50, opts.semantic ?? null);
+    return { view: "search", query, hits, trail: [] };
+  }
+  if (!opts.pageId) return loadPagesHome(c, docoId);
+  const page = await loadPage(c, docoId, opts.pageId);
+  if (!page) return null;
+  return { view: "page", page, trail: [...page.path.map((ref) => ref.pageId), page.pageId] };
 }
 
 /** Notion pages matching `query`, for the Doco's search results. Empty for a
