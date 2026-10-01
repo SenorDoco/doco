@@ -1,8 +1,7 @@
 // The reader's tree: what a codebase or Notion Doco copied, opening in place.
 // It starts with the listings the server sent for the open item's place, and
 // fetches a folder's or page's children (tree.json) the first time it opens,
-// so moving around never reloads the tree. "Go to" finds a file or page by
-// name across the whole copy.
+// so moving around never reloads the tree.
 import {
   ChevronDown,
   ChevronRight,
@@ -12,18 +11,9 @@ import {
   Folder,
   FolderOpen,
   House,
-  Search,
 } from "lucide-react";
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  type Ref,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { Link, useNavigate } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import { GitHubIcon } from "~/components/brand-icons";
 import { cn } from "~/lib/cn";
 import { type ReaderKind, type ReaderListing, type ReaderTreeItem, readerHref } from "~/lib/reader";
@@ -61,7 +51,7 @@ export function ItemIcon({
   return <Icon aria-hidden className={cn(className, "text-muted-foreground")} />;
 }
 
-function fetchJson<T>(url: string): Promise<T | null> {
+export function fetchJson<T>(url: string): Promise<T | null> {
   return fetch(url, { headers: { Accept: "application/json" } })
     .then((res) => (res.ok ? (res.json() as Promise<T>) : null))
     .catch(() => null);
@@ -73,7 +63,6 @@ export function ReaderTree({
   listings: initial,
   trail,
   current,
-  goToRef,
   onNavigate,
 }: {
   handle: string;
@@ -84,7 +73,6 @@ export function ReaderTree({
   trail: string[];
   /** The open item's id ("" for the home), null while searching. */
   current: string | null;
-  goToRef?: Ref<HTMLInputElement>;
   /** Called when a link in the tree is followed (the phone drawer closes). */
   onNavigate?: () => void;
 }) {
@@ -213,152 +201,22 @@ export function ReaderTree({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <GoTo
-        handle={handle}
-        reader={reader}
-        inputRef={goToRef}
-        onNavigate={onNavigate}
-        tree={
-          <nav
-            aria-label={reader === "code" ? "Files" : "Pages"}
-            className="min-h-0 flex-1 overflow-auto px-1.5 pb-3"
-          >
-            {reader === "pages" ? (
-              <Link
-                to={readerHref(handle, reader)}
-                aria-current={current === "" ? "page" : undefined}
-                onClick={onNavigate}
-                className={cn(ROW, "pl-[26px]", current === "" && ROW_ON)}
-              >
-                <House aria-hidden className="h-3.5 w-3.5 shrink-0" />
-                Home
-              </Link>
-            ) : null}
-            {renderListing("", 0)}
-          </nav>
-        }
-      />
-    </div>
-  );
-}
-
-/** "Go to file" / "Go to page": finds items by name across the copy, and
- *  stands in for the tree while it has something typed. */
-function GoTo({
-  handle,
-  reader,
-  inputRef,
-  onNavigate,
-  tree,
-}: {
-  handle: string;
-  reader: ReaderKind;
-  inputRef?: Ref<HTMLInputElement>;
-  onNavigate?: () => void;
-  tree: ReactNode;
-}) {
-  const navigate = useNavigate();
-  const [text, setText] = useState("");
-  const [found, setFound] = useState<{ for: string; items: ReaderTreeItem[] } | null>(null);
-  const [active, setActive] = useState(0);
-  const query = text.trim();
-
-  useEffect(() => {
-    if (!query) return;
-    const timer = setTimeout(() => {
-      void fetchJson<ReaderListing>(`/${handle}/tree.json?find=${encodeURIComponent(query)}`).then(
-        (listing) => {
-          if (listing) setFound({ for: query, items: listing.items });
-          setActive(0);
-        },
-      );
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [handle, query]);
-
-  const results = query && found ? found.items : null;
-  const go = (item: ReaderTreeItem) => {
-    setText("");
-    setFound(null);
-    onNavigate?.();
-    navigate(readerHref(handle, reader, item.id));
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
-      setText("");
-      event.currentTarget.blur();
-    } else if (results && event.key === "ArrowDown") {
-      event.preventDefault();
-      setActive((i) => Math.min(i + 1, results.length - 1));
-    } else if (results && event.key === "ArrowUp") {
-      event.preventDefault();
-      setActive((i) => Math.max(i - 1, 0));
-    } else if (results && event.key === "Enter" && results[active]) {
-      event.preventDefault();
-      go(results[active]);
-    }
-  };
-
-  return (
-    <>
-      <div className="relative px-2.5 pb-1.5 pt-2.5">
-        <Search
-          aria-hidden
-          className="pointer-events-none absolute left-5 top-[calc(50%+2px)] h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-        />
-        <input
-          ref={inputRef}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={reader === "code" ? "Go to file" : "Go to page"}
-          aria-label={reader === "code" ? "Go to file" : "Go to page"}
-          className="w-full rounded-md border border-border bg-background py-1 pl-7 pr-7 text-xs"
-        />
-        <kbd className="pointer-events-none absolute right-4 top-[calc(50%+2px)] -translate-y-1/2 rounded border border-b-2 border-border px-1 text-[10px] leading-4 text-muted-foreground">
-          t
-        </kbd>
-      </div>
-      {query ? (
-        <ul aria-label="Go to" className="min-h-0 flex-1 overflow-auto px-1.5 pb-3">
-          {results === null ? (
-            <li className="px-2 py-1 text-xs italic text-muted-foreground">Looking…</li>
-          ) : results.length === 0 ? (
-            <li className="px-2 py-1 text-xs italic text-muted-foreground">
-              Nothing is called “{query}”.
-            </li>
-          ) : (
-            results.map((item, i) => (
-              <li key={item.id}>
-                <Link
-                  to={readerHref(handle, reader, item.id)}
-                  onClick={() => {
-                    setText("");
-                    onNavigate?.();
-                  }}
-                  className={cn(
-                    "block rounded-md px-2 py-1 hover:bg-primary/10",
-                    i === active && "bg-primary/10",
-                  )}
-                >
-                  <span className="flex items-center gap-1.5 text-[13px]">
-                    <ItemIcon item={item} />
-                    <span className="truncate">{item.name || "Untitled"}</span>
-                  </span>
-                  {item.where ? (
-                    <span className="block truncate pl-5 text-[11px] text-muted-foreground">
-                      {item.where}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : (
-        tree
-      )}
-    </>
+    <nav
+      aria-label={reader === "code" ? "Files" : "Pages"}
+      className="min-h-0 flex-1 overflow-auto px-1.5 py-2.5"
+    >
+      {reader === "pages" ? (
+        <Link
+          to={readerHref(handle, reader)}
+          aria-current={current === "" ? "page" : undefined}
+          onClick={onNavigate}
+          className={cn(ROW, "pl-[26px]", current === "" && ROW_ON)}
+        >
+          <House aria-hidden className="h-3.5 w-3.5 shrink-0" />
+          Home
+        </Link>
+      ) : null}
+      {renderListing("", 0)}
+    </nav>
   );
 }

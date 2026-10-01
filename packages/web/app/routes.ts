@@ -1,4 +1,4 @@
-import { type RouteConfig, index, route } from "@react-router/dev/routes";
+import { type RouteConfig, index, layout, route } from "@react-router/dev/routes";
 
 /**
  * Doco web routes. Hosted-multi-tenant only (per ADR-092 + ADR-093).
@@ -266,12 +266,11 @@ export default [
   route(":docoHandle", "routes/$docoHandle._index.tsx"),
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
   // The reader a codebase or Notion Doco opens in (reader.ts): one frame
-  // around the folder, file or page the splat names.
-  route(":docoHandle/code", "routes/$docoHandle.reader.tsx", { id: "doco-reader-code" }, [
-    route("*", "routes/$docoHandle.code.$.tsx"),
-  ]),
-  route(":docoHandle/pages", "routes/$docoHandle.reader.tsx", { id: "doco-reader-pages" }, [
-    route("*", "routes/$docoHandle.pages.$.tsx"),
+  // around the folder, file or page the splat names. The frame has no path
+  // of its own, so a bare /code or /pages reaches what goes inside it.
+  layout("routes/$docoHandle.reader.tsx", [
+    route(":docoHandle/code/*", "routes/$docoHandle.code.$.tsx"),
+    route(":docoHandle/pages/*", "routes/$docoHandle.pages.$.tsx"),
   ]),
   route(":docoHandle/tree.json", "routes/$docoHandle.tree[.]json.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
