@@ -10,6 +10,7 @@
 // Public; no auth. Served as text/markdown.
 
 import { getPublicBaseUrl } from "@doco/shared";
+import { AGENT_INSTRUCTIONS_PATH } from "~/lib/agent-instructions";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 
 export function loader({ request }: { request: Request }) {
@@ -136,7 +137,7 @@ test -f CLAUDE.md
 \`\`\`
 
 If any are missing, add them: create \`.doco/connections.md\` with the
-public Doco URL, create \`AGENTS.md\` with the instructions from the Doco home page (${baseUrl}/), and create \`CLAUDE.md\` as a one-line shim:
+public Doco URL, create \`AGENTS.md\` with the instructions at ${baseUrl}${AGENT_INSTRUCTIONS_PATH}, and create \`CLAUDE.md\` as a one-line shim:
 
 \`\`\`
 @./AGENTS.md
@@ -376,8 +377,8 @@ You get back:
 - \`principal\` — your authenticated identity (\`id\` + \`username\`).
   Confirms the token works and tells you who you're acting as.
 - \`agent_instructions\` — the instructions you're now expected to
-  follow, the same block the Doco home page shows.
-- \`agent_instructions_url\` — the home page, to refetch them later.
+  follow, the same block ${AGENT_INSTRUCTIONS_PATH} shows.
+- \`agent_instructions_url\` — that page, to refetch them later.
 - \`oauth_grant\` — your token's grant set verbatim:
   \`granted_doco_ids\`, \`granted_workspace_ids\`, \`granted_doco_roles\`,
   \`granted_workspace_roles\`, \`scope\`, \`expires_at\`. Null for cookie

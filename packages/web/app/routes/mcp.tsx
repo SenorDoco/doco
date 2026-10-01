@@ -840,7 +840,7 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        // The one agent-instructions template, the same block the home page
+        // The one agent-instructions template, the same block /agents
         // shows: in a connector context there may be no AGENTS.md copy yet.
         instructions: agentInstructions(getPublicBaseUrl(request)),
       });

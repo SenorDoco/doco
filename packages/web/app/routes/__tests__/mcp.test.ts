@@ -93,8 +93,8 @@ describe("POST /mcp (hosted remote MCP)", () => {
   });
 
   // Alexander, 2026-09-30: one agent-instructions template everywhere. The
-  // server hands a connecting agent the same block the home page shows.
-  it("initialize hands the agent the home page instructions, verbatim", async () => {
+  // server hands a connecting agent the same block /agents shows.
+  it("initialize hands the agent the /agents instructions, verbatim", async () => {
     const res = await call({ jsonrpc: "2.0", id: 7, method: "initialize" }, BEARER);
     const body = (await res.json()) as Json;
     expect(body.result.serverInfo.name).toBe("doco");

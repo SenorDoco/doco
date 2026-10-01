@@ -7,6 +7,7 @@
 // access, they run the OAuth recipe.
 
 import { getPublicBaseUrl } from "@doco/shared";
+import { AGENT_INSTRUCTIONS_PATH } from "~/lib/agent-instructions";
 
 export function loader({
   request,
@@ -20,9 +21,9 @@ export function loader({
   const body = [
     "DOCO INVITE URL — for agents",
     "",
-    "To use Doco, follow the instructions on the Doco home page:",
+    "To use Doco, follow the instructions at:",
     "",
-    `    ${baseUrl}/`,
+    `    ${baseUrl}${AGENT_INSTRUCTIONS_PATH}`,
     "",
     "You landed here because someone shared a Doco invite URL with you:",
     "",
@@ -69,7 +70,7 @@ export function loader({
     "",
     "Related routes:",
     "",
-    `    ${baseUrl}/`,
+    `    ${baseUrl}${AGENT_INSTRUCTIONS_PATH}`,
     `    ${baseUrl}/protocol/agent-oauth-recipe`,
     `    ${baseUrl}/.well-known/oauth-authorization-server`,
   ].join("\n");

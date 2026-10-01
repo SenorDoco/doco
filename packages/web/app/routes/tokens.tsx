@@ -429,7 +429,7 @@ export function ManualMcpPanel({ host }: { host: string }) {
         </div>
       </div>
 
-      {/* Step 2 — the one agent-instructions template, as on the home page */}
+      {/* Step 2 — the one agent-instructions template, as on /agents */}
       <div className="border-t border-border pt-3">
         <AgentInstructionsBlock
           title="2. Give your agent these instructions"

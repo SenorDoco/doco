@@ -28,6 +28,7 @@ import { type EntityId, WRITE_ALL } from "@doco/shared";
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { HowDocoWorks } from "~/components/how-doco-works";
 import { rootDir } from "~/lib/db.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
 import { startOnboarding } from "~/lib/onboarding.server";
@@ -266,7 +267,6 @@ export default function InviteLanding({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>Doco keeps people, agents, and work aligned.</p>
           <p>
             Invite expires <strong>{new Date(loaderData.expires_at).toLocaleString()}</strong>.
             Single-use — once you accept, this URL stops working.
@@ -319,6 +319,9 @@ export default function InviteLanding({
           )}
         </CardContent>
       </Card>
+      <div className="pt-8">
+        <HowDocoWorks />
+      </div>
     </InviteMain>
   );
 }

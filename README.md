@@ -42,11 +42,11 @@ kept in [PLANNING.md](PLANNING.md) for historical context.
 
 ## Connecting an agent (zero install)
 
-The home page of the host (https://doco.to) holds the instructions to
-give an agent, with a Copy button. The agent connects through the hosted
-MCP server at `/mcp`, picks the project's workspace with the user, and
-keeps the instructions in the project's `AGENTS.md` (or similar), checked
-against the home page so they stay current. People create workspaces;
+https://doco.to/agents holds the instructions to give an agent, with a
+Copy button. The agent connects through the hosted MCP server at `/mcp`,
+picks the project's workspace with the user, and keeps the instructions in
+the project's `AGENTS.md` (or similar), checked against that page so they
+stay current. People create workspaces;
 agents never do.
 
 Agents that can't speak MCP drive OAuth directly, following

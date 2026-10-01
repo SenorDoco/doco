@@ -36,10 +36,10 @@ describe("buildAgentBootstrapBody", () => {
   });
 
   // One agent-instructions template everywhere: the bootstrap carries the
-  // home page block and points at the home page, not a second protocol.
-  it("carries the home page instructions and points at the home page", () => {
+  // block and points at /agents, which shows it, not a second protocol.
+  it("carries the agent instructions and points at /agents", () => {
     const body = buildAgentBootstrapBody(base);
-    expect(body.agent_instructions_url).toBe("https://doco.to/");
+    expect(body.agent_instructions_url).toBe("https://doco.to/agents");
     expect(body.agent_instructions).toBe(agentInstructions("https://doco.to"));
     expect(body).not.toHaveProperty("canonical_instructions");
   });

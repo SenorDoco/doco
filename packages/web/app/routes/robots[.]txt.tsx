@@ -1,11 +1,10 @@
-// /robots.txt — standard crawler directives, plus a pointer to the home
-// page for AI agents that probe robots.txt first: the agent instructions
-// live there.
+// /robots.txt — standard crawler directives, plus a pointer to /agents for
+// AI agents that probe robots.txt first: the agent instructions live there.
 export async function loader() {
   const body = `User-agent: *
 Allow: /
 
-# AI agents: the instructions to use Doco are on the home page, /.
+# AI agents: the instructions to use Doco are at /agents.
 `;
   return new Response(body, {
     headers: {
