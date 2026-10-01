@@ -34,10 +34,11 @@ export const MIN_USUAL = 5;
 /** Something that has gone quiet unexpectedly, as the check finds it. */
 interface Silence {
   workspaceId: string;
-  /** An integration Doco, or an agent: a connection and the person it acts for. */
+  /** An integration Doco, or an agent: a person and the agent they work
+   *  through, as `agentName` names it. */
   docoId: string | null;
-  clientId: string | null;
   userId: string | null;
+  agent: string | null;
   /** The Docos it concerns: the integration Doco, or the ones the agent used. */
   docoIds: string[];
   quietSince: string;
@@ -120,7 +121,7 @@ async function quietIntegrations(c: QueryClient, now: Date): Promise<Silence[]> 
     const workspaceId = docoId ? workspaces.get(docoId) : undefined;
     if (!docoId || !workspaceId) return [];
     return [
-      { workspaceId, docoId, clientId: null, userId: null, docoIds: [docoId], quietSince, usual },
+      { workspaceId, docoId, userId: null, agent: null, docoIds: [docoId], quietSince, usual },
     ];
   });
 }
@@ -128,9 +129,9 @@ async function quietIntegrations(c: QueryClient, now: Date): Promise<Silence[]> 
 const subjectOf = (s: {
   workspaceId: string;
   docoId: string | null;
-  clientId: string | null;
   userId: string | null;
-}) => (s.docoId ? `doco ${s.docoId}` : `agent ${s.workspaceId} ${s.clientId} ${s.userId}`);
+  agent: string | null;
+}) => JSON.stringify(s.docoId ? [s.docoId] : [s.workspaceId, s.userId, s.agent]);
 
 /**
  * Bring the open alerts in line with what is quiet now: open an alert for each
@@ -149,17 +150,17 @@ export async function checkSilences(
       id: string;
       workspace_id: string;
       doco_id: string | null;
-      client_id: string | null;
       user_id: string | null;
-    }>("SELECT id, workspace_id, doco_id, client_id, user_id FROM silence_alerts")
+      agent: string | null;
+    }>("SELECT id, workspace_id, doco_id, user_id, agent FROM silence_alerts")
   ).rows;
   const openBySubject = new Map(
     open.map((a) => [
       subjectOf({
         workspaceId: a.workspace_id,
         docoId: a.doco_id,
-        clientId: a.client_id,
         userId: a.user_id,
+        agent: a.agent,
       }),
       a.id,
     ]),
@@ -179,14 +180,14 @@ export async function checkSilences(
     opened++;
     await c.query(
       `INSERT INTO silence_alerts
-         (id, workspace_id, doco_id, client_id, user_id, doco_ids, quiet_since, usual, opened_at)
+         (id, workspace_id, doco_id, user_id, agent, doco_ids, quiet_since, usual, opened_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         `alert_${generateUlid()}`,
         s.workspaceId,
         s.docoId,
-        s.clientId,
         s.userId,
+        s.agent,
         s.docoIds,
         s.quietSince,
         s.usual,
@@ -218,7 +219,7 @@ export type SilenceAlert =
       workspaceHandle: string;
       quietSince: string;
       usual: number;
-      /** The name its person gave the connection, else the app's own. */
+      /** As `agentName` names it: the connection's name, or "MCP", "Slack"… */
       agentName: string;
       /** The GitHub login of the person it acts for. */
       agentUser: string | null;
@@ -241,7 +242,7 @@ type AlertRow = {
 const ALERTS_SQL = `
   SELECT a.id, w.handle AS workspace_handle, a.quiet_since, a.usual,
          d.handle AS doco_handle, d.data->>'template_handle' AS template,
-         coalesce(nullif(trim(rt.token_name), ''), oc.client_name, a.client_id) AS agent_name,
+         a.agent AS agent_name,
          u.github_login AS agent_user,
          ARRAY(SELECT ud.handle FROM docos ud
                 WHERE ud.id = ANY(a.doco_ids) AND ud.deleted_at IS NULL
@@ -249,12 +250,7 @@ const ALERTS_SQL = `
     FROM silence_alerts a
     JOIN workspaces w ON w.id = a.workspace_id
     LEFT JOIN docos d ON d.id = a.doco_id
-    LEFT JOIN oauth_clients oc ON oc.client_id = a.client_id
     LEFT JOIN users u ON u.id = a.user_id
-    LEFT JOIN LATERAL (
-      SELECT token_name FROM oauth_refresh_tokens
-       WHERE client_id = a.client_id AND user_id = a.user_id
-       ORDER BY created_at DESC LIMIT 1) rt ON true
    WHERE (a.doco_id IS NULL OR d.deleted_at IS NULL)`;
 
 function toAlert(r: AlertRow): SilenceAlert {

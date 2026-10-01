@@ -1445,11 +1445,11 @@ CREATE TRIGGER group_chat_messages_embeddings_drop
 CREATE TABLE IF NOT EXISTS silence_alerts (
   id            text PRIMARY KEY,
   workspace_id  text NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  -- What went quiet: an integration Doco, or an agent (a connection and the
-  -- person it acts for).
+  -- What went quiet: an integration Doco, or an agent (a person and the agent
+  -- they read and write through, named as agentName names it).
   doco_id       text REFERENCES docos(id) ON DELETE CASCADE,
-  client_id     text REFERENCES oauth_clients(client_id) ON DELETE CASCADE,
   user_id       text REFERENCES users(id) ON DELETE CASCADE,
+  agent         text,
   -- The Docos it concerns: the integration Doco, or the ones the agent used.
   doco_ids      text[] NOT NULL,
   -- The last item or call before the silence.
@@ -1458,10 +1458,10 @@ CREATE TABLE IF NOT EXISTS silence_alerts (
   usual         int NOT NULL,
   opened_at     timestamptz NOT NULL DEFAULT now(),
   emailed_at    timestamptz,
-  CHECK ((doco_id IS NOT NULL) <> (client_id IS NOT NULL AND user_id IS NOT NULL))
+  CHECK ((doco_id IS NOT NULL) <> (user_id IS NOT NULL AND agent IS NOT NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS silence_alerts_doco_idx
   ON silence_alerts (doco_id) WHERE doco_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS silence_alerts_agent_idx
-  ON silence_alerts (workspace_id, client_id, user_id) WHERE client_id IS NOT NULL;
+  ON silence_alerts (workspace_id, user_id, agent) WHERE agent IS NOT NULL;
 CREATE INDEX IF NOT EXISTS silence_alerts_docos_idx ON silence_alerts USING gin (doco_ids);
