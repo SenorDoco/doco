@@ -1,6 +1,7 @@
 // A codebase or Notion Doco opens in the reader: its home redirects there,
 // each reader route serves only its own kind of Doco, and the tree's data
-// route lists one folder or page at a time.
+// route lists one folder at a time (a Notion copy has no tree: it only finds
+// pages by title).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -8,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   listCodeTree: vi.fn(),
   findCodeFiles: vi.fn(),
   loadCodeView: vi.fn(),
-  listPageTree: vi.fn(),
   findPages: vi.fn(),
 }));
 
@@ -31,7 +31,6 @@ vi.mock("~/lib/codebase-read.server", () => ({
   loadCodeView: mocks.loadCodeView,
 }));
 vi.mock("~/lib/notion-mirror-read.server", () => ({
-  listPageTree: mocks.listPageTree,
   findPages: mocks.findPages,
 }));
 
@@ -136,6 +135,17 @@ describe("/:docoHandle/tree.json", () => {
     });
     expect(await res.json()).toEqual({ items: [], more: 0 });
     expect(mocks.findPages).toHaveBeenCalledWith({}, "doco_1", "onb", 50);
+  });
+
+  it("lists no tree for a Notion Doco, whose structure the copy can't show as Notion does", async () => {
+    mocks.template = "notion";
+    const res = await thrown(
+      tree({
+        request: new Request("https://doco.test/acme-docs/tree.json?under="),
+        params: { docoHandle: "acme-docs" },
+      }),
+    );
+    expect(res.status).toBe(404);
   });
 
   it("is a 404 on a Doco without a reader", async () => {

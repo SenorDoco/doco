@@ -1,8 +1,10 @@
 // The reader's frame, around /<doco>/code/* (a codebase Doco) and
 // /<doco>/pages/* (a Notion Doco): the Doco's name and status, one search
-// box, and the tree of what it copied. The child route loads the folder,
-// file, page or search in the middle; moving between them reloads only that,
-// never the frame or the tree, which fetches the listings it opens itself.
+// box, and, for a codebase, the tree of what it copied (a Notion copy has
+// none: Notion's API shares no teamspaces or sidebar to lay it out as Notion
+// does). The child route loads the folder, file, page or search in the
+// middle; moving between them reloads only that, never the frame or the
+// tree, which fetches the listings it opens itself.
 import { withClient } from "@doco/db";
 import { useEffect, useRef } from "react";
 import {
@@ -18,7 +20,6 @@ import { SiteHeader } from "~/components/site-header";
 import { codeTreeAt } from "~/lib/codebase-read.server";
 import { type DocoRouteParams, canAdminDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadIntegrationStatuses } from "~/lib/integration-status.server";
-import { pageTreeAt } from "~/lib/notion-mirror-read.server";
 import { readerFor } from "~/lib/reader";
 
 /** How often the reader refreshes while its copy is still coming in. */
@@ -53,7 +54,7 @@ export async function loader({
       goal: ctx.meta.goal,
       canAdmin: await canAdminDoco(ctx.meta, ctx.me?.id ?? null),
       status,
-      tree: reader === "code" ? await codeTreeAt(c, docoId, at) : await pageTreeAt(c, docoId, at),
+      tree: reader === "code" ? await codeTreeAt(c, docoId, at) : null,
     };
     return { me: ctx.me, shell };
   });
