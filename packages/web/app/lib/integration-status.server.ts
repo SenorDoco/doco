@@ -20,14 +20,20 @@ export type { ImportState };
 
 export interface GitHubIntegrationStatus {
   integration: "github";
-  /** What the Doco brings from GitHub, one and several (github-imports). */
+  /** What the Doco brings from GitHub, one and several, and the GitHub App
+   *  permission that reads it (github-imports). */
   item: string;
   items: string;
+  permission: string;
   /** When the most recently changed item copied from GitHub was written. */
   latestAt: string | null;
   state: ImportState;
   reposDone: number;
   repos: number;
+  /** Repositories the import skipped, and whether GitHub refused Doco's
+   *  GitHub App access to one. */
+  skipped: number;
+  refused: boolean;
 }
 
 export interface SlackIntegrationStatus {
@@ -129,8 +135,8 @@ async function loadGitHubStatus(
       [docoId],
     )
   ).rows[0]?.at;
-  const { item, items } = githubImportFor(doco?.template);
-  return { integration: "github", item, items, latestAt: toIso(latest), ...imported };
+  const { item, items, permission } = githubImportFor(doco?.template);
+  return { integration: "github", item, items, permission, latestAt: toIso(latest), ...imported };
 }
 
 async function loadSlackStatus(

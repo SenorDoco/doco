@@ -55,4 +55,36 @@ describe("DocoListCard", () => {
     expect(marker).toBeGreaterThan(-1);
     expect(marker).toBeLessThan(name);
   });
+
+  it("counts the files a codebase Doco copies, which are not nodes", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(DocoListCard, {
+          docos: [
+            {
+              id: "doco_code",
+              handle: "torre-codebase",
+              nodeCount: 0,
+              counts: { drafting: 0, queued: 0, active: 0, retired: 0 },
+              files: 1215,
+              lastUpdatedAt: "2026-10-01T01:34:00.000Z",
+            },
+            {
+              id: "doco_both",
+              handle: "torre-mixed",
+              nodeCount: 3,
+              counts: { drafting: 0, queued: 0, active: 3, retired: 0 },
+              files: 1,
+              lastUpdatedAt: null,
+            },
+          ],
+          empty: createElement("p", null, "none"),
+        }),
+      ),
+    );
+    expect(html).toContain("(1,215 files)");
+    expect(html).toContain(" · 1 file)");
+  });
 });

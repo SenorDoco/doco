@@ -9,6 +9,7 @@ const {
   listPullRequestFiles,
   connectRepositories,
   kickBackfillRun,
+  restartSkippedImports,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
   findDocoByInstallation,
@@ -27,6 +28,7 @@ const {
   ),
   connectRepositories: vi.fn(async () => {}),
   kickBackfillRun: vi.fn(async () => {}),
+  restartSkippedImports: vi.fn(async () => ["doco_code", "doco_bugs"]),
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
@@ -53,6 +55,7 @@ vi.mock("~/lib/github-pr-import.server", () => ({
 vi.mock("../api.github.backfill-run", () => ({ kickBackfillRun }));
 vi.mock("~/lib/github-connection.server", () => ({
   connectRepositories,
+  restartSkippedImports,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
 }));
@@ -109,6 +112,20 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     const res = await send("installation", { action: "deleted", installation: { id: 7 } });
     expect(await res.json()).toMatchObject({ ok: true, detached: 7 });
     expect(unsubscribeInstallationEverywhere).toHaveBeenCalledWith(7);
+  });
+
+  it("new permissions accepted → imports again the Docos that skipped a repository", async () => {
+    // Accepting Contents access lets Doco read the code GitHub refused before.
+    const res = await send("installation", {
+      action: "new_permissions_accepted",
+      installation: { id: 7 },
+    });
+    expect(await res.json()).toMatchObject({ ok: true, restarted: ["doco_code", "doco_bugs"] });
+    expect(restartSkippedImports).toHaveBeenCalledWith(7);
+    expect(kickBackfillRun).toHaveBeenCalledWith("https://doco.to", "doco_code");
+    expect(kickBackfillRun).toHaveBeenCalledWith("https://doco.to", "doco_bugs");
+    expect(waitUntil).toHaveBeenCalledTimes(2);
+    expect(unsubscribeInstallationEverywhere).not.toHaveBeenCalled();
   });
 
   it("installation created → ignored (no detach)", async () => {

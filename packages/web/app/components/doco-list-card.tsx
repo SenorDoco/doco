@@ -9,6 +9,8 @@ export interface DocoListEntry {
   ownerHandle?: string;
   nodeCount: number;
   counts?: LifecycleCounts;
+  /** Files a codebase Doco copied; they are not nodes. */
+  files?: number;
   lastUpdatedAt: string | null;
   visibility?: "public" | "private";
 }
@@ -33,6 +35,7 @@ export function DocoListCard({
     count: d.nodeCount,
     countLabel: `${d.nodeCount} nodes`,
     counts: d.counts,
+    files: d.files,
     lastUpdatedAt: d.lastUpdatedAt,
     visibility: d.visibility,
   }));

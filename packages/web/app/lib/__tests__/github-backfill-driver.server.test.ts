@@ -321,6 +321,33 @@ describe("runBackfillSlice — resilience to a throwing repo", () => {
     ]);
   });
 
+  it("counts every repo it skips, keeping GitHub's answer, past the recorded-errors cap", async () => {
+    // GitHub refuses a private repo's code to an App without Contents access.
+    const forbidden = new GitHubApiError({
+      message: "GitHub GET … failed: 403",
+      status: 403,
+      rateLimited: false,
+      permanent: true,
+      retryAfterMs: null,
+    });
+    const queue = Array.from({ length: 60 }, (_, i) => `acme/r${i}`);
+    const backfillRepo = vi.fn().mockRejectedValue(forbidden);
+    const save = vi.fn(async () => {});
+
+    await runBackfillSlice(
+      baseState({ queue }),
+      { ...ctx, installationByRepo: Object.fromEntries(queue.map((r) => [r, 42])) },
+      { backfillRepo: backfillRepo as never, save, now: () => 0 },
+      200_000,
+    );
+
+    const saved = lastSaved(save);
+    expect(saved.status).toBe("done");
+    expect(saved.skipped).toBe(60);
+    expect(saved.errors).toHaveLength(50);
+    expect(saved.errors?.[0]).toMatchObject({ repo: "acme/r0", status: 403 });
+  });
+
   it("retries a transient failure across slices, then skips it after the cap", async () => {
     // acme/a always throws a transient error; acme/b is healthy.
     const backfillRepo = vi.fn(async (o: { repo: string }) => {

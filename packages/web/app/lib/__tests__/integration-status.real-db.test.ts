@@ -249,6 +249,9 @@ describe("loadIntegrationStatuses", () => {
           state: "importing",
           reposDone: 1,
           repos: 4,
+          skipped: 0,
+          refused: false,
+          permission: "Pull requests",
         },
       ]);
     });

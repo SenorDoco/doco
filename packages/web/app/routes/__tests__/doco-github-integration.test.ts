@@ -456,6 +456,25 @@ describe("/:docoHandle/integrations/github", () => {
     expect(mocks.connectRepositories).not.toHaveBeenCalled();
   });
 
+  it("re-imports without adding repositories the Doco never picked", async () => {
+    const ctx = {
+      handle: "meta-pull-requests",
+      workspaceHandle: "meta",
+      connections: [{ repo: "acme/web", installation_id: 42 }],
+      installations: [],
+      backfill: null,
+    };
+    mocks.getDocoConnectionsContext.mockResolvedValue(ctx);
+
+    await action({ request: postForm({ intent: "resync-all" }), ...routeArgs });
+
+    expect(mocks.reconcileInstallationConnections).toHaveBeenCalledWith("doco_1", []);
+    expect(mocks.setBackfillState).toHaveBeenCalledWith(
+      "doco_1",
+      expect.objectContaining({ queue: ["acme/web"] }),
+    );
+  });
+
   it("turns a failed per-repo Re-import into a friendly message, not a 500", async () => {
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "meta-pull-requests",
@@ -498,21 +517,39 @@ describe("resyncButton", () => {
 });
 
 describe("skippedReposNote", () => {
+  const files = { items: "files", permission: "Contents" };
   it("is null when nothing was skipped", () => {
-    expect(skippedReposNote(null)).toBeNull();
-    expect(skippedReposNote({ status: "running" })).toBeNull();
-    expect(skippedReposNote({ status: "running", errors: [] })).toBeNull();
+    expect(skippedReposNote(null, files)).toBeNull();
+    expect(skippedReposNote({ status: "running" }, files)).toBeNull();
+    expect(skippedReposNote({ status: "running", errors: [] }, files)).toBeNull();
   });
   it("names the skipped repositories so the gap is visible", () => {
-    const note = skippedReposNote({
-      status: "done",
-      errors: [
-        { repo: "acme/a", message: "404", at: "t" },
-        { repo: "acme/b", message: "403", at: "t" },
-      ],
-    });
+    const note = skippedReposNote(
+      {
+        status: "done",
+        errors: [
+          { repo: "acme/a", message: "404", at: "t", status: 404 },
+          { repo: "acme/b", message: "500", at: "t", status: 500 },
+        ],
+      },
+      files,
+    );
     expect(note).toContain("acme/a");
     expect(note).toContain("acme/b");
     expect(note).toMatch(/couldn.t be imported/i);
+  });
+  it("counts every skipped repository and says what GitHub needs when it refused access", () => {
+    const note = skippedReposNote(
+      {
+        status: "done",
+        skipped: 14,
+        errors: [{ repo: "torrenegra/worder", message: "403", at: "t", status: 403 }],
+      },
+      files,
+    );
+    expect(note).toContain("14 repositories couldn't be imported");
+    expect(note).toContain(
+      "GitHub doesn't let Doco's GitHub App read their files: give the App Contents read access in GitHub.",
+    );
   });
 });

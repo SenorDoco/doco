@@ -14,6 +14,8 @@ export interface AccessListItem {
   count: number;
   countLabel?: string;
   counts?: LifecycleCounts;
+  /** Files a codebase Doco copied, shown next to its node counts. */
+  files?: number;
   lastUpdatedAt: string | null;
   /** Doco (leaf) rows carry their visibility so the list can mark it;
    *  workspace (group) rows leave it unset. */
@@ -126,7 +128,7 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
             {item.counts ? (
               <>
                 {"("}
-                <LifecycleCountsLabel counts={item.counts} />
+                <CountsLabel counts={item.counts} count={item.count} files={item.files ?? 0} />
                 {")"}
               </>
             ) : (
@@ -141,6 +143,27 @@ function AccessLine({ item, compact = false }: { item: AccessListItem; compact?:
         )}
       </div>
     </div>
+  );
+}
+
+// A codebase Doco holds files, not nodes: its files stand in for empty counts.
+function CountsLabel({
+  counts,
+  count,
+  files,
+}: {
+  counts: LifecycleCounts;
+  count: number;
+  files: number;
+}) {
+  const showCounts = files === 0 || count > 0;
+  return (
+    <>
+      {showCounts ? <LifecycleCountsLabel counts={counts} /> : null}
+      {files > 0
+        ? `${showCounts ? " · " : ""}${files.toLocaleString("en-US")} ${files === 1 ? "file" : "files"}`
+        : null}
+    </>
   );
 }
 

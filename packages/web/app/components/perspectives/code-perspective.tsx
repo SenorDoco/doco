@@ -59,10 +59,14 @@ function NoCodeYet({ handle, source }: { handle: string; source?: IntegrationSta
     );
   }
   return (
-    <p>
+    <p className="max-w-md">
       {source.state === "stalled"
         ? "Copying the code stalled."
-        : "No files came from the connected repositories."}{" "}
+        : source.integration === "github" && source.refused
+          ? `GitHub doesn't let Doco's GitHub App read the code of ${source.skipped} ${
+              source.skipped === 1 ? "repository" : "repositories"
+            }: give the App ${source.permission} read access in GitHub. The copy runs again once it's accepted.`
+          : "No files came from the connected repositories."}{" "}
       <Link to={manage} className="font-semibold text-primary">
         Manage GitHub
       </Link>
