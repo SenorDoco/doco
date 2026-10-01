@@ -1,11 +1,11 @@
 // The one way Doco sends email: alerts, and the onboarding's welcome and
 // reminder messages. It goes out through Resend's HTTPS API when
 // RESEND_API_KEY is set, from DOCO_EMAIL_FROM (default
-// "Doco <notifications@doco.to>"). Without the key nothing is sent and the
+// "🔮 Doco <notifications@doco.to>"). Without the key nothing is sent and the
 // caller is told so, which keeps tests and previews from mailing anyone.
 
 const RESEND_URL = "https://api.resend.com/emails";
-const DEFAULT_FROM = "Doco <notifications@doco.to>";
+const DEFAULT_FROM = "🔮 Doco <notifications@doco.to>";
 
 export interface Email {
   to: string;

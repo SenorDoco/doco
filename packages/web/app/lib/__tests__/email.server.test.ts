@@ -19,14 +19,14 @@ afterEach(() => {
 });
 
 describe("sendEmail", () => {
-  it("sends through Resend from Doco's address", async () => {
+  it("sends through Resend as 🔮 Doco", async () => {
     fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
     expect(await sendEmail(EMAIL)).toEqual({ sent: true });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.resend.com/emails");
     expect(new Headers(init.headers).get("authorization")).toBe("Bearer re_test");
     expect(JSON.parse(String(init.body))).toEqual({
-      from: "Doco <notifications@doco.to>",
+      from: "🔮 Doco <notifications@doco.to>",
       to: ["ana@example.com"],
       subject: "Hello",
       text: "Hi Ana",

@@ -1,7 +1,9 @@
 // Whoever creates a workspace walks three steps (connect GitHub, connect other
 // sources or skip them, ask their agent to start using Doco); whoever joins it
-// from an invite walks only the last. Each step reads as done from what the
-// database already holds. PGlite runs the real schema.
+// from an invite walks only the last. Members of a workspace made before the
+// steps existed walk them too: its owners all three, everyone else the last.
+// Each step reads as done from what the database already holds. PGlite runs
+// the real schema.
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
@@ -54,8 +56,35 @@ async function agentWrites(docoId: string, userId: string, source: string) {
 }
 
 describe("onboarding steps", () => {
-  it("has no steps for someone who never started them there", async () => {
-    expect(await loadOnboardingProgress(c, ana)).toBeNull();
+  it("walks the owners of a workspace made before the steps through all three", async () => {
+    expect(await steps(ana)).toEqual([
+      ["github", false],
+      ["sources", false],
+      ["agent", false],
+    ]);
+  });
+
+  it("walks its other members only through asking their agent", async () => {
+    expect(await steps(bo)).toEqual([["agent", false]]);
+  });
+
+  it("has no steps for someone outside the workspace, or who left it", async () => {
+    await db.exec(`INSERT INTO users (id, github_login, data) VALUES ('user_cy', 'cy', '{}')`);
+    expect(await loadOnboardingProgress(c, { ...ana, userId: "user_cy" })).toBeNull();
+    await startOnboarding(c, { ...bo, joinedAs: "invitee" });
+    await db.exec(`DELETE FROM workspace_users WHERE user_id = 'user_bo'`);
+    expect(await loadOnboardingProgress(c, bo)).toBeNull();
+  });
+
+  it("never walks anyone through their personal workspace", async () => {
+    await db.exec(`
+      INSERT INTO workspaces (id, handle, name) VALUES ('workspace_ana', 'ana', 'ana');
+      INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ('workspace_ana', 'user_ana', 'owner');
+    `);
+    expect(
+      await loadOnboardingProgress(c, { workspaceId: "workspace_ana", userId: "user_ana" }),
+    ).toBeNull();
+    expect([...(await loadUnfinishedOnboarding(c, "user_ana")).keys()]).toEqual(["workspace_acme"]);
   });
 
   it("walks the creator through GitHub, other sources and their agent, in that order", async () => {
@@ -106,6 +135,15 @@ describe("onboarding steps", () => {
     await startOnboarding(c, { ...ana, joinedAs: "creator" });
     await finishSourcesStep(c, ana);
     expect((await steps(ana))?.[1]).toEqual(["sources", true]);
+  });
+
+  it("finishes the other sources for an owner of a workspace made before the steps", async () => {
+    await finishSourcesStep(c, ana);
+    expect(await steps(ana)).toEqual([
+      ["github", false],
+      ["sources", true],
+      ["agent", false],
+    ]);
   });
 
   it("finishes the agent step once the person's agent writes into Agents chats", async () => {
@@ -169,6 +207,11 @@ describe("claimDueReminders", () => {
     await agentWrites("doco_chats", "user_bo", "mcp");
     await startedMinutesAgo(bo, 20);
     expect(await claimDueReminders(c, now)).toEqual([]);
+  });
+
+  it("never reminds the members of a workspace made before the steps", async () => {
+    await finishSourcesStep(c, ana);
+    expect(await claimDueReminders(c, new Date(now.getTime() + 60 * 60_000))).toEqual([]);
   });
 
   it("never sends a reminder a day late", async () => {

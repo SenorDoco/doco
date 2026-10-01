@@ -31,7 +31,6 @@ function due(steps: Array<{ step: string; done: boolean }>, email: string | null
       workspaceHandle: "acme",
       userId: "user_alice",
       joinedAs: steps.length === 1 ? "invitee" : "creator",
-      startedAt: "2026-10-01T00:00:00.000Z",
       steps,
     },
     email,
