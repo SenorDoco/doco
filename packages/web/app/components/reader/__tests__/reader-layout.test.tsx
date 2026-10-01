@@ -160,18 +160,19 @@ describe("ReaderLayout header", () => {
     expect(html).toContain("Notion workspace");
     expect(html).toContain("Acme · 1,284 pages");
     expect(html).toMatch(/href="\/acme-notion\/integrations\/notion"[^>]*>Manage Notion/);
-    expect(html).toContain('placeholder="Search every page in acme-notion"');
-    expect(html).toContain('placeholder="Go to page"');
+    expect(html).toContain('placeholder="Find a page or search every page"');
+    expect(html).not.toContain("Go to page");
     expect(html).toContain('href="/acme-notion/pages"');
   });
 });
 
 describe("ReaderLayout search and tree", () => {
-  it("searches from where the reader is, keeping the open file to come back to", () => {
+  it("has one search, from where the reader is, keeping the open file to come back to", () => {
     const html = render(codeShell, { url: "/acme-codebase/code/acme/app/README.md" });
     expect(html).toContain('action="/acme-codebase/code/acme/app/README.md"');
     expect(html).toContain('name="q"');
-    expect(html).toContain('placeholder="Search the code in acme-codebase"');
+    expect(html).toContain('placeholder="Find a file or search the code"');
+    expect(html.match(/<input/g)).toHaveLength(1);
     expect(html).not.toContain("Close search");
   });
 
@@ -186,7 +187,7 @@ describe("ReaderLayout search and tree", () => {
 
   it("lists the tree, open along the trail, marking the open item", () => {
     const html = render(codeShell, { trail: ["acme/app", "acme/app/README.md"] });
-    expect(html).toContain('placeholder="Go to file"');
+    expect(html).not.toContain("Go to file");
     expect(html).toContain('href="/acme-codebase/code/acme/api"');
     expect(html).toContain('href="/acme-codebase/code/acme/app/src"');
     expect(html).toMatch(

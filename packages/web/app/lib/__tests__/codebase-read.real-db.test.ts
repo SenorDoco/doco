@@ -1,5 +1,5 @@
-// Reading a codebase Doco's copy: the reader's tree, folders and files, Go to
-// file, and searching paths and contents. PGlite runs the real schema.
+// Reading a codebase Doco's copy: the reader's tree, folders and files, finding
+// a file by name, and searching paths and contents. PGlite runs the real schema.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

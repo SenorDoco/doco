@@ -393,7 +393,7 @@ function listingCapped(page: NotionList): boolean {
 /** Bump when what the sync reads out of a page's Markdown changes (the links
  *  it records, the children it queues): every mirror then reads its copied
  *  pages again, once. */
-export const CONTENT_SCAN = "2026-09-29 notion.com urls";
+export const CONTENT_SCAN = "2026-10-01 pages in blocks";
 
 interface PageContent {
   pageId: string;
@@ -407,8 +407,10 @@ interface PageContent {
  * its children, and the listing may have missed them (a capped walk, or
  * Notion's index lagging); the parent is known, so they take their place in
  * the tree at once, titled as the parent shows them until their own fetch.
- * A database is queued under its own id and resolved into its data sources
- * by the drain (resolveChildDatabase). Returns how many were queued.
+ * A child the copy has without a parent (Notion keeps it in a block of this
+ * page) moves under it. A database is queued under its own id and resolved
+ * into its data sources by the drain (resolveChildDatabase). Returns how
+ * many were queued.
  */
 async function recordContent(
   c: QueryClient,
@@ -443,14 +445,16 @@ async function recordContent(
   }
   if (children.size === 0) return 0;
   const queue = [...children.values()];
-  const rows = await c.query<{ page_id: string }>(
+  const rows = await c.query<{ queued: boolean }>(
     `INSERT INTO notion_pages
        (doco_id, page_id, object, parent_id, parent_type, title, url, fetch_pending, fetch_reason)
      SELECT $1, r.page_id, r.object, r.parent_id, 'page', r.title, r.url, true, r.reason
        FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
          AS r(page_id, object, parent_id, title, url, reason)
-     ON CONFLICT (doco_id, page_id) DO NOTHING
-     RETURNING page_id`,
+     ON CONFLICT (doco_id, page_id) DO UPDATE
+       SET parent_id = EXCLUDED.parent_id, parent_type = 'page'
+       WHERE notion_pages.parent_type IS NULL
+     RETURNING xmax = 0 AS queued`,
     [
       docoId,
       queue.map(({ ref }) => ref.id),
@@ -461,7 +465,7 @@ async function recordContent(
       queue.map(({ ref }) => (ref.kind === "page" ? "child" : "child-database")),
     ],
   );
-  return rows.rows.length;
+  return rows.rows.filter((row) => row.queued).length;
 }
 
 /** Once per CONTENT_SCAN version: read every copied page's Markdown again
@@ -624,8 +628,11 @@ async function upsertListing(
                 created_time, last_edited_time, last_edited_by)
        ON CONFLICT (doco_id, page_id) DO UPDATE SET
          object = EXCLUDED.object,
-         parent_id = EXCLUDED.parent_id,
-         parent_type = EXCLUDED.parent_type,
+         -- A listing that names no parent (a page in a block) keeps the place
+         -- the copy already knows.
+         parent_id = CASE WHEN EXCLUDED.parent_type IS NULL THEN notion_pages.parent_id
+                          ELSE EXCLUDED.parent_id END,
+         parent_type = COALESCE(EXCLUDED.parent_type, notion_pages.parent_type),
          title = EXCLUDED.title,
          icon = EXCLUDED.icon,
          properties = EXCLUDED.properties,

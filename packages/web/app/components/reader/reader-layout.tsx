@@ -1,10 +1,10 @@
 // The reader's frame, around whatever it shows (a folder, a file, a page, a
 // search): the Doco's name and kind with one status line for its copy, one
 // search box, and the tree, which turns into a drawer on a phone. "/"
-// focuses the search, "t" the Go to box.
-import { ListTree, Search, X } from "lucide-react";
+// focuses the search.
+import { ListTree, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Form, Link, useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 import { ActivityColumn } from "~/components/doco-activity";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import {
@@ -22,6 +22,7 @@ import type { DocoActivity } from "~/lib/doco-activity.server";
 import { findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import type { IntegrationStatus } from "~/lib/integration-status.server";
 import { type ReaderKind, type ReaderListing, readerHref } from "~/lib/reader";
+import { ReaderSearch } from "./reader-search";
 import { ReaderTree } from "./reader-tree";
 
 /** What the reader's frame shows, whatever is open in it. */
@@ -115,7 +116,6 @@ export function ReaderLayout({
   const { handle, reader, status } = shell;
   const location = useLocation();
   const searchRef = useRef<HTMLInputElement>(null);
-  const goToRef = useRef<HTMLInputElement>(null);
   const [drawer, setDrawer] = useState(false);
 
   // Following a link closes the phone's drawer.
@@ -128,10 +128,6 @@ export function ReaderLayout({
       if (event.key === "/") {
         event.preventDefault();
         searchRef.current?.focus();
-      } else if (event.key === "t") {
-        event.preventDefault();
-        setDrawer(true);
-        goToRef.current?.focus();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -204,29 +200,7 @@ export function ReaderLayout({
             <ListTree aria-hidden className="h-3.5 w-3.5" />
             {things}
           </button>
-          <Form method="get" action={location.pathname} className="relative flex-1">
-            <Search
-              aria-hidden
-              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-            />
-            <input
-              ref={searchRef}
-              key={query}
-              name="q"
-              type="search"
-              defaultValue={query}
-              placeholder={
-                reader === "code"
-                  ? `Search the code in ${handle}`
-                  : `Search every page in ${handle}`
-              }
-              aria-label={reader === "code" ? "Search the code" : "Search every page"}
-              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-8 text-sm"
-            />
-            <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-b-2 border-border px-1 text-[10px] leading-4 text-muted-foreground sm:block">
-              /
-            </kbd>
-          </Form>
+          <ReaderSearch handle={handle} reader={reader} query={query} inputRef={searchRef} />
           {query ? (
             <Link to={location.pathname} className={OUTLINE_BTN}>
               Close search
@@ -269,7 +243,6 @@ export function ReaderLayout({
               listings={shell.tree}
               trail={trail}
               current={query ? null : (trail.at(-1) ?? "")}
-              goToRef={goToRef}
               onNavigate={() => setDrawer(false)}
             />
           </aside>

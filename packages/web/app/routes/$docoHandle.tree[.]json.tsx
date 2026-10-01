@@ -1,6 +1,7 @@
 // /<doco>/tree.json — the reader's tree, one listing at a time: what is
 // directly under ?under=<id> ("" for the top), or the items ?find=<words>
-// names, for Go to file / Go to page. Only codebase and Notion Docos have one.
+// names, for the list under the reader's search box. Only codebase and Notion
+// Docos have one.
 import { withClient } from "@doco/db";
 import { findCodeFiles, listCodeTree } from "~/lib/codebase-read.server";
 import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";

@@ -102,11 +102,13 @@ export interface NotionParentRef {
 }
 
 /** The parent an event or object names: a page or data source id, or the
- *  workspace root (`space` in events, `workspace` on objects). */
+ *  workspace root (`space` in events, `workspace` on objects). None for a
+ *  block (a column, a toggle): the page holding the block places the page,
+ *  by naming it in its text. */
 export function parentOf(data: Json): NotionParentRef {
   const parent = asJson(data.parent);
   const type = str(parent.type);
-  if (!type) return { parentId: null, parentType: null };
+  if (!type || type === "block" || type === "block_id") return { parentId: null, parentType: null };
   if (type === "space" || type === "workspace") return { parentId: null, parentType: "workspace" };
   const key = type.endsWith("_id") ? type : `${type}_id`;
   const id = normalizeNotionId(str(parent[key]) || str(parent.id));
