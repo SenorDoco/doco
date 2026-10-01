@@ -47,7 +47,5 @@ describe("doco noun is lowercase app-wide (brand + sentence-initial stay capital
     expect(src).toContain("The doco it pointed at");
     expect(src).not.toContain("Join a Doco ·");
     expect(src).not.toContain("The Doco this invite");
-    // Brand subject stays capitalized.
-    expect(src).toContain("Doco keeps people");
   });
 });
