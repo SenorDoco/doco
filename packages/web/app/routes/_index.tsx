@@ -46,7 +46,7 @@ export default function Home({
       {signedIn ? null : (
         <header className="neu-header border-b border-border bg-card">
           <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-3">
-            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+            <div className="flex min-w-0 items-center gap-3">
               <Link
                 to="/"
                 className="inline-flex items-center hover:opacity-80"
