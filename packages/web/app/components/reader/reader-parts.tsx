@@ -1,7 +1,32 @@
-// Pieces both readers' views share: the bar above a file or page, its "Copy
-// link", and search words marked in a match.
+// Pieces both readers' views share: the home beside the Doco's activity, the
+// bar above a file or page, its "Copy link", and search words marked in a match.
 import { Check, Link2 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
+import { ActivityColumn } from "~/components/doco-activity";
+import type { DocoActivity } from "~/lib/doco-activity.server";
+
+/**
+ * The reader's home with the Doco's activity column, as every Doco home has
+ * it: beside the home on a wide screen, below it on a narrow one.
+ */
+export function ReaderHome({
+  handle,
+  activity,
+  children,
+}: {
+  handle: string;
+  activity: DocoActivity;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-x-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+      <div className="min-w-0">{children}</div>
+      <aside aria-label="Doco activity" className="min-w-0 px-4 pb-6 sm:px-6 xl:pl-0 xl:pt-6">
+        <ActivityColumn activity={activity} handle={handle} />
+      </aside>
+    </div>
+  );
+}
 
 /** The bar above an open folder, file or page: where it is, and its facts. */
 export const BAR =

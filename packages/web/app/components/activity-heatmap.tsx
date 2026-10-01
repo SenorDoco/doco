@@ -12,10 +12,13 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 
+/** How many weeks the chart shows (about a year), and so how far back its counts go. */
+export const HEATMAP_WEEKS = 52;
+
 interface ActivityHeatmapProps {
   /** Map of yyyy-mm-dd → count of nodes added that day. */
   byDay: Record<string, number>;
-  /** Number of week-columns to render. Default 52 (~1 year). */
+  /** Number of week-columns to render. Default HEATMAP_WEEKS (~1 year). */
   weeks?: number;
 }
 
@@ -47,7 +50,7 @@ function toLocalIso(d: Date): string {
   return `${y}-${m}-${dd}`;
 }
 
-export function ActivityHeatmap({ byDay, weeks = 52 }: ActivityHeatmapProps) {
+export function ActivityHeatmap({ byDay, weeks = HEATMAP_WEEKS }: ActivityHeatmapProps) {
   const today = new Date();
   const totalDays = weeks * 7;
   const days: { date: string; count: number; weekday: number }[] = [];

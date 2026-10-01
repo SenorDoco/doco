@@ -5,8 +5,10 @@ import { withClient } from "@doco/db";
 import { useLoaderData, useOutletContext } from "react-router";
 import { CodeReaderView } from "~/components/reader/code-views";
 import type { ReaderShell } from "~/components/reader/reader-layout";
+import { ReaderHome } from "~/components/reader/reader-parts";
 import { loadCodeView } from "~/lib/codebase-read.server";
 import { type DocoRouteParams, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoActivity } from "~/lib/doco-activity.server";
 import { readerFor } from "~/lib/reader";
 
 export async function loader({
@@ -19,11 +21,17 @@ export async function loader({
   const ctx = await loadDocoRouteForRead(request, params);
   if (readerFor(ctx.meta.template) !== "code") throw new Response("Not found", { status: 404 });
   const query = (new URL(request.url).searchParams.get("q") ?? "").trim();
-  const view = await withClient((c) =>
-    loadCodeView(c, ctx.meta.docoId, { id: params["*"] ?? "", query }),
+  const id = params["*"] ?? "";
+  // The home, like every Doco's home, shows the Doco's activity beside it.
+  const atHome = id === "" && !query;
+  const [view, activity] = await withClient((c) =>
+    Promise.all([
+      loadCodeView(c, ctx.meta.docoId, { id, query }),
+      atHome ? loadDocoActivity(c, ctx.meta.docoId) : null,
+    ]),
   );
   if (!view) throw new Response("Not found", { status: 404 });
-  return { handle: ctx.handle, view };
+  return { handle: ctx.handle, view, activity };
 }
 
 export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | undefined }) {
@@ -41,7 +49,14 @@ export function meta({ data }: { data: Awaited<ReturnType<typeof loader>> | unde
 }
 
 export default function CodeReader() {
-  const { handle, view } = useLoaderData<typeof loader>();
+  const { handle, view, activity } = useLoaderData<typeof loader>();
   const shell = useOutletContext<ReaderShell>();
-  return <CodeReaderView handle={handle} view={view} status={shell.status} />;
+  const reader = <CodeReaderView handle={handle} view={view} status={shell.status} />;
+  return activity ? (
+    <ReaderHome handle={handle} activity={activity}>
+      {reader}
+    </ReaderHome>
+  ) : (
+    reader
+  );
 }
