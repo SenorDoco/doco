@@ -20,7 +20,7 @@ export function readerFor(template: string | null | undefined): ReaderKind | nul
   }
 }
 
-/** One item of a reader's tree, or of a Go to result. */
+/** One item of a reader's tree, or of the list under its search box. */
 export interface ReaderTreeItem {
   /** The item's address in the reader: "owner/repo/path/to/file" for code
    *  (the repository itself is "owner/repo"), the page id for Notion. */
@@ -34,7 +34,7 @@ export interface ReaderTreeItem {
   files: number | null;
   /** A Notion page the copy knows by name only: its text is still to come. */
   pending: boolean;
-  /** Where a Go to result lives: its folder, or its ancestor pages. Empty
+  /** Where an item in that list lives: its folder, or its ancestor pages. Empty
    *  in the tree, where the place shows. */
   where: string;
 }

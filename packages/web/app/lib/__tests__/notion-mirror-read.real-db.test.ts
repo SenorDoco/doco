@@ -1,4 +1,4 @@
-// Reading the Notion mirror: the reader's page tree, Go to page, its home,
+// Reading the Notion mirror: the reader's page tree, finding pages by title, its home,
 // each page, search, and Notion results in the Doco's search.
 // PGlite runs the real schema and full-text search.
 import { readFileSync } from "node:fs";
@@ -168,12 +168,33 @@ const page = (
   ...extra,
 });
 
+const BLANK = "00000000-0000-4000-8000-000000000001";
+const seedUntitled = () =>
+  seedPage({
+    id: BLANK,
+    parent: UNMIRRORED,
+    parentType: "page",
+    title: "",
+    markdown: "",
+    plain: "",
+    edited: "2022-08-05T00:46:00Z",
+  });
+
 describe("listPageTree", () => {
   it("lists the pages whose parent isn't in the copy at the root, by title", async () => {
     expect(await listPageTree(c, "doco_notion", "")).toEqual({
       items: [page(HB, "Handbook", { icon: "📘", hasChildren: true }), page(RM, "Roadmap")],
       more: 0,
     });
+  });
+
+  it("lists untitled pages after the titled ones", async () => {
+    await seedUntitled();
+    expect((await listPageTree(c, "doco_notion", "")).items.map((i) => i.name)).toEqual([
+      "Handbook",
+      "Roadmap",
+      "",
+    ]);
   });
 
   it("lists a page's children by title, and a database's rows newest first", async () => {
@@ -247,6 +268,13 @@ describe("loadPagesView", () => {
       ["Handbook", 2],
       ["Roadmap", 0],
     ]);
+  });
+
+  it("lists untitled top-level pages after the titled ones", async () => {
+    await seedUntitled();
+    const view = await loadPagesView(c, "doco_notion", { pageId: "", query: "" });
+    if (view?.view !== "home") throw new Error("expected the home");
+    expect(view.top.map((p) => p.title)).toEqual(["Handbook", "Roadmap", ""]);
   });
 
   it("reads a page: its path, text, editor, links and backlinks", async () => {
