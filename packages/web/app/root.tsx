@@ -18,10 +18,10 @@ import { AgentSidebar } from "~/components/agent-sidebar";
 import { FeedbackReporter } from "~/components/feedback-reporter";
 import { type FeedbackPending, SiteHeader } from "~/components/site-header";
 import { countPendingAccessRequestsForOwner } from "~/lib/access-requests.server";
+import { AI_INSTRUCTIONS_META } from "~/lib/agent-instructions";
 import { countPendingFeedback } from "~/lib/feedback-reports.server";
 import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
-import { TAGLINE } from "~/lib/tagline";
 import "./app.css";
 
 // Root loader — fetch the current Principal once so the shell's header
@@ -77,14 +77,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         {/*
           Agent-discovery signal: a natural-language meta tag any LLM
-          reading the head sees first, pointing at the home page, which
-          holds the agent instructions. On root.tsx so an agent that lands
-          on any internal page sees it too.
+          reading the head sees first, pointing at /agents, which holds
+          the agent instructions. On root.tsx so an agent that lands on any
+          internal page sees it too.
         */}
-        <meta
-          name="ai-instructions"
-          content={`This site is Doco: ${TAGLINE}. If you were told 'let's start using Doco' or similar, follow the agent instructions on the home page, /.`}
-        />
+        <meta name="ai-instructions" content={AI_INSTRUCTIONS_META} />
         <Meta />
         <Links />
       </head>

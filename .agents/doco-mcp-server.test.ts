@@ -307,11 +307,11 @@ describe("doco-mcp-server", () => {
     expect(result.instructions).not.toMatch(/first person/i);
     expect(firstPersonLines(result.instructions)).toEqual([]);
     expect(result.instructions).toContain("asking the user to approve again");
-    // One agent-instructions template (the Doco home page block, kept in
+    // One agent-instructions template (the block on /agents, kept in
     // AGENTS.md) carries the workspace pick and the baseline duties; this
     // server covers only its own mechanics and points there.
     expect(result.instructions).toContain(
-      "Follow the Doco agent instructions: the block on the Doco home page",
+      "Follow the Doco agent instructions at https://doco.to/agents",
     );
     expect(result.instructions).not.toContain("Load context first");
     expect(result.instructions).not.toContain("Document every decision");

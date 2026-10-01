@@ -57,8 +57,11 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
 export default [
   index("routes/_index.tsx"),
   route("robots.txt", "routes/robots[.]txt.tsx"),
+  // The agent instructions, with a Copy button. Every pointer for agents
+  // leads here.
+  route("agents", "routes/agents.tsx"),
   // Common probes agents try when told to "set up Doco". Each bounces to
-  // the home page, which holds the agent instructions, instead of 404-ing.
+  // /agents instead of 404-ing.
   route("docs", "routes/agent-probes[.]ts.tsx", { id: "probe-docs" }),
   route("setup", "routes/agent-probes[.]ts.tsx", { id: "probe-setup" }),
   route("new", "routes/agent-probes[.]ts.tsx", { id: "probe-new" }),
@@ -69,7 +72,7 @@ export default [
   route("api", "routes/agent-probes[.]ts.tsx", { id: "probe-api" }),
   route("api/docs", "routes/agent-probes[.]ts.tsx", { id: "probe-api-docs" }),
   // The old agent protocol's address: AGENTS.md copies of the old
-  // instructions still link here. The home page holds the only template now.
+  // instructions still link here. /agents holds the only template now.
   route("protocol/canonical-instructions", "routes/agent-probes[.]ts.tsx", {
     id: "probe-canonical-instructions",
   }),

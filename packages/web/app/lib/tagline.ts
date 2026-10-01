@@ -1,3 +1,3 @@
-// Doco's tagline: the home page heading, its title and description, and the
+// Doco's tagline: the home page headline, its title and description, and the
 // site-wide agent meta tag all read it from here.
 export const TAGLINE = "Shared context for AI and teams";

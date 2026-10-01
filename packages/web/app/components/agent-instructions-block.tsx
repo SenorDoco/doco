@@ -1,5 +1,5 @@
-// The instructions to hand an agent, with a Copy button. The home page shows
-// the generic block; a workspace's Connect agent page shows it with the line
+// The instructions to hand an agent, with a Copy button. /agents shows the
+// generic block; a workspace's Connect agent page shows it with the line
 // that connects the project to that workspace.
 
 import { useState } from "react";

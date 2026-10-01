@@ -1,27 +1,33 @@
 // Alexander, 2026-09-30: one agent-instructions template all over Doco. The
-// home page block (lib/agent-instructions.ts) is the only one; every other
-// place that talks to agents hands it over or points at it.
+// block in lib/agent-instructions.ts is the only one; every other place that
+// talks to agents hands it over or points at the page that shows it, /agents
+// (the home page until 2026-10-01).
 import { describe, expect, it } from "vitest";
+import { AI_INSTRUCTIONS_META } from "~/lib/agent-instructions";
 import routes from "../../routes";
 import { loader as probe } from "../agent-probes[.]ts";
 import { loader as inviteAgentTxt } from "../invite.$code.agent[.]txt";
 import { loader as oauthRecipe } from "../protocol.agent-oauth-recipe";
+import { loader as robots } from "../robots[.]txt";
 
 describe("the one agent-instructions template", () => {
-  it("replaces the old protocol page: its address sends agents to the home page", async () => {
+  it("replaces the old protocol page: its address sends agents to /agents", async () => {
     const route = routes.find((r) => r.path === "protocol/canonical-instructions");
     expect(route?.file).toBe("routes/agent-probes[.]ts.tsx");
     const response = await probe();
-    expect(response.headers.get("Location")).toBe("/");
+    expect(response.headers.get("Location")).toBe("/agents");
+  });
+
+  it("is where robots.txt and the agent meta tag send agents", async () => {
+    expect(await (await robots()).text()).toContain("the instructions to use Doco are at /agents.");
+    expect(AI_INSTRUCTIONS_META).toContain("follow the agent instructions at /agents.");
   });
 
   it("is what the OAuth recipe has agents keep in AGENTS.md", async () => {
     const body = await oauthRecipe({
       request: new Request("https://doco.test/protocol/agent-oauth-recipe"),
     }).text();
-    expect(body).toMatch(
-      /AGENTS\.md` with the instructions from the Doco home page \(https:\/\/doco\.test\/\)/,
-    );
+    expect(body).toMatch(/AGENTS\.md` with the instructions at https:\/\/doco\.test\/agents,/);
     expect(body).not.toMatch(/canonical[ _-]instructions/i);
     expect(body).toContain("`agent_instructions`");
   });
@@ -31,7 +37,7 @@ describe("the one agent-instructions template", () => {
       request: new Request("https://doco.test/invite/abc/agent.txt"),
       params: { code: "abc" },
     }).text();
-    expect(body).toContain("To use Doco, follow the instructions on the Doco home page:");
-    expect(body).toContain("https://doco.test/\n");
+    expect(body).toContain("To use Doco, follow the instructions at:");
+    expect(body).toContain("https://doco.test/agents\n");
   });
 });

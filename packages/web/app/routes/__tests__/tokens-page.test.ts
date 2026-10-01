@@ -233,7 +233,7 @@ describe("/tokens page action", () => {
     expect(markup).not.toContain("claude.ai · Claude Desktop · Claude mobile · Cursor");
     expect(markup).not.toContain("ChatGPT & other clients");
     expect(markup).not.toContain("mcp-provider-");
-    // Step 2: the same instructions the home page gives, from the one
+    // Step 2: the same instructions /agents gives, from the one
     // template, not a page-specific prompt.
     expect(markup).toContain("2. Give your agent these instructions");
     expect(markup).toContain("### 1. Check the Doco connection");

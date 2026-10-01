@@ -69,11 +69,11 @@ describe("agentInstructions", () => {
     expect(text).toContain("Never ask the user to create a Doco");
   });
 
-  it("then checks the AGENTS.md copy against the home page and asks before updating it", () => {
+  it("then checks the AGENTS.md copy against /agents and asks before updating it", () => {
     const pick = position("### 2. Pick the project's workspace");
     const current = position("### 3. Keep these instructions current");
     expect(current).toBeGreaterThan(pick);
-    expect(text).toContain("Fetch https://doco.test and compare");
+    expect(text).toContain("Fetch https://doco.test/agents and compare");
     expect(text).toContain("ask the user whether to update it with the latest instructions");
     expect(text).toContain("ask the user to copy the latest instructions");
   });
@@ -165,8 +165,8 @@ describe("agentInstructionsForWorkspace", () => {
   });
 
   // The request and the workspace line sit outside the block, so the block is
-  // the home page's, byte for byte, and stays under the MCP length cap.
-  it("then hands over the home page block and the line that connects the workspace", () => {
+  // the one on /agents, byte for byte, and stays under the MCP length cap.
+  it("then hands over the /agents block and the line that connects the workspace", () => {
     expect(`${INSTRUCTIONS_BEGIN}${block}`).toBe(
       `${text}Doco workspace: https://doco.test/workspaces/acme\n`,
     );

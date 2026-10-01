@@ -207,3 +207,28 @@ describe("/invite/:code", () => {
     expect(html).toContain('href="/torre-bugs"');
   });
 });
+
+describe("invite page", () => {
+  // Alexander, 2026-10-01: the invite page explains Doco with the same block
+  // as the home page, under the invite.
+  it("explains how Doco works under the invite", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(InviteLanding, {
+          loaderData: {
+            ok: true,
+            code: "invite_code",
+            target: { level: "workspace", label: "acme" },
+            inviter: { username: "ana" },
+            expires_at: "2026-10-08T15:00:00.000Z",
+            signedIn: null,
+          },
+        }),
+      ),
+    );
+    expect(html).not.toContain("Doco keeps people, agents, and work aligned.");
+    expect(html.indexOf("How Doco works")).toBeGreaterThan(html.indexOf("Who is redeeming"));
+  });
+});

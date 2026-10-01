@@ -1,13 +1,13 @@
-// The instructions a person gives their agent to use Doco. The home page
+// The instructions a person gives their agent to use Doco. The /agents page
 // shows them with a Copy button; the agent keeps them in the project's
 // AGENTS.md (or CLAUDE.md, or its client's project instructions), between the
-// two markers, and compares that copy with the home page to stay current.
+// two markers, and compares that copy with /agents to stay current.
 //
-// This is the one agent-instructions template in Doco. The home page, each
+// This is the one agent-instructions template in Doco. The /agents page, each
 // workspace's onboarding and Invite agent page, the onboarding reminder email,
 // the Tokens page, the hosted MCP server's instructions and the agent
 // bootstrap all hand over this block; everything else that talks to agents
-// points here.
+// points at /agents.
 //
 // The duties lead and hold without a repo copy, because an agent may meet
 // this block only through the connector. Claude Code keeps just the first
@@ -16,8 +16,16 @@
 // Each paragraph and list item is one line: the page's box wraps the text to
 // its own width.
 
+import { TAGLINE } from "~/lib/tagline";
+
 export const INSTRUCTIONS_BEGIN = "<!-- doco:begin -->";
 export const INSTRUCTIONS_END = "<!-- doco:end -->";
+
+/** The page that shows the block, where every pointer for agents leads. */
+export const AGENT_INSTRUCTIONS_PATH = "/agents";
+
+/** The site-wide meta tag an agent reading any page's head sees first. */
+export const AI_INSTRUCTIONS_META = `This site is Doco: ${TAGLINE}. If you were told 'let's start using Doco' or similar, follow the agent instructions at ${AGENT_INSTRUCTIONS_PATH}.`;
 
 export function agentInstructions(baseUrl: string): string {
   const host = baseUrl.replace(/\/+$/, "");
@@ -65,7 +73,7 @@ When the work needs a Doco the workspace lacks, create it with \`doco_create\` i
 
 ### 3. Keep these instructions current
 
-Fetch ${host} and compare the instructions it shows with this block. If they differ, or the file the project's agents load lacks this block (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), ask the user whether to update it with the latest instructions. If it can't be fetched, ask the user to copy the latest instructions from the home page and paste them.
+Fetch ${host}${AGENT_INSTRUCTIONS_PATH} and compare the instructions it shows with this block. If they differ, or the file the project's agents load lacks this block (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), ask the user whether to update it with the latest instructions. If it can't be fetched, ask the user to copy the latest instructions from that page and paste them.
 ${INSTRUCTIONS_END}
 `;
 }
