@@ -9,7 +9,7 @@ import {
   listInstallationRepos,
   mintInstallationToken,
 } from "./github-app.server";
-import { GITHUB_IMPORTS, githubImportFor } from "./github-imports";
+import { GITHUB_IMPORTS, githubImportFor, skippedRepos } from "./github-imports";
 
 /**
  * SQL for what the Doco aliased `alias` brings from GitHub — the template of
@@ -355,6 +355,8 @@ export interface BackfillError {
   repo: string;
   page?: number;
   message: string;
+  /** GitHub's HTTP status, when GitHub answered (403: it refused Doco access). */
+  status?: number;
   /** ISO time the repo was skipped. */
   at: string;
 }
@@ -392,6 +394,8 @@ export interface GitHubBackfillState {
    *  on a GitHub rate limit, so the import resumes only once the window clears. */
   retry_after?: string;
   /** Repos skipped (gone/forbidden, or transient failures past the cap). */
+  skipped?: number;
+  /** The first of them, with why (bounded on a huge org). */
   errors?: BackfillError[];
 }
 
@@ -427,6 +431,7 @@ export function normalizeBackfillState(raw: unknown): GitHubBackfillState | null
     ...(typeof e.cursor_at === "string" ? { cursor_at: e.cursor_at } : {}),
     ...num("attempts"),
     ...(typeof e.retry_after === "string" ? { retry_after: e.retry_after } : {}),
+    ...num("skipped"),
     ...(Array.isArray(e.errors) ? { errors: e.errors.filter(isBackfillError) } : {}),
   };
 }
@@ -483,6 +488,8 @@ export interface GitHubImportStatus {
    *  never had a heartbeat) — the signature of a stranded chain a sweep re-kicks. */
   stalled: boolean;
   /** Repos skipped (gone/forbidden, or transient failures past the cap). */
+  skipped: number;
+  /** The first of them, with why. */
   errors: BackfillError[];
 }
 
@@ -515,6 +522,7 @@ export function summarizeBackfillForStatus(
     ...(backfill.finished_at ? { finished_at: backfill.finished_at } : {}),
     ...(backfill.cursor_at ? { cursor_at: backfill.cursor_at } : {}),
     stalled,
+    skipped: skippedRepos(backfill),
     errors: backfill.errors ?? [],
   };
 }
@@ -527,6 +535,10 @@ export interface GitHubImportState {
   state: ImportState;
   reposDone: number;
   repos: number;
+  /** Repositories the import skipped. */
+  skipped: number;
+  /** GitHub refused Doco's GitHub App access to one of them (a permission it lacks). */
+  refused: boolean;
 }
 
 /**
@@ -548,6 +560,8 @@ export function githubImportState(
     state: summary?.status !== "running" ? "done" : summary.stalled ? "stalled" : "importing",
     reposDone: summary?.repos_done ?? 0,
     repos: summary?.repos ?? 0,
+    skipped: summary?.skipped ?? 0,
+    refused: (summary?.errors ?? []).some((e) => e.status === 403),
   };
 }
 
@@ -1166,33 +1180,52 @@ export async function importInstallationConnections(
 }
 
 /**
- * Re-discover the current repos for every installation a Doco is connected
- * through and record any that are missing — so a repo added to the org *after*
+ * Re-discover the current repos of every organization a Doco subscribes to as a
+ * whole and record any that are missing, so a repo added to the org after
  * connect (or one whose `installation_repositories` webhook was missed) shows
- * up. Re-lists each distinct installation (from explicit subscriptions and the
- * installation ids carried by existing connections) via
- * importInstallationConnections, which addConnection's each (idempotent).
- * Returns the installation ids reconciled. A failing installation (bad token,
- * revoked) is logged and skipped, not fatal.
+ * up. A Doco that picked its repositories one by one gets none added. Returns
+ * the installation ids reconciled. A failing installation (bad token, revoked)
+ * is logged and skipped, not fatal.
  */
 export async function reconcileInstallationConnections(
   docoId: string,
-  input: { installations: GitHubInstallationSub[]; connections: GitHubConnection[] },
+  installations: GitHubInstallationSub[],
   deps?: { importRepos?: typeof importInstallationConnections },
 ): Promise<number[]> {
   const importRepos = deps?.importRepos ?? importInstallationConnections;
-  const ids = [
-    ...new Set([
-      ...input.installations.map((i) => i.installation_id),
-      ...input.connections.map((c) => c.installation_id),
-    ]),
-  ].filter((id) => Number.isInteger(id) && id > 0);
+  const ids = [...new Set(installations.map((i) => i.installation_id))];
   for (const installationId of ids) {
     try {
       await importRepos({ docoId, installationId });
     } catch (err) {
       console.error(`[github reconcile] installation ${installationId} failed:`, err);
     }
+  }
+  return ids;
+}
+
+/**
+ * Once an installation accepts new permissions, the repositories GitHub refused
+ * Doco before may be readable: start the import again for every Doco connected
+ * through it whose last import skipped a repository. Returns their ids; the
+ * caller kicks the backfill worker for each.
+ */
+export async function restartSkippedImports(installationId: number): Promise<string[]> {
+  const ids = await withClient(async (c) => {
+    const r = await c.query<{ id: string }>(
+      `SELECT id FROM docos
+        WHERE data->'github_integration'->'connections'
+                @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))
+          AND data->'github_integration'->'backfill'->'errors' <> '[]'::jsonb
+          AND deleted_at IS NULL
+        ORDER BY id`,
+      [installationId],
+    );
+    return r.rows.map((row) => row.id);
+  });
+  for (const id of ids) {
+    const ctx = await getDocoConnectionsContext(id);
+    if (ctx) await setBackfillState(id, resumeCursorFromConnections(ctx.connections, ctx.backfill));
   }
   return ids;
 }

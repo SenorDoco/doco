@@ -50,7 +50,12 @@ import {
   setBackfillState,
   subscribeInstallation,
 } from "~/lib/github-connection.server";
-import { type GitHubImport, githubImportFor } from "~/lib/github-imports";
+import {
+  type GitHubImport,
+  githubImportFor,
+  refusedAccessNote,
+  skippedRepos,
+} from "~/lib/github-imports";
 import { lifecycleColor } from "~/lib/node-colors";
 import { kickBackfillRun } from "./api.github.backfill-run";
 
@@ -186,16 +191,17 @@ export async function action({
 
   if (intent === "resync-all") {
     // Recover a stalled / incomplete org import AND pick up repos added after
-    // connect: re-discover each installation's current repos (records any
-    // missing ones), then rebuild the resumable cursor from the now-complete
-    // connection list and kick the worker. Idempotent upserts mean re-walking
-    // already-imported items just no-ops; gaps get filled. Kicked off the request
-    // path so the form returns immediately and the "importing…" banner takes over.
+    // connect: re-discover the current repos of each organization subscribed as
+    // a whole (records any missing ones), then rebuild the resumable cursor from
+    // the now-complete connection list and kick the worker. Idempotent upserts
+    // mean re-walking already-imported items just no-ops; gaps get filled. Kicked
+    // off the request path so the form returns immediately and the "importing…"
+    // banner takes over.
     const ctx0 = await getDocoConnectionsContext(meta.docoId);
     if (!ctx0 || (ctx0.connections.length === 0 && ctx0.installations.length === 0)) {
       return { error: "Nothing is connected to re-import." };
     }
-    await reconcileInstallationConnections(meta.docoId, ctx0);
+    await reconcileInstallationConnections(meta.docoId, ctx0.installations);
     const ctx = (await getDocoConnectionsContext(meta.docoId)) ?? ctx0;
     if (ctx.connections.length === 0) return { error: "Nothing is connected to re-import." };
     await setBackfillState(meta.docoId, resumeCursorFromConnections(ctx.connections, ctx.backfill));
@@ -287,17 +293,25 @@ export function resyncButton(
 /**
  * A short note naming the repositories the backfill had to skip (gone,
  * forbidden, or transient failures past the retry cap), so the gap is visible
- * instead of silent. Null when nothing was skipped. Pure.
+ * instead of silent, and what GitHub needs when it refused Doco access. Null
+ * when nothing was skipped. Pure.
  */
-export function skippedReposNote(backfill: GitHubBackfillState | null): string | null {
-  const repos = [...new Set((backfill?.errors ?? []).map((e) => e.repo))];
-  if (repos.length === 0) return null;
+export function skippedReposNote(
+  backfill: GitHubBackfillState | null,
+  brings: Pick<GitHubImport, "items" | "permission">,
+): string | null {
+  const count = backfill ? skippedRepos(backfill) : 0;
+  if (count === 0) return null;
+  const errors = backfill?.errors ?? [];
+  const repos = [...new Set(errors.map((e) => e.repo))];
   const shown = repos.slice(0, 3).join(", ");
-  const more = repos.length > 3 ? ` and ${repos.length - 3} more` : "";
-  const one = repos.length === 1;
-  return `${repos.length} ${one ? "repository" : "repositories"} couldn't be imported and ${
+  const unnamed = count - Math.min(repos.length, 3);
+  const more = unnamed > 0 ? ` and ${unnamed} more` : "";
+  const one = count === 1;
+  const refused = errors.some((e) => e.status === 403) ? ` ${refusedAccessNote(brings)}` : "";
+  return `${count} ${one ? "repository" : "repositories"} couldn't be imported and ${
     one ? "was" : "were"
-  } skipped: ${shown}${more}.`;
+  } skipped: ${shown}${more}.${refused}`;
 }
 
 const DESTRUCTIVE_BTN =
@@ -320,7 +334,7 @@ export default function DocoGitHubIntegration() {
   const [searchParams] = useSearchParams();
   const importing = backfill?.status === "running";
   const resync = resyncButton(backfill, brings);
-  const skipped = skippedReposNote(backfill);
+  const skipped = skippedReposNote(backfill, brings);
   const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
   const connectedInstallationIds = new Set(
     installations.map((installation) => installation.installation_id),

@@ -35,8 +35,8 @@ import {
   verbFromAuditOp,
 } from "~/lib/activity-feed";
 import { cn } from "~/lib/cn";
-import { listDocoStats } from "~/lib/doco-stats.server";
-import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
+import { EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
+import { type LifecycleCounts, lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -52,6 +52,7 @@ interface WorkspaceDoco {
   visibility: "public" | "private";
   nodes: number;
   counts: LifecycleCounts;
+  files: number;
   lastUpdatedAt: string | null;
 }
 
@@ -98,17 +99,14 @@ export async function loader({
     const docos: WorkspaceDoco[] = docoRows
       .map((r): WorkspaceDoco => {
         const id = r.id;
-        const stats = statsByDocoId.get(id) ?? {
-          nodes: 0,
-          counts: EMPTY_LIFECYCLE_COUNTS,
-          lastUpdatedAt: null,
-        };
+        const stats = statsByDocoId.get(id) ?? EMPTY_DOCO_STATS;
         return {
           docoId: id,
           handle: r.handle,
           visibility: r.visibility,
           nodes: stats.nodes,
           counts: stats.counts,
+          files: stats.files,
           lastUpdatedAt: stats.lastUpdatedAt,
         };
       })
@@ -312,6 +310,7 @@ export default function WorkspaceHome({
     ownerHandle: workspace.handle,
     nodeCount: d.nodes,
     counts: d.counts,
+    files: d.files,
     lastUpdatedAt: d.lastUpdatedAt,
     visibility: d.visibility,
   }));

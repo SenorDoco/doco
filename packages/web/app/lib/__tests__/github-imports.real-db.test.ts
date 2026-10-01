@@ -22,6 +22,7 @@ import {
   listInstallations,
   pickConnections,
   removeConnection,
+  restartSkippedImports,
   setBackfillState,
   subscribeInstallation,
   unsubscribeInstallationEverywhere,
@@ -222,6 +223,48 @@ describe("connecting repositories", () => {
       repo_index: 0,
       imported: 0,
     });
+  });
+});
+
+describe("once GitHub grants Doco more access", () => {
+  const refused = {
+    repo: "acme/app",
+    message: "failed: 403",
+    at: "2026-10-01T00:00:00Z",
+    status: 403,
+  };
+
+  it("imports again every Doco connected through it that skipped a repository", async () => {
+    await connectRepositories("doco_code", [
+      { repo: "acme/app", installation_id: 9 },
+      { repo: "acme/api", installation_id: 9 },
+    ]);
+    await setBackfillState("doco_code", {
+      status: "done",
+      repos: 2,
+      skipped: 2,
+      errors: [refused],
+    });
+    // Skipped nothing: nothing to import again.
+    await connectRepositories("doco_prs", [{ repo: "acme/app", installation_id: 9 }]);
+    await setBackfillState("doco_prs", { status: "done", repos: 1 });
+    // Connected through another installation.
+    await connectRepositories("doco_bugs", [{ repo: "zeta/web", installation_id: 7 }]);
+    await setBackfillState("doco_bugs", {
+      status: "done",
+      repos: 1,
+      skipped: 1,
+      errors: [refused],
+    });
+
+    expect(await restartSkippedImports(9)).toEqual(["doco_code"]);
+    expect((await getDocoConnectionsContext("doco_code"))?.backfill).toMatchObject({
+      status: "running",
+      queue: ["acme/app", "acme/api"],
+      repo_index: 0,
+    });
+    expect((await getDocoConnectionsContext("doco_code"))?.backfill?.errors).toBeUndefined();
+    expect((await getDocoConnectionsContext("doco_bugs"))?.backfill?.status).toBe("done");
   });
 });
 

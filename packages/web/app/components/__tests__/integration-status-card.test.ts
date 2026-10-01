@@ -30,6 +30,9 @@ const github: GitHubIntegrationStatus = {
   state: "importing",
   reposDone: 1,
   repos: 4,
+  skipped: 0,
+  refused: false,
+  permission: "Pull requests",
 };
 
 const slack: SlackIntegrationStatus = {
@@ -101,6 +104,27 @@ describe("IntegrationStatusCard", () => {
 
   it("says when every past item is imported", () => {
     expect(render({ ...github, state: "done" })).toContain("All pull requests imported");
+  });
+
+  it("never says everything was imported when GitHub refused repositories", () => {
+    const files = { ...github, item: "file", items: "files", permission: "Contents" };
+    const html = render({
+      ...files,
+      state: "done",
+      repos: 14,
+      reposDone: 14,
+      skipped: 14,
+      refused: true,
+    });
+    expect(html).not.toContain("All files imported");
+    expect(html).toContain("14 of 14 repos skipped");
+    expect(html).toContain(
+      "GitHub doesn&#x27;t let Doco&#x27;s GitHub App read their files: give the App Contents read access in GitHub. The import runs again once it&#x27;s accepted.",
+    );
+    // Skipped for another reason: re-importing may bring them.
+    expect(render({ ...files, state: "done", repos: 3, skipped: 1, refused: false })).toContain(
+      "GitHub didn&#x27;t return them. Re-import to try again.",
+    );
   });
 
   it("flags a stalled import", () => {

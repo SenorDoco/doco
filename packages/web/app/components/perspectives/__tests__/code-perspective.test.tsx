@@ -49,6 +49,9 @@ const importing: GitHubIntegrationStatus = {
   state: "importing",
   reposDone: 0,
   repos: 2,
+  skipped: 0,
+  refused: false,
+  permission: "Contents",
 };
 
 describe("CodePerspective", () => {
@@ -72,6 +75,14 @@ describe("CodePerspective", () => {
     expect(render(noCode, { ...importing, state: "stalled" })).toContain(
       "Copying the code stalled.",
     );
+  });
+
+  it("says GitHub refused the code, and what to give Doco's GitHub App", () => {
+    const html = render(noCode, { ...importing, state: "done", skipped: 14, refused: true });
+    expect(html).toContain(
+      "GitHub doesn&#x27;t let Doco&#x27;s GitHub App read the code of 14 repositories: give the App Contents read access in GitHub. The copy runs again once it&#x27;s accepted.",
+    );
+    expect(html).toMatch(/href="\/acme-codebase\/integrations\/github"[^>]*>Manage GitHub/);
   });
 
   it("lists the folder as links that keep the Code perspective open", () => {

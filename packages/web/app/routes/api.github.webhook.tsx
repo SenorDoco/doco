@@ -9,6 +9,7 @@
 //   - installation_repositories (added)   → connect the new repos and queue their import.
 //   - installation_repositories (removed) → detach those repos' connections.
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
+//   - installation (new_permissions_accepted) → import again what GitHub refused before.
 // Idempotent on the item URL / installation id / file sha, so re-deliveries
 // are safe.
 import { waitUntil } from "@vercel/functions";
@@ -18,6 +19,7 @@ import { listPullRequestFiles, mintInstallationToken } from "~/lib/github-app.se
 import {
   connectRepositories,
   detachReposEverywhere,
+  restartSkippedImports,
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
 import { syncBugIssue } from "~/lib/github-issue-import.server";
@@ -108,14 +110,26 @@ export async function action({ request }: { request: Request }) {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  // App uninstalled from an account → detach that installation (and the repo
-  // connections it carried) from every Doco, so nothing keeps trying to sync a
-  // repo the App can no longer see.
   if (event === "installation") {
     const evt = parseInstallationEvent(payload);
-    if (!evt || evt.installationId == null || evt.action !== "deleted") {
+    if (!evt || evt.installationId == null) {
       return Response.json({ ok: true, ignored: true });
     }
+    // The account accepted permissions the App asks for (Contents, say) →
+    // import again every Doco that skipped a repository GitHub refused.
+    if (evt.action === "new_permissions_accepted") {
+      const restarted = await restartSkippedImports(evt.installationId);
+      const origin = new URL(request.url).origin;
+      for (const docoId of restarted) waitUntil(kickBackfillRun(origin, docoId));
+      console.info(
+        `[github webhook] installation ${evt.installationId} accepted new permissions → ${restarted.length} import(s) restarted`,
+      );
+      return Response.json({ ok: true, event, action: evt.action, restarted });
+    }
+    // App uninstalled from an account → detach that installation (and the repo
+    // connections it carried) from every Doco, so nothing keeps trying to sync a
+    // repo the App can no longer see.
+    if (evt.action !== "deleted") return Response.json({ ok: true, ignored: true });
     await unsubscribeInstallationEverywhere(evt.installationId);
     console.info(`[github webhook] installation deleted (${evt.installationId}) → detached`);
     return Response.json({ ok: true, event, action: evt.action, detached: evt.installationId });

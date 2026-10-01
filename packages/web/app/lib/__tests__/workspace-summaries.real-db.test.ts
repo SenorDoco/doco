@@ -61,6 +61,18 @@ describe("loadWorkspaceSummaries", () => {
     });
   });
 
+  it("counts a file copied from GitHub as activity", async () => {
+    await db.exec(`
+      INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data) VALUES
+        ('doco_code', 'acme-codebase', 'workspace_acme', 'workspace_acme', 'private',
+          '{"template_handle": "codebase"}');
+      INSERT INTO code_files (doco_id, repo, path, sha, size, synced_at) VALUES
+        ('doco_code', 'acme/app', 'a.ts', 's1', 1, '2026-09-25T00:00:00Z');
+    `);
+    const [first] = await loadWorkspaceSummaries(c, "user_ana");
+    expect(first).toMatchObject({ handle: "acme", lastActivityAt: "2026-09-25T00:00:00.000Z" });
+  });
+
   it("says when each workspace last saw activity", async () => {
     const [torre, acme, other] = await loadWorkspaceSummaries(c, "user_ana");
     expect(torre.lastActivityAt).toBe("2026-09-20T00:00:00.000Z");

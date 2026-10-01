@@ -1,7 +1,9 @@
 import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { refusedAccessNote } from "~/lib/github-imports";
 import type {
   ConnectedIntegrationStatus,
+  GitHubIntegrationStatus,
   IntegrationStatus,
 } from "~/lib/integration-status.server";
 import { timeAgo } from "~/lib/time-ago";
@@ -57,7 +59,11 @@ function liveLine(status: ConnectedIntegrationStatus, now: Date): string {
 function historyLine(status: ConnectedIntegrationStatus): string {
   if (status.integration === "github") {
     const repos = `${status.reposDone} of ${status.repos} repos`;
-    if (status.state === "done") return `All ${status.items} imported`;
+    if (status.state === "done") {
+      return status.skipped > 0
+        ? `${status.skipped} of ${status.repos} repos skipped`
+        : `All ${status.items} imported`;
+    }
     if (status.state === "stalled") return `Import of ${status.items} stalled at ${repos}`;
     return `Importing ${status.items}: ${repos}`;
   }
@@ -89,6 +95,13 @@ function historyLine(status: ConnectedIntegrationStatus): string {
   return status.state === "stalled"
     ? `History copy stalled: ${progress}`
     : `Copying history: ${progress}`;
+}
+
+/** Why a finished GitHub import skipped repositories, and what brings them in. */
+function skippedLine(status: GitHubIntegrationStatus): string {
+  return status.refused
+    ? `${refusedAccessNote(status)} The import runs again once it's accepted.`
+    : "GitHub didn't return them. Re-import to try again.";
 }
 
 /**
@@ -128,6 +141,11 @@ export function IntegrationStatusCard({
       </Card>
     );
   }
+  // A finished GitHub import that skipped repositories says so, and why.
+  const skipped =
+    status.integration === "github" && status.state === "done" && status.skipped > 0
+      ? status
+      : null;
   return (
     <Card>
       <CardHeader className="space-y-1 px-4 py-3">
@@ -140,15 +158,16 @@ export function IntegrationStatusCard({
         </p>
         <p
           className={`flex items-center gap-1.5 text-xs ${
-            status.state === "stalled" ? "text-destructive" : "text-muted-foreground"
+            status.state === "stalled" || skipped ? "text-destructive" : "text-muted-foreground"
           }`}
         >
           <span aria-hidden>
-            {status.state === "done" ? "✅" : status.state === "stalled" ? "⚠️" : "⏳"}
+            {status.state === "done" && !skipped ? "✅" : status.state === "importing" ? "⏳" : "⚠️"}
           </span>
           <span>{historyLine(status)}</span>
           {status.state === "importing" ? <Spinner /> : null}
         </p>
+        {skipped ? <p className="text-xs text-muted-foreground">{skippedLine(skipped)}</p> : null}
       </CardHeader>
       <CardContent className="px-4 pb-4">
         <Link to={`/${handle}/integrations/${status.integration}`} className={MANAGE_BTN}>

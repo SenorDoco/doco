@@ -15,7 +15,7 @@
 //   • transient   → retry the same cursor a few times, then record + skip
 // Before this, an unhandled throw skipped the cursor save entirely, so the
 // chain died, the count froze, and the sweep just re-threw forever.
-import { classifyGitHubError } from "./github-app.server";
+import { GitHubApiError, classifyGitHubError } from "./github-app.server";
 import { type RepoBackfill, repoBackfillFor } from "./github-backfill.server";
 import {
   type BackfillError,
@@ -59,7 +59,7 @@ function markerFrom(
   page: number,
   counts: { created: number; updated: number; unchanged: number; failed: number },
   done: boolean,
-  extra: { attempts: number; errors: BackfillError[]; retryAfter?: string },
+  extra: { attempts: number; skipped: number; errors: BackfillError[]; retryAfter?: string },
 ): GitHubBackfillState {
   return {
     status: done ? "done" : "running",
@@ -78,6 +78,7 @@ function markerFrom(
     // so the UI can show which repos were skipped.
     ...(!done && extra.attempts > 0 ? { attempts: extra.attempts } : {}),
     ...(!done && extra.retryAfter ? { retry_after: extra.retryAfter } : {}),
+    ...(extra.skipped > 0 ? { skipped: extra.skipped } : {}),
     ...(extra.errors.length > 0 ? { errors: extra.errors } : {}),
     // Heartbeat: every persisted slice advances this, so the sweep can tell a
     // live chain (fresh) from a stranded one (stale) and re-kick only the latter.
@@ -107,6 +108,7 @@ export async function runBackfillSlice(
   let repoIndex = state.repo_index ?? 0;
   let page = state.page ?? 1;
   let attempts = state.attempts ?? 0;
+  let skipped = state.skipped ?? 0;
   const errors: BackfillError[] = [...(state.errors ?? [])];
   const counts = {
     created: state.imported ?? 0,
@@ -120,7 +122,12 @@ export async function runBackfillSlice(
   const persist = (done: boolean) =>
     save(
       ctx.docoId,
-      markerFrom(state, queue, repoIndex, page, counts, done, { attempts, errors, retryAfter }),
+      markerFrom(state, queue, repoIndex, page, counts, done, {
+        attempts,
+        skipped,
+        errors,
+        retryAfter,
+      }),
     );
 
   const start = now();
@@ -176,11 +183,13 @@ export async function runBackfillSlice(
       attempts++;
       if (c.permanent || attempts >= MAX_REPO_ATTEMPTS) {
         // Give up on this repo so the rest of the import can finish.
+        skipped++;
         if (errors.length < MAX_RECORDED_ERRORS) {
           errors.push({
             repo: `${owner}/${repo}`,
             page,
             message: err instanceof Error ? err.message : String(err),
+            ...(err instanceof GitHubApiError ? { status: err.status } : {}),
             at: new Date(now()).toISOString(),
           });
         }

@@ -30,23 +30,26 @@ import {
 } from "../github-connection.server";
 
 describe("reconcileInstallationConnections", () => {
-  it("re-imports each DISTINCT installation id from subs + connections", async () => {
+  it("re-lists each organization the Doco subscribes to as a whole", async () => {
     const importRepos = vi.fn(async () => ({ repos: [] }));
     const ids = await reconcileInstallationConnections(
       "doco_1",
-      {
-        installations: [{ installation_id: 7, account: "acme" }],
-        connections: [
-          { repo: "acme/a", installation_id: 7 },
-          { repo: "zeta/b", installation_id: 9 },
-        ],
-      },
+      [
+        { installation_id: 7, account: "acme" },
+        { installation_id: 9, account: "zeta" },
+      ],
       { importRepos: importRepos as never },
     );
     expect(ids).toEqual([7, 9]);
-    expect(importRepos).toHaveBeenCalledTimes(2);
     expect(importRepos).toHaveBeenCalledWith({ docoId: "doco_1", installationId: 7 });
     expect(importRepos).toHaveBeenCalledWith({ docoId: "doco_1", installationId: 9 });
+  });
+  it("never adds repositories to a Doco that picked its repositories one by one", async () => {
+    const importRepos = vi.fn(async () => ({ repos: [] }));
+    expect(
+      await reconcileInstallationConnections("doco_1", [], { importRepos: importRepos as never }),
+    ).toEqual([]);
+    expect(importRepos).not.toHaveBeenCalled();
   });
   it("skips a failing installation instead of throwing", async () => {
     const importRepos = vi
@@ -55,13 +58,10 @@ describe("reconcileInstallationConnections", () => {
       .mockResolvedValueOnce({ repos: ["acme/a"] });
     const ids = await reconcileInstallationConnections(
       "doco_1",
-      {
-        installations: [],
-        connections: [
-          { repo: "acme/a", installation_id: 1 },
-          { repo: "acme/b", installation_id: 2 },
-        ],
-      },
+      [
+        { installation_id: 1, account: "acme" },
+        { installation_id: 2, account: "zeta" },
+      ],
       { importRepos: importRepos as never },
     );
     expect(ids).toEqual([1, 2]);
@@ -396,12 +396,18 @@ describe("githubImportState", () => {
     expect(githubImportState({ connections: [], installations: [] }, now)).toBeNull();
   });
   it("is done for a repo connection with no backfill", () => {
-    expect(githubImportState(repo, now)).toEqual({ state: "done", reposDone: 0, repos: 0 });
+    expect(githubImportState(repo, now)).toEqual({
+      state: "done",
+      reposDone: 0,
+      repos: 0,
+      skipped: 0,
+      refused: false,
+    });
   });
   it("counts an org-wide installation as connected even before any repo syncs", () => {
     expect(
       githubImportState({ installations: [{ installation_id: 7, account: "acme" }] }, now),
-    ).toEqual({ state: "done", reposDone: 0, repos: 0 });
+    ).toEqual({ state: "done", reposDone: 0, repos: 0, skipped: 0, refused: false });
   });
   it("reports repos imported while a backfill is running", () => {
     expect(
@@ -417,7 +423,7 @@ describe("githubImportState", () => {
         },
         now,
       ),
-    ).toEqual({ state: "importing", reposDone: 1, repos: 3 });
+    ).toEqual({ state: "importing", reposDone: 1, repos: 3, skipped: 0, refused: false });
   });
   it("is stalled when a running backfill stopped advancing", () => {
     expect(
@@ -429,6 +435,28 @@ describe("githubImportState", () => {
         now,
       )?.state,
     ).toBe("stalled");
+  });
+  it("counts the repos it skipped, and whether GitHub refused Doco access to one", () => {
+    const error = { repo: "acme/a", message: "failed: 403", at: "2026-09-27T14:00:00.000Z" };
+    expect(
+      githubImportState(
+        {
+          ...repo,
+          backfill: { status: "done", repos: 3, skipped: 2, errors: [{ ...error, status: 403 }] },
+        },
+        now,
+      ),
+    ).toMatchObject({ state: "done", skipped: 2, refused: true });
+    // A marker from before the count was kept counts the repos it names.
+    expect(
+      githubImportState(
+        {
+          ...repo,
+          backfill: { status: "done", repos: 3, errors: [{ ...error, status: 404 }] },
+        },
+        now,
+      ),
+    ).toMatchObject({ skipped: 1, refused: false });
   });
   it("is done once the backfill is done", () => {
     expect(

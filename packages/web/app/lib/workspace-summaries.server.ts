@@ -66,11 +66,13 @@ export async function loadWorkspaceSummaries(
     [userId, docoRows.rows.map((d) => d.workspace_id), workspaceFilter],
   );
   const activityRows = await c.query<{ workspace_id: string; at: Date | string }>(
-    // Policy edits aren't project activity.
-    `SELECT d.workspace_id, MAX(a.at) AS at
-       FROM audit_events a
-       JOIN docos d ON d.id = a.doco_id
-      WHERE a.doco_id = ANY($1::text[]) AND a.entity_type <> 'policy'
+    // Policy edits aren't project activity; a file copied from GitHub is.
+    `SELECT d.workspace_id, MAX(e.at) AS at
+       FROM (SELECT doco_id, at FROM audit_events WHERE entity_type <> 'policy'
+             UNION ALL
+             SELECT doco_id, synced_at FROM code_files) e
+       JOIN docos d ON d.id = e.doco_id
+      WHERE e.doco_id = ANY($1::text[])
       GROUP BY d.workspace_id`,
     [docoRows.rows.map((d) => d.id)],
   );

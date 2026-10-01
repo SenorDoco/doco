@@ -8,8 +8,11 @@
 // `counts` is that same total split by lifecycle stage
 // (drafting / queued / active / retired) for the colored count display.
 // `edges` reads the persisted `edges` table.
-// `lastUpdatedAt` prefers the max `at` from `audit_events`, and falls
-// back to entity `updated_at` for imported/pre-audit Docos.
+// `files` counts the code a codebase Doco copied (`code_files`), which
+// holds no nodes.
+// `lastUpdatedAt` is the newest of the max `at` from `audit_events`,
+// entity `updated_at` (imported/pre-audit Docos) and the latest file
+// copied.
 
 import { withClient } from "@doco/db";
 import { EMPTY_LIFECYCLE_COUNTS, type LifecycleCounts } from "./node-colors";
@@ -18,6 +21,7 @@ export interface DocoStats {
   nodes: number;
   counts: LifecycleCounts;
   edges: number;
+  files: number;
   lastUpdatedAt: string | null;
 }
 
@@ -45,10 +49,11 @@ export const NODE_TYPES_FOR_STATS = [
 // the list.
 export const NODE_TYPES_FOR_STATS_SQL = NODE_TYPES_FOR_STATS.map((t) => `'${t}'`).join(", ");
 
-const EMPTY: DocoStats = {
+export const EMPTY_DOCO_STATS: DocoStats = {
   nodes: 0,
   counts: EMPTY_LIFECYCLE_COUNTS,
   edges: 0,
+  files: 0,
   lastUpdatedAt: null,
 };
 
@@ -62,7 +67,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
          FROM nodes
         WHERE doco_id = ANY($1)
           AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})`;
-    const [nodesRows, edgesRows, updatedRows] = await Promise.all([
+    const [nodesRows, edgesRows, updatedRows, filesRows] = await Promise.all([
       c.query<{
         doco_id: string;
         n: string;
@@ -91,9 +96,15 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
         "SELECT doco_id, MAX(at)::text AS last_at FROM audit_events WHERE doco_id = ANY($1) GROUP BY doco_id",
         [ids],
       ),
+      c.query<{ doco_id: string; n: string; last_at: string | null }>(
+        `SELECT doco_id, COUNT(*)::text AS n, MAX(synced_at)::text AS last_at
+           FROM code_files WHERE doco_id = ANY($1) GROUP BY doco_id`,
+        [ids],
+      ),
     ]);
 
-    for (const id of ids) out.set(id, { ...EMPTY, counts: { ...EMPTY_LIFECYCLE_COUNTS } });
+    for (const id of ids)
+      out.set(id, { ...EMPTY_DOCO_STATS, counts: { ...EMPTY_LIFECYCLE_COUNTS } });
     for (const r of nodesRows.rows) {
       const s = out.get(r.doco_id);
       if (s) {
@@ -114,6 +125,13 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     for (const r of updatedRows.rows) {
       const s = out.get(r.doco_id);
       if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
+    }
+    for (const r of filesRows.rows) {
+      const s = out.get(r.doco_id);
+      if (s) {
+        s.files = Number(r.n);
+        s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
+      }
     }
     return out;
   });

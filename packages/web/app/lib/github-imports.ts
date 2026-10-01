@@ -6,6 +6,8 @@
 // bringing pull requests, which is what every GitHub connection brought before
 // there was a choice.
 
+import type { GitHubBackfillState } from "./github-connection.server";
+
 export interface GitHubImport {
   /** The choice's id, and the suffix of the handle a new Doco for it gets:
    *  `<workspace>-<id>`. */
@@ -18,6 +20,8 @@ export interface GitHubImport {
   /** What one copied item is called, and several, for progress and status copy. */
   item: string;
   items: string;
+  /** The GitHub App's repository permission that reads them. */
+  permission: string;
 }
 
 export const GITHUB_IMPORTS: readonly GitHubImport[] = [
@@ -28,6 +32,7 @@ export const GITHUB_IMPORTS: readonly GitHubImport[] = [
     description: "Every pull request, tracked as a Reference that settles when it merges.",
     item: "pull request",
     items: "pull requests",
+    permission: "Pull requests",
   },
   {
     id: "github-bugs",
@@ -37,6 +42,7 @@ export const GITHUB_IMPORTS: readonly GitHubImport[] = [
       "Issues labeled bug (or of the Bug issue type), tracked as bugs that close when the issue closes.",
     item: "bug",
     items: "bugs",
+    permission: "Issues",
   },
   {
     id: "codebase",
@@ -46,6 +52,7 @@ export const GITHUB_IMPORTS: readonly GitHubImport[] = [
       "Every file on each repository's default branch, kept in sync on every push and searchable by people and agents.",
     item: "file",
     items: "files",
+    permission: "Contents",
   },
 ];
 
@@ -59,4 +66,16 @@ export function githubImportFor(template: string | null | undefined): GitHubImpo
 /** The choice with this id, or undefined. Pure. */
 export function findGitHubImport(id: string): GitHubImport | undefined {
   return GITHUB_IMPORTS.find((i) => i.id === id);
+}
+
+/** What to tell someone when GitHub refused Doco's GitHub App the repositories
+ *  an import skipped: the permission that reads what the Doco brings. Pure. */
+export function refusedAccessNote(brings: Pick<GitHubImport, "items" | "permission">): string {
+  return `GitHub doesn't let Doco's GitHub App read their ${brings.items}: give the App ${brings.permission} read access in GitHub.`;
+}
+
+/** How many repositories an import skipped. A marker written before the count
+ *  was kept counts the repositories it names. Pure. */
+export function skippedRepos(backfill: GitHubBackfillState): number {
+  return backfill.skipped ?? new Set((backfill.errors ?? []).map((e) => e.repo)).size;
 }
