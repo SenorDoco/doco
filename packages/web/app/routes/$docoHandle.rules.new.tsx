@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { DocoPageMain } from "~/components/page-main";
 import { SiteHeader } from "~/components/site-header";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
+import { authoringContextForRequest } from "~/lib/authoring-source.server";
 import { type GenericNodeDraft, captureGenericNode } from "~/lib/capture.server";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import { captureEdge } from "~/lib/edge-capture.server";
@@ -83,6 +84,7 @@ export async function action({
     me?.id,
   );
 
+  const authoring = await authoringContextForRequest(request);
   const result = await captureGenericNode(
     dir,
     meta.docoId,
@@ -91,6 +93,7 @@ export async function action({
     "rule",
     draft,
     new URL(request.url).origin,
+    authoring,
   );
   if ("error" in result) {
     return Response.json(result, { status: result.status ?? 400 });
@@ -103,7 +106,8 @@ export async function action({
       fromId: result.id,
       toId: authorPrincipalId,
       reason: `Rule ${result.id} authored by Principal ${authorPrincipalId}`,
-      metadata: { route: "rules.new" },
+      source: authoring.source,
+      metadata: { ...authoring.metadata, route: "rules.new" },
     });
     if ("error" in edge) {
       return Response.json(edge, { status: edge.status });
@@ -117,7 +121,8 @@ export async function action({
       fromId: result.id,
       toId: intentId,
       reason: `Rule ${result.id} serves Intent ${intentId}`,
-      metadata: { route: "rules.new" },
+      source: authoring.source,
+      metadata: { ...authoring.metadata, route: "rules.new" },
     });
     if ("error" in edge) {
       return Response.json(edge, { status: edge.status });

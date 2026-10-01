@@ -51,6 +51,7 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SlackPerspective } from "~/components/perspectives/slack-perspective";
 import { SiteHeader } from "~/components/site-header";
+import { TopActorsList } from "~/components/top-actors-list";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
 import { readChangeCursor } from "~/lib/change-cursor.server";
@@ -97,12 +98,12 @@ import {
 } from "~/lib/pull-requests";
 import { readerFor, readerHref } from "~/lib/reader";
 import { computeFilterFacets } from "~/lib/search-filters.server";
-import { timeAgo } from "~/lib/time-ago";
+import { listTopActors } from "~/lib/top-actors.server";
 import { useFullscreen } from "~/lib/use-fullscreen";
 
 const FEED_LIMIT = 20;
 const HEATMAP_WEEKS = 52;
-const TOP_CONTRIBUTORS_LIMIT = 10;
+const TOP_ACTORS_LIMIT = 10;
 // The side panel — the activity column, or the node dialog — sits to the
 // RIGHT of the perspective only when the two fit side by side: the
 // perspective and the panel together (excluding the gap between them) must
@@ -115,13 +116,6 @@ const RIGHT_COLUMN_GRID_GAP = 24;
 
 interface FeedItem extends ActivityFeedLineItem {
   event_id: string;
-}
-
-interface TopContributor {
-  userId: string;
-  username: string;
-  lastAt: string;
-  eventCount: number;
 }
 
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -286,36 +280,9 @@ export async function loader({
     const byDay = await copiesByDay(c, [ctx.meta.docoId], sinceIso);
     for (const r of activityRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
 
-    const contributorRows = (
-      await c.query<{
-        user_id: string;
-        user_name: string;
-        last_at: Date | string;
-        event_count: string;
-      }>(
-        `SELECT ae.by_user AS user_id,
-                COALESCE(c.github_login, c.email, c.id) AS user_name,
-                MAX(ae.at) AS last_at,
-                COUNT(*)::text AS event_count
-           FROM audit_events ae
-           JOIN users c ON c.id = ae.by_user
-          WHERE ae.doco_id = $1
-            AND ae.entity_type NOT IN ('policy')
-          GROUP BY ae.by_user, c.github_login, c.email, c.id
-          ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
-          LIMIT $2`,
-        [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
-      )
-    ).rows;
-    const topContributors: TopContributor[] = contributorRows.map((r) => ({
-      userId: r.user_id,
-      username: r.user_name,
-      lastAt:
-        r.last_at instanceof Date
-          ? r.last_at.toISOString()
-          : new Date(String(r.last_at)).toISOString(),
-      eventCount: Number(r.event_count),
-    }));
+    const scope = { docoIds: [ctx.meta.docoId] };
+    const topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
+    const topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
     const selectedNode = requestedNode
       ? await loadNodeDialogDetail(c, ctx.meta, {
           handle,
@@ -419,6 +386,7 @@ export async function loader({
       facets,
       byDay,
       topContributors,
+      topQueryers,
       handle,
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
@@ -564,6 +532,7 @@ export default function DocoHome({
     facets,
     byDay,
     topContributors,
+    topQueryers,
     handle,
     docoId,
     goal,
@@ -1761,7 +1730,21 @@ export default function DocoHome({
                     This Doco has no nodes or edges yet.
                   </p>
                 }
-                aside={<TopContributorsList contributors={topContributors} />}
+                aside={
+                  <>
+                    <section className="space-y-1">
+                      <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
+                      <TopActorsList
+                        actors={topContributors}
+                        empty="No recorded contributions yet."
+                      />
+                    </section>
+                    <section className="space-y-1">
+                      <h2 className="text-xs font-semibold text-foreground">Top queryers</h2>
+                      <TopActorsList actors={topQueryers} empty="No recorded queries yet." />
+                    </section>
+                  </>
+                }
               />
 
               <Card>
@@ -1832,31 +1815,4 @@ function firstLine(value: string | null): string | null {
   if (!value) return null;
   const line = value.split("\n", 1)[0];
   return line ?? value;
-}
-
-function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {
-  return (
-    <section className="space-y-1">
-      <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
-      {contributors.length === 0 ? (
-        <p className="text-xs italic text-muted-foreground">No recorded contributions yet.</p>
-      ) : (
-        contributors.map((c) => (
-          <div key={c.userId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-            <span className="truncate text-xs" title={c.username}>
-              {c.username}
-            </span>
-            <time
-              dateTime={c.lastAt}
-              title={c.lastAt}
-              suppressHydrationWarning
-              className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
-            >
-              {timeAgo(c.lastAt)}
-            </time>
-          </div>
-        ))
-      )}
-    </section>
-  );
 }
