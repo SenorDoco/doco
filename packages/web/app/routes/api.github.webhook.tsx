@@ -6,7 +6,7 @@
 //   - pull_request_review     → an approving review lifts an open PR to active.
 //   - issues                 → file, update or retire the bug in the GitHub bugs Docos.
 //   - push (default branch)  → bring the changed files into the codebase Docos.
-//   - installation_repositories (added)   → backfill the new repos' existing items.
+//   - installation_repositories (added)   → connect the new repos and queue their import.
 //   - installation_repositories (removed) → detach those repos' connections.
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
 // Idempotent on the item URL / installation id / file sha, so re-deliveries
@@ -15,9 +15,8 @@ import { waitUntil } from "@vercel/functions";
 import { syncRepoCodebase } from "~/lib/codebase-sync.server";
 import { docoPath } from "~/lib/db.server";
 import { listPullRequestFiles, mintInstallationToken } from "~/lib/github-app.server";
-import { backfillInstallationRepos } from "~/lib/github-backfill.server";
 import {
-  addConnection,
+  connectRepositories,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
@@ -39,6 +38,7 @@ import {
   parsePushEvent,
   verifyGitHubSignature,
 } from "~/lib/github-webhook.server";
+import { kickBackfillRun } from "./api.github.backfill-run";
 
 // A push to a large repository can take a while to copy: give the walk the
 // full function budget (syncRepoCodebase stops itself at 200s).
@@ -135,9 +135,9 @@ export async function action({ request }: { request: Request }) {
       );
       return Response.json({ ok: true, event, removed: evt.removedRepos.length });
     }
-    // Added → backfill the new repos' pre-existing items, as each subscribed
-    // Doco brings them (brand-new ones arrive as webhooks under the same
-    // installation id).
+    // Added → connect the new repos to each subscribed Doco and queue their
+    // import in the background: choosing "All repositories" in GitHub adds a
+    // whole organization at once, far more than one request can import.
     if (evt.action !== "added" || evt.addedRepos.length === 0) {
       return Response.json({ ok: true, ignored: true });
     }
@@ -145,35 +145,20 @@ export async function action({ request }: { request: Request }) {
     console.info(
       `[github webhook] installation_repositories added [${evt.addedRepos.join(", ")}] (installation ${evt.installationId}) → ${docos.length} subscribed doco(s)`,
     );
-    const added: Array<{ doco: string; repos: number; created: number; failed: number }> = [];
-    const connectedAt = new Date().toISOString();
-    for (const conn of docos) {
-      // Record the new repos as connections so they show on the Integrations
-      // page (and feed re-import), not just import their PRs.
-      for (const repo of evt.addedRepos) {
-        await addConnection(conn.docoId, {
-          repo,
-          installation_id: evt.installationId,
-          connected_at: connectedAt,
-        });
-      }
-      const r = await backfillInstallationRepos({
-        docoDir: docoPath(conn.handle),
-        docoId: conn.docoId,
-        ownerSlug: conn.workspaceHandle,
-        docoSlug: conn.handle,
-        template: conn.template,
-        repos: evt.addedRepos,
-        installationId: evt.installationId,
-      });
-      added.push({ doco: conn.handle, repos: r.repos, created: r.created, failed: r.failed });
+    const installationId = evt.installationId;
+    const origin = new URL(request.url).origin;
+    for (const doco of docos) {
+      await connectRepositories(
+        doco.docoId,
+        evt.addedRepos.map((repo) => ({ repo, installation_id: installationId })),
+      );
+      waitUntil(kickBackfillRun(origin, doco.docoId));
     }
     return Response.json({
       ok: true,
       event,
       added: evt.addedRepos.length,
       matched: docos.length,
-      results: added,
     });
   }
 

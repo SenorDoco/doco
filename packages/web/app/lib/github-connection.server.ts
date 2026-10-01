@@ -256,16 +256,17 @@ export async function addConnection(
 
 type PickableInstallation = Pick<
   GitHubInstallationChoice,
-  "installation_id" | "account" | "repository_selection" | "repositories"
+  "installation_id" | "account" | "repositories"
 >;
 
 /**
  * What a user picked to connect, checked against the GitHub installations they
  * can use: each repository through the installation that offers it (whatever
- * organization it is in), normalized ("owner/name") and de-duplicated in the
- * order picked, and each organization GitHub lists no repositories for (an
- * all-repositories installation) as a whole. Nothing posted is trusted beyond
- * what those installations show. Pure.
+ * organization it is in), and each organization picked as a whole, which
+ * brings every repository its installation lists now and subscribes to the
+ * ones GitHub gives Doco later. Repositories come normalized ("owner/name")
+ * and de-duplicated in the order picked. Nothing posted is trusted beyond what
+ * those installations show. Pure.
  */
 export function pickConnections<C extends PickableInstallation>(
   choices: C[],
@@ -277,16 +278,16 @@ export function pickConnections<C extends PickableInstallation>(
   for (const id of new Set(picked.installations.map(Number))) {
     const choice = choices.find((c) => c.installation_id === id);
     if (!choice) return { error: "That GitHub connection is not available to your account." };
-    if (choice.repository_selection !== "all") {
-      return { error: `Pick the repositories to connect from ${choice.account}.` };
-    }
     installations.push(choice);
   }
-  const connections: Array<Pick<GitHubConnection, "repo" | "installation_id">> = [];
+  const repos: string[] = [];
   for (const input of picked.repos.map((r) => r.trim()).filter(Boolean)) {
     const parsed = parseRepoSlug(input);
     if (!parsed) return { error: `Invalid repo: ${input}` };
-    const repo = `${parsed.owner}/${parsed.name}`;
+    repos.push(`${parsed.owner}/${parsed.name}`);
+  }
+  const connections: Array<Pick<GitHubConnection, "repo" | "installation_id">> = [];
+  for (const repo of [...repos, ...installations.flatMap((c) => c.repositories)]) {
     const choice = choices.find((c) => c.repositories.includes(repo));
     if (!choice) return { error: `${repo} is not available from your GitHub connections.` };
     if (!connections.some((c) => c.repo === repo)) {

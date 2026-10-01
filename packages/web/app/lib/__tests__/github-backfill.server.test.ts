@@ -6,7 +6,6 @@ vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
 import { backfillRepoCodebase } from "../codebase-sync.server";
 import {
-  backfillInstallationRepos,
   backfillRepoBugs,
   backfillRepoPullRequests,
   repoBackfillFor,
@@ -215,71 +214,5 @@ describe("repoBackfillFor", () => {
     expect(repoBackfillFor("codebase")).toBe(backfillRepoCodebase);
     expect(repoBackfillFor("github-pull-requests")).toBe(backfillRepoPullRequests);
     expect(repoBackfillFor(null)).toBe(backfillRepoPullRequests);
-  });
-});
-
-describe("backfillInstallationRepos", () => {
-  it("backfills every repo the installation covers and aggregates the tally", async () => {
-    const backfillRepo = vi
-      .fn()
-      .mockResolvedValueOnce({
-        total: 2,
-        created: 2,
-        updated: 0,
-        unchanged: 0,
-        failed: 0,
-        nextPage: null,
-      })
-      .mockResolvedValueOnce({
-        total: 3,
-        created: 1,
-        updated: 1,
-        unchanged: 1,
-        failed: 0,
-        nextPage: null,
-      });
-    const res = await backfillInstallationRepos(
-      {
-        docoDir: "/tmp/d",
-        docoId: "doco_1",
-        ownerSlug: "o",
-        docoSlug: "d",
-        template: "github-pull-requests",
-        repos: ["acme/a", "acme/b"],
-        installationId: 42,
-        createdByUserId: "u",
-      },
-      { backfillRepo: backfillRepo as never },
-    );
-    expect(res).toEqual({ repos: 2, created: 3, updated: 1, unchanged: 1, failed: 0 });
-    expect(backfillRepo).toHaveBeenCalledTimes(2);
-    expect(backfillRepo).toHaveBeenCalledWith(
-      expect.objectContaining({ owner: "acme", repo: "a", installationId: 42, docoId: "doco_1" }),
-    );
-  });
-
-  it("skips malformed repo full-names", async () => {
-    const backfillRepo = vi.fn().mockResolvedValue({
-      total: 0,
-      created: 0,
-      updated: 0,
-      unchanged: 0,
-      failed: 0,
-      nextPage: null,
-    });
-    const res = await backfillInstallationRepos(
-      {
-        docoDir: "/tmp/d",
-        docoId: "doco_1",
-        ownerSlug: "o",
-        docoSlug: "d",
-        template: null,
-        repos: ["acme/a", "bogus"],
-        installationId: 1,
-      },
-      { backfillRepo: backfillRepo as never },
-    );
-    expect(res.repos).toBe(1);
-    expect(backfillRepo).toHaveBeenCalledTimes(1);
   });
 });
