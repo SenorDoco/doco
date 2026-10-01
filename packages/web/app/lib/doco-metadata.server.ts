@@ -18,6 +18,9 @@ export interface DocoMetadata {
    * in the agent-bootstrap manifest. Empty string when unset.
    */
   goal: string;
+  /** The template the Doco was created from (its `template_handle`), which
+   *  decides how it opens (see reader.ts); null for a Doco made without one. */
+  template: string | null;
 }
 
 /**
@@ -37,5 +40,6 @@ export async function readDocoMetadata(docoDir: string): Promise<DocoMetadata | 
     workspaceId: row.workspace_id,
     visibility: row.visibility,
     goal: row.goal,
+    template: typeof row.data.template_handle === "string" ? row.data.template_handle : null,
   };
 }

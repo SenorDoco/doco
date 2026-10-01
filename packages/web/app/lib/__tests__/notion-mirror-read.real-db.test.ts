@@ -1,5 +1,5 @@
-// Reading the Notion mirror: the Doco home's Notion perspective (the page
-// tree, the open page, search) and Notion results in the Doco's search.
+// Reading the Notion mirror: the reader's page tree, Go to page, its home,
+// each page, search, and Notion results in the Doco's search.
 // PGlite runs the real schema and full-text search.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -9,15 +9,18 @@ import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  loadNotionPerspective,
+  findPages,
+  listPageTree,
+  loadPagesView,
   notionSnippet,
+  pageTreeAt,
   searchNotionMirror,
 } from "../notion-mirror-read.server";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
-type Client = Parameters<typeof loadNotionPerspective>[0];
+type Client = Parameters<typeof loadPagesView>[0];
 let db: PGlite;
 let c: Client;
 
@@ -143,77 +146,153 @@ beforeEach(async () => {
   `);
 });
 
-describe("loadNotionPerspective", () => {
-  it("opens the most recently edited page, with its path, and the tree opened along it", async () => {
-    const data = await loadNotionPerspective(c, "doco_notion", {});
+const page = (
+  id: string,
+  name: string,
+  extra: Partial<{
+    kind: string;
+    icon: string | null;
+    hasChildren: boolean;
+    pending: boolean;
+    where: string;
+  }> = {},
+) => ({
+  id,
+  name,
+  kind: "page",
+  icon: null,
+  hasChildren: false,
+  files: null,
+  pending: false,
+  where: "",
+  ...extra,
+});
 
-    expect(data).toMatchObject({ workspaceName: "Acme", pages: 6, query: "", hits: [] });
-    expect(data.page).toMatchObject({
-      pageId: R1,
-      title: "Ship it",
-      lastEditedAt: "2026-09-28T10:00:00.000Z",
-      lastEditedBy: null,
+describe("listPageTree", () => {
+  it("lists the pages whose parent isn't in the copy at the root, by title", async () => {
+    expect(await listPageTree(c, "doco_notion", "")).toEqual({
+      items: [page(HB, "Handbook", { icon: "📘", hasChildren: true }), page(RM, "Roadmap")],
+      more: 0,
     });
-    expect(data.page?.path.map((ref) => ref.title)).toEqual(["Handbook", "Tasks"]);
-
-    const [handbook, roadmap] = data.tree;
-    expect(handbook).toMatchObject({ title: "Handbook", icon: "📘", hasChildren: true });
-    expect(handbook.children?.map((node) => node.title)).toEqual(["Onboarding", "Tasks"]);
-    expect(handbook.children?.[0].children).toBeNull();
-    const tasks = handbook.children?.[1];
-    expect(tasks).toMatchObject({ object: "data_source", hasChildren: true, more: 0 });
-    // A data source's rows list newest first; child pages by title.
-    expect(tasks?.children?.map((node) => node.title)).toEqual(["Ship it", "Write docs"]);
-    expect(roadmap).toMatchObject({ title: "Roadmap", hasChildren: false, children: null });
   });
 
-  it("reads the requested page: its text, editor, links and backlinks", async () => {
-    const data = await loadNotionPerspective(c, "doco_notion", { pageId: HB });
+  it("lists a page's children by title, and a database's rows newest first", async () => {
+    expect((await listPageTree(c, "doco_notion", HB)).items).toEqual([
+      page(ONB, "Onboarding"),
+      page(DS, "Tasks", { kind: "database", hasChildren: true }),
+    ]);
+    expect((await listPageTree(c, "doco_notion", DS)).items.map((i) => i.name)).toEqual([
+      "Ship it",
+      "Write docs",
+    ]);
+  });
 
-    expect(data.page).toMatchObject({
-      pageId: HB,
+  it("is empty under a page without children, or one the copy doesn't have", async () => {
+    expect(await listPageTree(c, "doco_notion", ONB)).toEqual({ items: [], more: 0 });
+    expect(await listPageTree(c, "doco_notion", UNMIRRORED)).toEqual({ items: [], more: 0 });
+  });
+});
+
+describe("pageTreeAt", () => {
+  it("lists the top and every page down to the open one, which has nothing under it", async () => {
+    const tree = await pageTreeAt(c, "doco_notion", R1);
+    expect(Object.keys(tree)).toEqual(["", HB, DS]);
+    expect(tree[DS].items.map((i) => i.name)).toEqual(["Ship it", "Write docs"]);
+  });
+
+  it("lists the open page's children when it has some", async () => {
+    expect(Object.keys(await pageTreeAt(c, "doco_notion", HB))).toEqual(["", HB]);
+  });
+
+  it("lists just the top at the home, or for a page the copy doesn't have", async () => {
+    expect(Object.keys(await pageTreeAt(c, "doco_notion", ""))).toEqual([""]);
+    expect(Object.keys(await pageTreeAt(c, "doco_notion", "nope"))).toEqual([""]);
+  });
+});
+
+describe("findPages", () => {
+  it("finds pages by title, those starting with the words first, each with where it lives", async () => {
+    expect(await findPages(c, "doco_notion", "o", 10)).toEqual([
+      page(ONB, "Onboarding", { where: "Handbook" }),
+      page(HB, "Handbook", { icon: "📘", hasChildren: true }),
+      page(RM, "Roadmap"),
+      page(R2, "Write docs", { where: "Handbook / Tasks" }),
+    ]);
+  });
+
+  it("finds nothing for an empty query", async () => {
+    expect(await findPages(c, "doco_notion", " ", 10)).toEqual([]);
+  });
+});
+
+describe("loadPagesView", () => {
+  it("opens on the pages edited most recently and the top-level pages", async () => {
+    const view = await loadPagesView(c, "doco_notion", { pageId: "", query: "" });
+    if (view?.view !== "home") throw new Error("expected the home");
+    expect(view.trail).toEqual([]);
+    expect(view.recent.map((p) => [p.title, p.where, p.lastEditedBy])).toEqual([
+      ["Ship it", "Handbook / Tasks", null],
+      ["Onboarding", "Handbook", "Ana Ruiz"],
+      ["Write docs", "Handbook / Tasks", null],
+      ["Roadmap", "", null],
+      ["Tasks", "Handbook", null],
+      ["Handbook", "", "Ana Ruiz"],
+    ]);
+    expect(view.recent[0]).toMatchObject({
+      pageId: R1,
+      lastEditedAt: "2026-09-28T10:00:00.000Z",
+      copied: true,
+    });
+    expect(view.top.map((p) => [p.title, p.children])).toEqual([
+      ["Handbook", 2],
+      ["Roadmap", 0],
+    ]);
+  });
+
+  it("reads a page: its path, text, editor, links and backlinks", async () => {
+    const view = await loadPagesView(c, "doco_notion", { pageId: ONB, query: "" });
+    if (view?.view !== "page") throw new Error("expected a page");
+    expect(view.trail).toEqual([HB, ONB]);
+    expect(view.page).toMatchObject({
+      pageId: ONB,
       object: "page",
-      title: "Handbook",
-      icon: "📘",
-      url: url(HB),
-      path: [],
+      title: "Onboarding",
+      url: url(ONB),
+      path: [{ pageId: HB, title: "Handbook", icon: "📘", copied: true }],
       lastEditedBy: "Ana Ruiz",
       truncated: false,
     });
-    expect(data.page?.markdown).toContain("# Welcome");
-    expect(data.page?.links).toEqual([
-      { pageId: ONB, title: "Onboarding", icon: null, copied: true },
+    expect(view.page.markdown).toContain("Day one:");
+    expect(view.page.links).toEqual([{ pageId: HB, title: "Handbook", icon: "📘", copied: true }]);
+    expect(view.page.backlinks).toEqual([
+      { pageId: HB, title: "Handbook", icon: "📘", copied: true },
     ]);
-    expect(data.page?.backlinks).toEqual([
-      { pageId: ONB, title: "Onboarding", icon: null, copied: true },
-    ]);
-    expect(data.tree[0].children?.map((node) => node.title)).toEqual(["Onboarding", "Tasks"]);
-    expect(data.tree[0].children?.[1].children).toBeNull();
   });
 
-  it("falls back to the latest page when the requested one isn't mirrored", async () => {
-    const data = await loadNotionPerspective(c, "doco_notion", { pageId: UNMIRRORED });
-    expect(data.page?.title).toBe("Ship it");
+  it("is null for a page the copy doesn't have", async () => {
+    expect(await loadPagesView(c, "doco_notion", { pageId: UNMIRRORED, query: "" })).toBeNull();
   });
 
   it("searches every page, giving each hit its path and a snippet around the match", async () => {
-    const data = await loadNotionPerspective(c, "doco_notion", { query: "laptop" });
+    const view = await loadPagesView(c, "doco_notion", { pageId: ONB, query: " laptop " });
 
-    expect(data.page).toBeNull();
-    expect(data.query).toBe("laptop");
-    expect(data.hits).toEqual([
-      {
-        type: "notion_page",
-        page_id: ONB,
-        title: "Onboarding",
-        path: "Handbook",
-        url: url(ONB),
-        last_edited_time: "2026-09-27T10:00:00.000Z",
-        snippet: "Day one: Laptop Badge See Handbook.",
-        copied: true,
-      },
-    ]);
-    expect(data.tree.map((node) => node.children)).toEqual([null, null]);
+    expect(view).toEqual({
+      view: "search",
+      query: "laptop",
+      trail: [],
+      hits: [
+        {
+          type: "notion_page",
+          page_id: ONB,
+          title: "Onboarding",
+          path: "Handbook",
+          url: url(ONB),
+          last_edited_time: "2026-09-27T10:00:00.000Z",
+          snippet: "Day one: Laptop Badge See Handbook.",
+          copied: true,
+        },
+      ],
+    });
   });
 
   it("resolves the pages a page's text names from the text itself, in Notion's own URL form", async () => {
@@ -229,9 +308,9 @@ describe("loadNotionPerspective", () => {
       edited: "2026-09-23T10:00:00Z",
     });
 
-    const data = await loadNotionPerspective(c, "doco_notion", { pageId: NOTES });
+    const view = await loadPagesView(c, "doco_notion", { pageId: NOTES, query: "" });
 
-    expect(data.page?.links).toEqual([
+    expect(view?.view === "page" && view.page.links).toEqual([
       { pageId: ONB, title: "Onboarding", icon: null, copied: true },
     ]);
   });
@@ -245,33 +324,31 @@ describe("loadNotionPerspective", () => {
       [QUEUED, HB, url(QUEUED)],
     );
 
-    const data = await loadNotionPerspective(c, "doco_notion", { pageId: QUEUED });
+    const view = await loadPagesView(c, "doco_notion", { pageId: QUEUED, query: "" });
 
-    expect(data.page).toMatchObject({
-      pageId: QUEUED,
-      title: "Manifesto",
-      copied: false,
-      markdown: "",
+    expect(view).toMatchObject({
+      view: "page",
+      page: { pageId: QUEUED, title: "Manifesto", copied: false, markdown: "" },
     });
-    expect(data.page?.path).toEqual([{ pageId: HB, title: "Handbook", icon: "📘", copied: true }]);
-    expect(data.tree[0].children?.map((node) => [node.title, node.copied])).toEqual([
-      ["Manifesto", false],
-      ["Onboarding", true],
-      ["Tasks", true],
+    expect(
+      (await listPageTree(c, "doco_notion", HB)).items.map((i) => [i.name, i.pending]),
+    ).toEqual([
+      ["Manifesto", true],
+      ["Onboarding", false],
+      ["Tasks", false],
     ]);
+    const home = await loadPagesView(c, "doco_notion", { pageId: "", query: "" });
+    expect(home?.view === "home" && home.recent.map((p) => p.title)).not.toContain("Manifesto");
     const hits = await searchNotionMirror(c, "doco_notion", "manifesto", 10);
     expect(hits.map((hit) => [hit.title, hit.copied])).toEqual([["Manifesto", false]]);
   });
 
-  it("is empty for a Doco that doesn't mirror Notion", async () => {
-    expect(await loadNotionPerspective(c, "doco_plain", {})).toEqual({
-      workspaceName: null,
-      pages: 0,
-      tree: [],
-      moreRoots: 0,
-      page: null,
-      query: "",
-      hits: [],
+  it("opens an empty home for a Doco that doesn't mirror Notion", async () => {
+    expect(await loadPagesView(c, "doco_plain", { pageId: "", query: "" })).toEqual({
+      view: "home",
+      recent: [],
+      top: [],
+      trail: [],
     });
   });
 });
@@ -341,14 +418,19 @@ describe("search with a query embedding", () => {
     ]);
   });
 
-  it("ranks the perspective's search the same way", async () => {
+  it("ranks the reader's search the same way", async () => {
     await embed(RM, "Roadmap\n\nQ4 plans.", [0, 1, 0]);
 
-    const data = await loadNotionPerspective(c, "doco_notion", {
+    const view = await loadPagesView(c, "doco_notion", {
+      pageId: "",
       query: "task",
       semantic: { queryEmbedding: [0, 1, 0], modelId: MODEL },
     });
 
-    expect(data.hits.map((hit) => hit.title)).toEqual(["Ship it", "Roadmap", "Write docs"]);
+    expect(view?.view === "search" && view.hits.map((hit) => hit.title)).toEqual([
+      "Ship it",
+      "Roadmap",
+      "Write docs",
+    ]);
   });
 });

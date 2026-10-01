@@ -35,7 +35,10 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /integrations/github           GitHub setup: workspace + what to bring (pull requests, bugs) + repos
  *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
- *   /<doco-handle>                 per-Doco recent + search input
+ *   /<doco-handle>                 per-Doco recent + search input (a codebase or Notion Doco redirects to its reader)
+ *   /<doco-handle>/code/<owner>/<repo>/<path>  codebase reader: repositories, a folder, a file (?q= searches)
+ *   /<doco-handle>/pages/<page-id>  Notion reader: home, a page (?q= searches)
+ *   /<doco-handle>/tree.json       the reader's tree, one listing at a time (?under=, ?find=)
  *   /<doco-handle>/<type>          per-Doco entity list (short form; ADR-120)
  *   /<doco-handle>/<type>/<id>     per-Doco entity detail (id is the ULID)
  *   /<doco-handle>/search          per-Doco search (richer results — GPR / age / lifecycle)
@@ -46,9 +49,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
  *   /<doco-handle>/api/*           per-Doco capture + update endpoints
  *                                  (decisions / intents / settings; ADR-128)
  *
- * Per-Doco URL collisions are prevented by `PER_DOCO_RESERVED_SLUGS` in
- * @doco/shared/url-conventions.ts — every static subpath here MUST be in
- * that set.
+ * A static per-Doco subpath here outranks `:docoHandle/:type`, so none may
+ * share its name with a node type.
  */
 export default [
   index("routes/_index.tsx"),
@@ -260,6 +262,15 @@ export default [
   // so Doco handles remain the root catch-all.
   route(":docoHandle", "routes/$docoHandle._index.tsx"),
   route(":docoHandle/welcome", "routes/$docoHandle.welcome.tsx"),
+  // The reader a codebase or Notion Doco opens in (reader.ts): one frame
+  // around the folder, file or page the splat names.
+  route(":docoHandle/code", "routes/$docoHandle.reader.tsx", { id: "doco-reader-code" }, [
+    route("*", "routes/$docoHandle.code.$.tsx"),
+  ]),
+  route(":docoHandle/pages", "routes/$docoHandle.reader.tsx", { id: "doco-reader-pages" }, [
+    route("*", "routes/$docoHandle.pages.$.tsx"),
+  ]),
+  route(":docoHandle/tree.json", "routes/$docoHandle.tree[.]json.tsx"),
   route(":docoHandle/status.json", "routes/$docoHandle.status[.]json.tsx"),
   // Live-feed change cursor — the perspective view polls this once a second
   // and only re-runs its heavy loader when the latest audit-event id advances.

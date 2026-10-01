@@ -1,12 +1,8 @@
 import type { SemanticQuery } from "@doco/db";
 import type { OverviewGraphData } from "~/components/overview-graph";
-import type { CodePerspectiveData } from "./codebase-read.server";
-import { loadCodePerspective } from "./codebase-read.server";
 import { loadOverviewGraph } from "./full-graph.server";
 import type { GlossaryPerspectiveData } from "./glossary-perspective.server";
 import { loadGlossaryPerspectiveData } from "./glossary-perspective.server";
-import type { NotionPerspectiveData } from "./notion-mirror-read.server";
-import { loadNotionPerspective } from "./notion-mirror-read.server";
 import type { OrgTreeData } from "./org-tree-perspective.server";
 import { loadOrgTreeData } from "./org-tree-perspective.server";
 import { pageRank } from "./pagerank";
@@ -50,8 +46,6 @@ export interface DocoHomePerspectiveData {
   glossaryData: GlossaryPerspectiveData | null;
   pullRequestsData: PullRequestsPerspectiveData | null;
   slackData: SlackPerspectiveData | null;
-  notionData: NotionPerspectiveData | null;
-  codeData: CodePerspectiveData | null;
 }
 
 export async function loadDocoHomePerspectiveData(
@@ -69,11 +63,7 @@ export async function loadDocoHomePerspectiveData(
     pullRequestLifecycles?: string[];
     /** The Slack perspective's URL state: channel, older-page cursor, search. */
     slack?: { channelId?: string | null; before?: string | null; query?: string | null };
-    /** The Notion perspective's URL state: the open page, search. */
-    notion?: { pageId?: string | null; query?: string | null };
-    /** The Code perspective's URL state: the open repository and path, search. */
-    code?: { repo?: string | null; path?: string | null; query?: string | null };
-    /** The embedded search query, when a mirror perspective is searching. */
+    /** The embedded search query, when the Slack perspective is searching. */
     semantic?: SemanticQuery | null;
   },
 ): Promise<DocoHomePerspectiveData> {
@@ -87,15 +77,11 @@ export async function loadDocoHomePerspectiveData(
     glossaryData: null,
     pullRequestsData: null,
     slackData: null,
-    notionData: null,
-    codeData: null,
   };
   const perspectiveWindow =
     args.activeKind === "pull-requests" ||
     args.activeKind === "process" ||
-    args.activeKind === "slack" ||
-    args.activeKind === "notion" ||
-    args.activeKind === "code"
+    args.activeKind === "slack"
       ? null
       : await selectPerspectiveWindow(c, {
           docoId: args.docoId,
@@ -175,20 +161,6 @@ export async function loadDocoHomePerspectiveData(
           semantic: args.semantic ?? null,
         }),
       };
-    case "notion":
-      return {
-        ...empty,
-        notionData: await loadNotionPerspective(c, args.docoId, {
-          ...args.notion,
-          limit: 50,
-          semantic: args.semantic ?? null,
-        }),
-      };
-    case "code":
-      return {
-        ...empty,
-        codeData: await loadCodePerspective(c, args.docoId, { ...args.code, limit: 50 }),
-      };
     default: {
       const exhaustive: never = args.activeKind;
       throw new Error(`Unhandled perspective kind: ${exhaustive}`);
@@ -197,7 +169,7 @@ export async function loadDocoHomePerspectiveData(
 }
 
 function perspectiveWindowSpecFor(
-  kind: Exclude<PerspectiveKind, "pull-requests" | "slack" | "notion" | "code">,
+  kind: Exclude<PerspectiveKind, "pull-requests" | "slack">,
 ): PerspectiveWindowSpec {
   if (kind === "list") return PERSPECTIVE_WINDOW_SPECS.graph;
   return PERSPECTIVE_WINDOW_SPECS[kind];

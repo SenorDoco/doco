@@ -1,14 +1,19 @@
-// A mirrored Notion page's enhanced Markdown, rendered as React elements
-// from the tree lib/notion-markdown-blocks.ts parses — so a page's text is
-// only ever text. `linkFor` maps a Notion URL to the reader's own link when
-// the target is mirrored; links elsewhere open in a new tab.
+// Markdown rendered as React elements from the tree lib/notion-markdown-blocks.ts
+// parses, so the text is only ever text: a mirrored Notion page's enhanced
+// Markdown, or a Markdown file of a codebase as GitHub writes it. `linkFor`
+// maps a link to the reader's own address when its target is in the copy;
+// links elsewhere open in a new tab. Top-level headings carry ids, so an
+// outline (markdownOutline) can link to them.
 import { Database, ExternalLink, FileText, Paperclip } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import { Link } from "react-router";
+import { cn } from "~/lib/cn";
 import {
   type NotionBlock,
   type NotionInline,
   type NotionListItem,
+  inlineText,
+  parseGitHubMarkdown,
   parseNotionMarkdown,
 } from "~/lib/notion-markdown-blocks";
 
@@ -20,19 +25,75 @@ const NOTION_HOSTED_RE =
 
 const LINK_CLASS = "font-medium text-primary underline-offset-2 hover:underline";
 
-export function NotionMarkdown({
+/** Who wrote the Markdown: Notion, one block per line, or GitHub. */
+export type MarkdownDialect = "notion" | "github";
+
+function parse(markdown: string, dialect: MarkdownDialect): NotionBlock[] {
+  return dialect === "github" ? parseGitHubMarkdown(markdown) : parseNotionMarkdown(markdown);
+}
+
+export interface OutlineEntry {
+  id: string;
+  level: 1 | 2 | 3;
+  text: string;
+}
+
+/** A heading's anchor, as GitHub makes one: lowercased, words joined by
+ *  dashes, punctuation dropped. */
+function slug(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]/gu, "")
+      .trim()
+      .replace(/\s+/g, "-") || "section"
+  );
+}
+
+/** The top-level headings, each with its anchor; a repeated heading gets
+ *  -1, -2 after it. */
+function outlineOf(blocks: NotionBlock[]): Map<NotionBlock, OutlineEntry> {
+  const seen = new Map<string, number>();
+  const entries = new Map<NotionBlock, OutlineEntry>();
+  for (const block of blocks) {
+    if (block.type !== "heading") continue;
+    const text = inlineText(block.children).trim();
+    const base = slug(text);
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    entries.set(block, { id: n === 0 ? base : `${base}-${n}`, level: block.level, text });
+  }
+  return entries;
+}
+
+/** What the text's top-level headings are, and where each one is. */
+export function markdownOutline(markdown: string, dialect: MarkdownDialect): OutlineEntry[] {
+  return [...outlineOf(parse(markdown, dialect)).values()];
+}
+
+export function Markdown({
   markdown,
+  dialect,
   linkFor,
+  className,
 }: {
   markdown: string;
+  dialect: MarkdownDialect;
   linkFor?: (href: string) => NotionLink;
+  className?: string;
 }) {
-  const blocks = useMemo(() => parseNotionMarkdown(markdown), [markdown]);
+  const blocks = useMemo(() => parse(markdown, dialect), [markdown, dialect]);
+  const outline = useMemo(() => outlineOf(blocks), [blocks]);
   const resolve: Resolve = linkFor ?? ((href: string) => ({ href, copy: null }));
   return (
-    <div className="space-y-3 text-sm leading-relaxed text-foreground">
+    <div className={cn("space-y-3 text-sm leading-relaxed text-foreground", className)}>
       {blocks.map((block, i) => (
-        <Block key={`${block.type}-${i}`} block={block} resolve={resolve} />
+        <Block
+          key={`${block.type}-${i}`}
+          block={block}
+          resolve={resolve}
+          id={outline.get(block)?.id}
+        />
       ))}
     </div>
   );
@@ -65,6 +126,13 @@ function Anchor({
 }) {
   const { href: target, copy } = resolve(href);
   if (!SAFE_HREF_RE.test(target)) return <span>{children}</span>;
+  if (target.startsWith("#")) {
+    return (
+      <a href={target} className={LINK_CLASS}>
+        {children}
+      </a>
+    );
+  }
   if (target.startsWith("?") || target.startsWith("/")) {
     return (
       <Link to={target} className={LINK_CLASS}>
@@ -102,7 +170,16 @@ function embeddableImage(src: string): boolean {
   return /^https?:\/\//i.test(src) && !NOTION_HOSTED_RE.test(src);
 }
 
-function Block({ block, resolve }: { block: NotionBlock; resolve: Resolve }) {
+function Block({
+  block,
+  resolve,
+  id,
+}: {
+  block: NotionBlock;
+  resolve: Resolve;
+  /** A top-level heading's anchor. */
+  id?: string;
+}) {
   switch (block.type) {
     case "heading": {
       const className =
@@ -113,7 +190,7 @@ function Block({ block, resolve }: { block: NotionBlock; resolve: Resolve }) {
             : "mt-2 text-sm font-semibold";
       const Tag = block.level === 1 ? "h2" : block.level === 2 ? "h3" : "h4";
       return (
-        <Tag className={className}>
+        <Tag id={id} className={cn(className, "scroll-mt-16")}>
           <Inlines inlines={block.children} resolve={resolve} />
         </Tag>
       );

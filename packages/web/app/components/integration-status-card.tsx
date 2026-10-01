@@ -11,12 +11,12 @@ import { timeAgo } from "~/lib/time-ago";
 
 // "Manage" CTA — mirrors the primary button on the Integrations index so the
 // two entry points read as the same action.
-const MANAGE_BTN =
+export const MANAGE_BTN =
   "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 
-const NAMES = { github: "GitHub", slack: "Slack", notion: "Notion" } as const;
+export const NAMES = { github: "GitHub", slack: "Slack", notion: "Notion" } as const;
 /** What connecting each source takes, for a Doco whose source isn't connected. */
-const CONNECT = {
+export const CONNECT = {
   github: "Pick repositories",
   slack: "Connect Slack",
   notion: "Connect Notion",
@@ -32,7 +32,7 @@ function Spinner() {
 }
 
 /** The live half: when the newest item copied from the source appeared. */
-function liveLine(status: ConnectedIntegrationStatus, now: Date): string {
+export function liveLine(status: ConnectedIntegrationStatus, now: Date): string {
   if (status.integration === "github") {
     return status.latestAt
       ? `Latest ${status.item} update ${timeAgo(status.latestAt, now)}`
@@ -104,6 +104,41 @@ function skippedLine(status: GitHubIntegrationStatus): string {
     : "GitHub didn't return them. Re-import to try again.";
 }
 
+/** A finished GitHub import that skipped repositories, or null. */
+function skippedImport(status: ConnectedIntegrationStatus): GitHubIntegrationStatus | null {
+  return status.integration === "github" && status.state === "done" && status.skipped > 0
+    ? status
+    : null;
+}
+
+/** Whether the history half has news: an import under way or stalled, or
+ *  one that skipped repositories. */
+export function historyNeedsSaying(status: ConnectedIntegrationStatus): boolean {
+  return status.state !== "done" || skippedImport(status) !== null;
+}
+
+/** The history half: how far the import of older items has got, flagged
+ *  when it stopped advancing or skipped repositories, and why. */
+export function IntegrationHistory({ status }: { status: ConnectedIntegrationStatus }) {
+  const skipped = skippedImport(status);
+  return (
+    <>
+      <p
+        className={`flex items-center gap-1.5 text-xs ${
+          status.state === "stalled" || skipped ? "text-destructive" : "text-muted-foreground"
+        }`}
+      >
+        <span aria-hidden>
+          {status.state === "done" && !skipped ? "✅" : status.state === "importing" ? "⏳" : "⚠️"}
+        </span>
+        <span>{historyLine(status)}</span>
+        {status.state === "importing" ? <Spinner /> : null}
+      </p>
+      {skipped ? <p className="text-xs text-muted-foreground">{skippedLine(skipped)}</p> : null}
+    </>
+  );
+}
+
 /**
  * Box atop the activity column of a Doco that copies from a source (GitHub
  * pull requests or bugs, a Slack or Notion workspace): how live the copy is, how far the import
@@ -141,11 +176,6 @@ export function IntegrationStatusCard({
       </Card>
     );
   }
-  // A finished GitHub import that skipped repositories says so, and why.
-  const skipped =
-    status.integration === "github" && status.state === "done" && status.skipped > 0
-      ? status
-      : null;
   return (
     <Card>
       <CardHeader className="space-y-1 px-4 py-3">
@@ -156,18 +186,7 @@ export function IntegrationStatusCard({
             <span className="font-medium text-foreground">Live</span> · {liveLine(status, now)}
           </span>
         </p>
-        <p
-          className={`flex items-center gap-1.5 text-xs ${
-            status.state === "stalled" || skipped ? "text-destructive" : "text-muted-foreground"
-          }`}
-        >
-          <span aria-hidden>
-            {status.state === "done" && !skipped ? "✅" : status.state === "importing" ? "⏳" : "⚠️"}
-          </span>
-          <span>{historyLine(status)}</span>
-          {status.state === "importing" ? <Spinner /> : null}
-        </p>
-        {skipped ? <p className="text-xs text-muted-foreground">{skippedLine(skipped)}</p> : null}
+        <IntegrationHistory status={status} />
       </CardHeader>
       <CardContent className="px-4 pb-4">
         <Link to={`/${handle}/integrations/${status.integration}`} className={MANAGE_BTN}>
