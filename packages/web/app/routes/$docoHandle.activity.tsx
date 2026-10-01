@@ -9,7 +9,6 @@ import { NodeTypeBadge } from "~/components/badge";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { activityRowLifecycle, shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { AUDIT_OP_SET, type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
@@ -28,7 +27,7 @@ export async function loader({
   request: Request;
   params: { docoId: string };
 }) {
-  const { docoId, docoSlug, handle, me, ownerSlug } = await loadDocoRouteForRead(request, params);
+  const { docoId, docoSlug, handle, ownerSlug } = await loadDocoRouteForRead(request, params);
   const dir = docoPath(handle);
 
   const url = new URL(request.url);
@@ -62,7 +61,6 @@ export async function loader({
     ownerSlug,
     docoSlug,
     handle,
-    me,
     events,
     filters: { entity_type, by, since, before, until, op: opParam },
   };
@@ -71,77 +69,73 @@ export async function loader({
 export default function ActivityPage({
   loaderData,
 }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
-  const { ownerSlug, docoSlug, handle, me, events, filters } = loaderData;
+  const { ownerSlug, docoSlug, handle, events, filters } = loaderData;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Activity" })}
-          title="Activity"
-        >
-          <p className="text-sm text-muted-foreground">
-            Per-Doco audit-events log — every mutation that touched an entity. Filter via URL
-            params:{" "}
-            <code className="font-mono">
-              ?entity_type=decision&op=lifecycle.transition&since=2026-05-01
-            </code>
-            .
-          </p>
-        </PageHeader>
+    <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Activity" })}
+        title="Activity"
+      >
+        <p className="text-sm text-muted-foreground">
+          Per-Doco audit-events log — every mutation that touched an entity. Filter via URL params:{" "}
+          <code className="font-mono">
+            ?entity_type=decision&op=lifecycle.transition&since=2026-05-01
+          </code>
+          .
+        </p>
+      </PageHeader>
 
-        <FilterChips filters={filters} ownerSlug={ownerSlug} docoSlug={docoSlug} handle={handle} />
+      <FilterChips filters={filters} ownerSlug={ownerSlug} docoSlug={docoSlug} handle={handle} />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Events ({events.length})</CardTitle>
-            <CardDescription>
-              Newest first. Each event captures who, when, and the before/after delta.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {events.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No events match the current filters.</p>
-            ) : (
-              <ol className="space-y-3 text-xs">
-                {events.map((e) => (
-                  <li key={e.event_id} className="border-l-2 border-border pl-3">
-                    <div className="text-muted-foreground">
-                      <code className="font-mono">{e.at.replace("T", " ").slice(0, 19)}Z</code>
-                      <span className="mx-2">·</span>
-                      <code className="font-mono">{e.by ?? "anonymous"}</code>
-                      <span className="mx-2">·</span>
-                      <span className="font-medium text-foreground">{e.op}</span>
-                      <span className="mx-2">·</span>
-                      <Link
-                        to={entityUrl({
-                          docoHandle: handle,
-                          nodeType: e.entity_type as never,
-                          id: e.entity_id as EntityId<never>,
-                        })}
-                        style={{ color: lifecycleColor(activityRowLifecycle(e)) }}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 hover:underline",
-                          shouldStrikeActivityTarget(e) && "line-through decoration-2",
-                        )}
-                      >
-                        <NodeTypeBadge nodeType={e.entity_type} />
-                        <span className="font-mono">{e.entity_id}</span>
-                      </Link>
-                    </div>
-                    {e.before || e.after ? (
-                      <pre className="neu-surface mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
-                        {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
-                      </pre>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Events ({events.length})</CardTitle>
+          <CardDescription>
+            Newest first. Each event captures who, when, and the before/after delta.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {events.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No events match the current filters.</p>
+          ) : (
+            <ol className="space-y-3 text-xs">
+              {events.map((e) => (
+                <li key={e.event_id} className="border-l-2 border-border pl-3">
+                  <div className="text-muted-foreground">
+                    <code className="font-mono">{e.at.replace("T", " ").slice(0, 19)}Z</code>
+                    <span className="mx-2">·</span>
+                    <code className="font-mono">{e.by ?? "anonymous"}</code>
+                    <span className="mx-2">·</span>
+                    <span className="font-medium text-foreground">{e.op}</span>
+                    <span className="mx-2">·</span>
+                    <Link
+                      to={entityUrl({
+                        docoHandle: handle,
+                        nodeType: e.entity_type as never,
+                        id: e.entity_id as EntityId<never>,
+                      })}
+                      style={{ color: lifecycleColor(activityRowLifecycle(e)) }}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 hover:underline",
+                        shouldStrikeActivityTarget(e) && "line-through decoration-2",
+                      )}
+                    >
+                      <NodeTypeBadge nodeType={e.entity_type} />
+                      <span className="font-mono">{e.entity_id}</span>
+                    </Link>
+                  </div>
+                  {e.before || e.after ? (
+                    <pre className="neu-surface mt-1 whitespace-pre-wrap break-words rounded-md bg-card p-2 text-[11px] leading-snug">
+                      {JSON.stringify({ before: e.before, after: e.after }, null, 2)}
+                    </pre>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+    </main>
   );
 }
 

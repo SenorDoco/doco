@@ -1,16 +1,10 @@
 // What an integrated Doco reports about each source it copies from: how live
 // the copy is (the newest item copied) and how far the import of older items
 // has got. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { loadIntegrationStatuses } from "../integration-status.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 type Client = Parameters<typeof loadIntegrationStatuses>[0];
 let db: PGlite;
@@ -21,8 +15,7 @@ const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOStri
 const iso = (ts: number) => new Date(ts * 1000).toISOString();
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   c = db as unknown as Client;
   await db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'torre', 'Torre');

@@ -16,7 +16,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { nodeTypePlural } from "~/lib/node-colors";
@@ -113,7 +112,6 @@ export async function loader({
     if (!q || docoIds.length === 0) {
       return {
         workspace,
-        me,
         host,
         q,
         hits: [] as Hit[],
@@ -140,7 +138,6 @@ export async function loader({
     if (top.length === 0) {
       return {
         workspace,
-        me,
         host,
         q,
         hits: [] as Hit[],
@@ -152,7 +149,7 @@ export async function loader({
     const ids = top.map((t) => t.entity_id);
 
     const hits = await hydrateHits(c, ids, scoreById, docoIdByEntity, docoHandleById);
-    return { workspace, me, host, q, hits, warning: null };
+    return { workspace, host, q, hits, warning: null };
   });
 }
 
@@ -165,121 +162,118 @@ export default function WorkspaceSearch({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { workspace, me, q, hits, warning } = loaderData;
+  const { workspace, q, hits, warning } = loaderData;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-6 space-y-5">
-        <PageHeader
-          breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Search" })}
-          title={`Search across ${workspace.handle}`}
-        />
+    <SingleColumnPageMain className="py-6 space-y-5">
+      <PageHeader
+        breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Search" })}
+        title={`Search across ${workspace.handle}`}
+      />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <section className="min-w-0 space-y-4">
-            <Form method="get" className="flex gap-2">
-              <input
-                type="search"
-                name="q"
-                defaultValue={q}
-                placeholder={`Search across this workspace's Docos...`}
-                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
-              >
-                Search
-              </button>
-            </Form>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="min-w-0 space-y-4">
+          <Form method="get" className="flex gap-2">
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder={`Search across this workspace's Docos...`}
+              className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <button
+              type="submit"
+              className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+            >
+              Search
+            </button>
+          </Form>
 
-            {warning ? (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {warning}
-              </div>
-            ) : null}
+          {warning ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {warning}
+            </div>
+          ) : null}
 
-            {q ? (
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">
-                    {hits.length} {hits.length === 1 ? "result" : "results"} for "{q}"
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {hits.length === 0 ? (
-                    <p className="px-5 pb-5 text-xs italic text-muted-foreground">No matches.</p>
-                  ) : (
-                    <ul className="divide-y divide-border">
-                      {hits.map((h) => (
-                        <li key={h.id} className="px-5 py-3 text-sm">
-                          <div className="flex flex-wrap items-baseline justify-between gap-3">
-                            <Link
-                              to={`/${h.docoHandle}/${h.node_type}/${h.id}`}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              <span aria-hidden className="mr-1.5">
-                                <NodeTypeIcon nodeType={h.node_type} />
-                              </span>
-                              {h.summary || h.id}
-                            </Link>
-                            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-                              {h.vector_score.toFixed(3)}
-                            </span>
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                            <NodeTypeBadge nodeType={h.node_type}>
-                              {nodeTypePlural(h.node_type)}
-                            </NodeTypeBadge>
-                            {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
-                            <Link
-                              to={`/${h.docoHandle}`}
-                              className="hover:text-foreground hover:underline"
-                            >
-                              {h.docoHandle}
-                            </Link>
-                            {h.created_at ? (
-                              <time
-                                dateTime={h.created_at}
-                                title={h.created_at}
-                                suppressHydrationWarning
-                              >
-                                {timeAgo(h.created_at)}
-                              </time>
-                            ) : null}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            ) : null}
-          </section>
-
-          <aside className="min-w-0 space-y-4">
+          {q ? (
             <Card>
               <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Workspace</CardTitle>
+                <CardTitle className="text-sm">
+                  {hits.length} {hits.length === 1 ? "result" : "results"} for "{q}"
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <Link
-                  to={`/workspaces/${workspace.handle}`}
-                  className="block font-semibold text-foreground hover:text-primary"
-                >
-                  {workspace.handle}
-                </Link>
-                <Link
-                  to={`/workspaces/${workspace.handle}/integrations`}
-                  className="block text-xs text-muted-foreground hover:text-foreground"
-                >
-                  App integrations
-                </Link>
+              <CardContent className="p-0">
+                {hits.length === 0 ? (
+                  <p className="px-5 pb-5 text-xs italic text-muted-foreground">No matches.</p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {hits.map((h) => (
+                      <li key={h.id} className="px-5 py-3 text-sm">
+                        <div className="flex flex-wrap items-baseline justify-between gap-3">
+                          <Link
+                            to={`/${h.docoHandle}/${h.node_type}/${h.id}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            <span aria-hidden className="mr-1.5">
+                              <NodeTypeIcon nodeType={h.node_type} />
+                            </span>
+                            {h.summary || h.id}
+                          </Link>
+                          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                            {h.vector_score.toFixed(3)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                          <NodeTypeBadge nodeType={h.node_type}>
+                            {nodeTypePlural(h.node_type)}
+                          </NodeTypeBadge>
+                          {h.lifecycle ? <LifecycleBadge lifecycle={h.lifecycle} /> : null}
+                          <Link
+                            to={`/${h.docoHandle}`}
+                            className="hover:text-foreground hover:underline"
+                          >
+                            {h.docoHandle}
+                          </Link>
+                          {h.created_at ? (
+                            <time
+                              dateTime={h.created_at}
+                              title={h.created_at}
+                              suppressHydrationWarning
+                            >
+                              {timeAgo(h.created_at)}
+                            </time>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardContent>
             </Card>
-          </aside>
-        </div>
-      </SingleColumnPageMain>
-    </div>
+          ) : null}
+        </section>
+
+        <aside className="min-w-0 space-y-4">
+          <Card>
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Workspace</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <Link
+                to={`/workspaces/${workspace.handle}`}
+                className="block font-semibold text-foreground hover:text-primary"
+              >
+                {workspace.handle}
+              </Link>
+              <Link
+                to={`/workspaces/${workspace.handle}/integrations`}
+                className="block text-xs text-muted-foreground hover:text-foreground"
+              >
+                App integrations
+              </Link>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+    </SingleColumnPageMain>
   );
 }

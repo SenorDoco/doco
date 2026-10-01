@@ -8,19 +8,13 @@
 // rule) and the glossary term domain. The BPMN/process perspective renders no
 // such headline (it pans over every step uncapped), so it has no count query.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { initialVisibleLifecycles } from "../../components/lifecycle-filter";
 import { loadOverviewGraph } from "../full-graph.server";
 import { loadGlossaryPerspectiveData } from "../glossary-perspective.server";
 import { visibleLifecycleTotal } from "../perspective-count";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -46,8 +40,7 @@ async function clearGraph(): Promise<void> {
 const DEFAULT_VISIBLE = initialVisibleLifecycles(["drafting", "queued", "active", "retired"]);
 
 beforeAll(async () => {
-  dbm.db = new PGlite({ extensions: { vector } });
-  await dbm.db.exec(schemaSql);
+  dbm.db = await freshDb();
   const workspaceId = "workspace_01LIFECYCLECOUNTS00000001";
   await dbm.db.query("INSERT INTO workspaces (id, handle, name) VALUES ($1,'lc','LC')", [
     workspaceId,

@@ -49,7 +49,6 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SlackPerspective } from "~/components/perspectives/slack-perspective";
 import { SilenceAlertList } from "~/components/silence-alerts";
-import { SiteHeader } from "~/components/site-header";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
 import { readChangeCursor } from "~/lib/change-cursor.server";
@@ -296,7 +295,6 @@ export async function loader({
       integrations,
       alerts,
       host: await loadHostConfig(),
-      me,
       graph,
       policyCount,
       perspectives,
@@ -442,7 +440,6 @@ export default function DocoHome({
     canInviteUsers,
     integrations,
     alerts,
-    me,
     graph,
     policyCount,
     perspectives,
@@ -1341,326 +1338,323 @@ export default function DocoHome({
     ) : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <SiteHeader me={me} />
-      <main className="flex min-h-0 flex-1 flex-col px-6 pb-6 pt-6">
-        {/* Title row — spans both columns so the action buttons sit beside the
-            title rather than visually attached to the fishbone graph below. */}
-        <PageHeader
-          className="mb-6 shrink-0"
-          breadcrumb={[
-            { label: "Home", to: "/" },
-            ...(ownerSlug
-              ? [
-                  {
-                    label: ownerSlug,
-                    to: ownerIsWorkspace ? `/workspaces/${ownerSlug}` : `/users/${ownerSlug}`,
-                  },
-                ]
-              : []),
-            { label: handle },
-          ]}
-          title={
-            <span className="inline-flex items-center gap-2">
-              <VisibilityIcon visibility={visibility} />
-              <Link to={allSearchHref} className="hover:text-primary">
-                {handle}
-              </Link>
-            </span>
-          }
-          actions={
-            <>
+    <main className="flex h-full min-h-0 flex-col px-6 pb-6 pt-6">
+      {/* Title row — spans both columns so the action buttons sit beside the
+          title rather than visually attached to the fishbone graph below. */}
+      <PageHeader
+        className="mb-6 shrink-0"
+        breadcrumb={[
+          { label: "Home", to: "/" },
+          ...(ownerSlug
+            ? [
+                {
+                  label: ownerSlug,
+                  to: ownerIsWorkspace ? `/workspaces/${ownerSlug}` : `/users/${ownerSlug}`,
+                },
+              ]
+            : []),
+          { label: handle },
+        ]}
+        title={
+          <span className="inline-flex items-center gap-2">
+            <VisibilityIcon visibility={visibility} />
+            <Link to={allSearchHref} className="hover:text-primary">
+              {handle}
+            </Link>
+          </span>
+        }
+        actions={
+          <>
+            <Link
+              to={`/${handle}/policies`}
+              className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+            >
+              Policies ({policyCount})
+            </Link>
+            {canInviteUsers ? (
               <Link
-                to={`/${handle}/policies`}
+                to={`/${handle}/settings`}
                 className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
               >
-                Policies ({policyCount})
+                Settings
               </Link>
-              {canInviteUsers ? (
-                <Link
-                  to={`/${handle}/settings`}
-                  className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
-                >
-                  Settings
-                </Link>
-              ) : null}
-            </>
-          }
-        >
-          {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
-          <SilenceAlertList alerts={alerts} />
-        </PageHeader>
-        <div
-          ref={contentPaneRef}
-          className={`grid min-h-0 flex-1 gap-6 ${
-            showSidePanel ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
-          }`}
-        >
-          <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
-            <PerspectiveTabs
-              handle={handle}
-              perspectives={perspectives}
-              availablePerspectives={availablePerspectives}
-              activeSlug={activeSlug}
-              canAdmin={canAdminPerspectives}
-            />
-            <div className="relative flex min-h-0 flex-1 flex-col">
-              {/* Floats over the top-right of whichever perspective is
-                  active — see PerspectiveSearchOverlay for the z-index it
-                  must hold to stay above the canvas. */}
-              <PerspectiveSearchOverlay handle={handle} totalNodes={visibleNodeCount} />
-              {/* Floats over the top-left of the active perspective when a
-                  newer version exists elsewhere. The graph never reloads on
-                  its own — clicking pulls the new version in. */}
-              {newVersionAvailable ? (
-                <button
-                  type="button"
-                  onClick={refreshNow}
-                  className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-accent"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                  <span className="text-muted-foreground">There is a new version:</span>
-                  <span className="font-semibold text-foreground">Refresh</span>
-                </button>
-              ) : null}
-              <PerspectiveFrame
-                fillHeight
-                lifecycleFilter={
-                  // The Pull requests list runs its own filter — GitHub states
-                  // (Open / Merged / Closed), narrowed server-side, kept in the
-                  // URL. Slack messages have no lifecycle. Every other
-                  // perspective uses the page-level set.
-                  effectivePerspectiveKind === "slack"
-                    ? undefined
-                    : effectivePerspectiveKind === "pull-requests"
-                      ? {
-                          visible: prVisibleLifecycles,
-                          available: PR_LIFECYCLE_ORDER,
-                          onToggle: togglePrLifecycle,
-                          labelFor: pullRequestLabel,
-                        }
-                      : {
-                          visible: visibleLifecycles,
-                          available: availableLifecycles,
-                          onToggle: toggleLifecycle,
-                        }
-                }
-                fullscreen={{
-                  isFullscreen: isPerspectiveFullscreen,
-                  onToggle: togglePerspectiveFullscreen,
-                }}
+            ) : null}
+          </>
+        }
+      >
+        {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
+        <SilenceAlertList alerts={alerts} />
+      </PageHeader>
+      <div
+        ref={contentPaneRef}
+        className={`grid min-h-0 flex-1 gap-6 ${
+          showSidePanel ? "grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
+        }`}
+      >
+        <aside ref={asideRef} className="flex min-h-0 min-w-0 flex-col bg-background">
+          <PerspectiveTabs
+            handle={handle}
+            perspectives={perspectives}
+            availablePerspectives={availablePerspectives}
+            activeSlug={activeSlug}
+            canAdmin={canAdminPerspectives}
+          />
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {/* Floats over the top-right of whichever perspective is
+                active — see PerspectiveSearchOverlay for the z-index it
+                must hold to stay above the canvas. */}
+            <PerspectiveSearchOverlay handle={handle} totalNodes={visibleNodeCount} />
+            {/* Floats over the top-left of the active perspective when a
+                newer version exists elsewhere. The graph never reloads on
+                its own — clicking pulls the new version in. */}
+            {newVersionAvailable ? (
+              <button
+                type="button"
+                onClick={refreshNow}
+                className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-accent"
               >
-                {effectivePerspectiveKind === "list" ? (
-                  <ListPerspective
-                    nodes={graphState.nodes}
-                    pageRanks={pageRanksMap}
-                    visibleLifecycles={visibleLifecycles}
-                    focusId={perspectiveFocusId}
-                    totalByLifecycle={graphState.totalNodeByLifecycle}
-                  />
-                ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
-                  <GlossaryPerspective
-                    data={glossaryData}
-                    title={handle}
-                    visibleLifecycles={visibleLifecycles}
-                    focusId={perspectiveFocusId}
-                    onOpenNode={(entry) => {
-                      void loadNodeDialog(
-                        entry.nodeType,
-                        entry.id,
-                        withPerspectiveParam(entry.href, activeSlug),
-                      );
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                <span className="text-muted-foreground">There is a new version:</span>
+                <span className="font-semibold text-foreground">Refresh</span>
+              </button>
+            ) : null}
+            <PerspectiveFrame
+              fillHeight
+              lifecycleFilter={
+                // The Pull requests list runs its own filter — GitHub states
+                // (Open / Merged / Closed), narrowed server-side, kept in the
+                // URL. Slack messages have no lifecycle. Every other
+                // perspective uses the page-level set.
+                effectivePerspectiveKind === "slack"
+                  ? undefined
+                  : effectivePerspectiveKind === "pull-requests"
+                    ? {
+                        visible: prVisibleLifecycles,
+                        available: PR_LIFECYCLE_ORDER,
+                        onToggle: togglePrLifecycle,
+                        labelFor: pullRequestLabel,
+                      }
+                    : {
+                        visible: visibleLifecycles,
+                        available: availableLifecycles,
+                        onToggle: toggleLifecycle,
+                      }
+              }
+              fullscreen={{
+                isFullscreen: isPerspectiveFullscreen,
+                onToggle: togglePerspectiveFullscreen,
+              }}
+            >
+              {effectivePerspectiveKind === "list" ? (
+                <ListPerspective
+                  nodes={graphState.nodes}
+                  pageRanks={pageRanksMap}
+                  visibleLifecycles={visibleLifecycles}
+                  focusId={perspectiveFocusId}
+                  totalByLifecycle={graphState.totalNodeByLifecycle}
+                />
+              ) : effectivePerspectiveKind === "glossary" && glossaryData ? (
+                <GlossaryPerspective
+                  data={glossaryData}
+                  title={handle}
+                  visibleLifecycles={visibleLifecycles}
+                  focusId={perspectiveFocusId}
+                  onOpenNode={(entry) => {
+                    void loadNodeDialog(
+                      entry.nodeType,
+                      entry.id,
+                      withPerspectiveParam(entry.href, activeSlug),
+                    );
+                  }}
+                />
+              ) : effectivePerspectiveKind === "pull-requests" && pullRequestsData ? (
+                <PullRequestsPerspective
+                  data={pullRequestsData}
+                  handle={handle}
+                  focusId={perspectiveFocusId}
+                  filtered={prVisibleLifecycles.size < PR_LIFECYCLE_ORDER.length}
+                />
+              ) : effectivePerspectiveKind === "slack" && slackData ? (
+                <SlackPerspective data={slackData} handle={handle} />
+              ) : effectivePerspectiveKind === "sla" && slaData ? (
+                <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
+              ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
+                <OrgTreePerspective
+                  nodes={orgTreeData.nodes}
+                  totalByLifecycle={orgTreeData.totalByLifecycle}
+                  visibleLifecycles={visibleLifecycles}
+                  fitResetKey={perspectiveFitResetKey}
+                  centerId={graphState.centerId}
+                  initialFocusId={perspectiveFocusId}
+                  onCenterChange={(id) => {
+                    setEdgeDialog(null);
+                    setEdgeFocus(null);
+                    setGraphState((prev) => graphWithCenter(prev, id));
+                  }}
+                  onNodeClick={(node) => {
+                    void loadNodeDialog("principal", node.id, node.href);
+                  }}
+                />
+              ) : effectivePerspectiveKind === "process" && processGraph ? (
+                <ProcessPerspective
+                  docoHandle={handle}
+                  pools={processGraph.pools}
+                  lanes={processGraph.lanes}
+                  nodes={processGraph.nodes}
+                  links={processGraph.links}
+                  visibleLifecycles={visibleLifecycles}
+                  fitResetKey={perspectiveFitResetKey}
+                  centerId={graphState.centerId}
+                  initialFocusId={perspectiveFocusId}
+                  focusedEdgeId={edgeFocus?.id ?? null}
+                  focusedNodeIds={focusedGraphNodeIds}
+                  home={processHome}
+                  expandedProcessId={expandedProcessId}
+                  onSetHome={setProcessHome}
+                  onExpandProcess={setExpandedProcessId}
+                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                  onProcessOpen={openProcessDrill}
+                  onHomeReset={resetToHome}
+                  onEdgeClick={handleGraphEdgeClick}
+                  onNodeClick={(node) => {
+                    void loadNodeDialog(
+                      node.node_type,
+                      node.id,
+                      node.href ?? `/${handle}/${node.node_type}/${node.id}`,
+                    );
+                  }}
+                  onPoolClick={(pool) => {
+                    if (!pool.process_id) return;
+                    void loadNodeDialog(
+                      "action",
+                      pool.process_id,
+                      `/${handle}/action/${pool.process_id}`,
+                    );
+                  }}
+                  onLaneClick={(lane) => {
+                    if (lane.kind !== "actor" || !lane.base_id.startsWith("principal_")) return;
+                    void loadNodeDialog(
+                      "principal",
+                      lane.base_id,
+                      `/${handle}/principal/${lane.base_id}`,
+                    );
+                  }}
+                />
+              ) : (
+                <OverviewGraph
+                  docoHandle={handle}
+                  centerId={graphState.centerId}
+                  nodes={graphState.nodes}
+                  links={graphState.links}
+                  detailUrl={graphState.detailUrl}
+                  pageRanks={pageRanksMap}
+                  fillHeight
+                  visibleLifecycles={visibleLifecycles}
+                  fitResetKey={perspectiveFitResetKey}
+                  initialFocusId={perspectiveFocusId}
+                  focusedEdgeId={edgeFocus?.id ?? null}
+                  focusedNodeIds={focusedGraphNodeIds}
+                  onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
+                  onHomeReset={resetToHome}
+                  onNodeClick={handleGraphNodeClick}
+                  onEdgeClick={handleGraphEdgeClick}
+                />
+              )}
+            </PerspectiveFrame>
+            {/* Fullscreen-only: render the detail dialog inside the aside,
+                anchored to the right of the canvas. Outside fullscreen, the
+                same dialog renders in the right column (further down). */}
+            {isPerspectiveFullscreen && (nodeDialog || edgeDialog) ? (
+              <div className="absolute bottom-3 right-3 top-3 z-[100] w-[min(440px,40%)]">
+                {nodeDialog ? (
+                  <NodeDialog
+                    detail={nodeDialog.detail}
+                    loading={nodeDialog.loading}
+                    error={nodeDialog.error}
+                    lifecycleUpdating={lifecycleUpdating}
+                    lifecycleError={lifecycleError}
+                    onClose={closeOverlay}
+                    onLifecycleChange={handleLifecycleChange}
+                    onOpenNode={(nodeType, id, href) => {
+                      void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
+                    }}
+                    onOpenEdge={(edge) => {
+                      void loadEdgeDialog(edge);
                     }}
                   />
-                ) : effectivePerspectiveKind === "pull-requests" && pullRequestsData ? (
-                  <PullRequestsPerspective
-                    data={pullRequestsData}
-                    handle={handle}
-                    focusId={perspectiveFocusId}
-                    filtered={prVisibleLifecycles.size < PR_LIFECYCLE_ORDER.length}
-                  />
-                ) : effectivePerspectiveKind === "slack" && slackData ? (
-                  <SlackPerspective data={slackData} handle={handle} />
-                ) : effectivePerspectiveKind === "sla" && slaData ? (
-                  <SlaPerspective data={slaData} visibleLifecycles={visibleLifecycles} />
-                ) : effectivePerspectiveKind === "org-tree" && orgTreeData ? (
-                  <OrgTreePerspective
-                    nodes={orgTreeData.nodes}
-                    totalByLifecycle={orgTreeData.totalByLifecycle}
-                    visibleLifecycles={visibleLifecycles}
-                    fitResetKey={perspectiveFitResetKey}
-                    centerId={graphState.centerId}
-                    initialFocusId={perspectiveFocusId}
-                    onCenterChange={(id) => {
-                      setEdgeDialog(null);
-                      setEdgeFocus(null);
-                      setGraphState((prev) => graphWithCenter(prev, id));
-                    }}
-                    onNodeClick={(node) => {
-                      void loadNodeDialog("principal", node.id, node.href);
+                ) : edgeDialog ? (
+                  <EdgeDialog
+                    detail={edgeDialog.detail}
+                    loading={edgeDialog.loading}
+                    error={edgeDialog.error}
+                    lifecycleUpdating={edgeLifecycleUpdating}
+                    lifecycleError={edgeLifecycleError}
+                    onClose={closeOverlay}
+                    onLifecycleChange={handleEdgeLifecycleChange}
+                    onOpenNode={(nodeType, id, href) => {
+                      void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
                     }}
                   />
-                ) : effectivePerspectiveKind === "process" && processGraph ? (
-                  <ProcessPerspective
-                    docoHandle={handle}
-                    pools={processGraph.pools}
-                    lanes={processGraph.lanes}
-                    nodes={processGraph.nodes}
-                    links={processGraph.links}
-                    visibleLifecycles={visibleLifecycles}
-                    fitResetKey={perspectiveFitResetKey}
-                    centerId={graphState.centerId}
-                    initialFocusId={perspectiveFocusId}
-                    focusedEdgeId={edgeFocus?.id ?? null}
-                    focusedNodeIds={focusedGraphNodeIds}
-                    home={processHome}
-                    expandedProcessId={expandedProcessId}
-                    onSetHome={setProcessHome}
-                    onExpandProcess={setExpandedProcessId}
-                    onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    onProcessOpen={openProcessDrill}
-                    onHomeReset={resetToHome}
-                    onEdgeClick={handleGraphEdgeClick}
-                    onNodeClick={(node) => {
-                      void loadNodeDialog(
-                        node.node_type,
-                        node.id,
-                        node.href ?? `/${handle}/${node.node_type}/${node.id}`,
-                      );
-                    }}
-                    onPoolClick={(pool) => {
-                      if (!pool.process_id) return;
-                      void loadNodeDialog(
-                        "action",
-                        pool.process_id,
-                        `/${handle}/action/${pool.process_id}`,
-                      );
-                    }}
-                    onLaneClick={(lane) => {
-                      if (lane.kind !== "actor" || !lane.base_id.startsWith("principal_")) return;
-                      void loadNodeDialog(
-                        "principal",
-                        lane.base_id,
-                        `/${handle}/principal/${lane.base_id}`,
-                      );
-                    }}
-                  />
-                ) : (
-                  <OverviewGraph
-                    docoHandle={handle}
-                    centerId={graphState.centerId}
-                    nodes={graphState.nodes}
-                    links={graphState.links}
-                    detailUrl={graphState.detailUrl}
-                    pageRanks={pageRanksMap}
-                    fillHeight
-                    visibleLifecycles={visibleLifecycles}
-                    fitResetKey={perspectiveFitResetKey}
-                    initialFocusId={perspectiveFocusId}
-                    focusedEdgeId={edgeFocus?.id ?? null}
-                    focusedNodeIds={focusedGraphNodeIds}
-                    onCenterChange={(id) => setGraphState((prev) => graphWithCenter(prev, id))}
-                    onHomeReset={resetToHome}
-                    onNodeClick={handleGraphNodeClick}
-                    onEdgeClick={handleGraphEdgeClick}
-                  />
-                )}
-              </PerspectiveFrame>
-              {/* Fullscreen-only: render the detail dialog inside the aside,
-                  anchored to the right of the canvas. Outside fullscreen, the
-                  same dialog renders in the right column (further down). */}
-              {isPerspectiveFullscreen && (nodeDialog || edgeDialog) ? (
-                <div className="absolute bottom-3 right-3 top-3 z-[100] w-[min(440px,40%)]">
-                  {nodeDialog ? (
-                    <NodeDialog
-                      detail={nodeDialog.detail}
-                      loading={nodeDialog.loading}
-                      error={nodeDialog.error}
-                      lifecycleUpdating={lifecycleUpdating}
-                      lifecycleError={lifecycleError}
-                      onClose={closeOverlay}
-                      onLifecycleChange={handleLifecycleChange}
-                      onOpenNode={(nodeType, id, href) => {
-                        void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
-                      }}
-                      onOpenEdge={(edge) => {
-                        void loadEdgeDialog(edge);
-                      }}
-                    />
-                  ) : edgeDialog ? (
-                    <EdgeDialog
-                      detail={edgeDialog.detail}
-                      loading={edgeDialog.loading}
-                      error={edgeDialog.error}
-                      lifecycleUpdating={edgeLifecycleUpdating}
-                      lifecycleError={edgeLifecycleError}
-                      onClose={closeOverlay}
-                      onLifecycleChange={handleEdgeLifecycleChange}
-                      onOpenNode={(nodeType, id, href) => {
-                        void loadNodeDialog(nodeType, id, href, { focusPerspective: true });
-                      }}
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </aside>
-
-          {/* Right column: only appears when the Doco content pane has
-              enough inline room. A viewport breakpoint is not enough
-              because the Señor Doco rail can consume a large slice of
-              the browser width before this page gets laid out. */}
-          <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
-            <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
-              {integrations.map((status) => (
-                <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
-              ))}
-
-              <ActivityCard byDay={byDay} />
-
-              <NodesOverviewCard
-                sections={sections}
-                empty={
-                  <p className="text-xs italic text-muted-foreground">
-                    This Doco has no nodes or edges yet.
-                  </p>
-                }
-                aside={<TopActorsSections contributors={topContributors} queryers={topQueryers} />}
-              />
-
-              <LatestActivityCard
-                items={items}
-                handle={handle}
-                onOpenNode={(item, href) => {
-                  void loadNodeDialog(
-                    item.entity_type,
-                    item.id,
-                    withPerspectiveParam(href, activeSlug),
-                  );
-                }}
-              />
-            </section>
-            {/* Wide content pane: dialog overlays the right column
-                while the user reads it. Narrow content pane: the fixed
-                wrapper below renders the same dialog over the canvas. */}
-            {(nodeDialog || edgeDialog) && !isPerspectiveFullscreen ? (
-              <div className="absolute inset-0 z-[100]">{activeDialogPanel}</div>
+                ) : null}
+              </div>
             ) : null}
           </div>
+        </aside>
+
+        {/* Right column: only appears when the Doco content pane has
+            enough inline room. A viewport breakpoint is not enough
+            because the Señor Doco rail can consume a large slice of
+            the browser width before this page gets laid out. */}
+        <div className={`relative min-h-0 min-w-0 ${showSidePanel ? "block" : "hidden"}`}>
+          <section className="h-full min-w-0 space-y-5 overflow-y-auto pb-10 pr-1">
+            {integrations.map((status) => (
+              <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
+            ))}
+
+            <ActivityCard byDay={byDay} />
+
+            <NodesOverviewCard
+              sections={sections}
+              empty={
+                <p className="text-xs italic text-muted-foreground">
+                  This Doco has no nodes or edges yet.
+                </p>
+              }
+              aside={<TopActorsSections contributors={topContributors} queryers={topQueryers} />}
+            />
+
+            <LatestActivityCard
+              items={items}
+              handle={handle}
+              onOpenNode={(item, href) => {
+                void loadNodeDialog(
+                  item.entity_type,
+                  item.id,
+                  withPerspectiveParam(href, activeSlug),
+                );
+              }}
+            />
+          </section>
+          {/* Wide content pane: dialog overlays the right column
+              while the user reads it. Narrow content pane: the fixed
+              wrapper below renders the same dialog over the canvas. */}
+          {(nodeDialog || edgeDialog) && !isPerspectiveFullscreen ? (
+            <div className="absolute inset-0 z-[100]">{activeDialogPanel}</div>
+          ) : null}
         </div>
-        {/* Narrow content pane: floating dialog over the canvas. The
-            Señor Doco rail's width is published as a CSS var by
-            AgentSidebar so the dialog never covers it. */}
-        {(nodeDialog || edgeDialog) && !isPerspectiveFullscreen ? (
-          <div
-            className={`fixed bottom-4 right-3 top-20 z-[100] [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
-              showSidePanel ? "hidden" : "block"
-            }`}
-          >
-            {activeDialogPanel}
-          </div>
-        ) : null}
-      </main>
-    </div>
+      </div>
+      {/* Narrow content pane: floating dialog over the canvas. The
+          Señor Doco rail's width is published as a CSS var by
+          AgentSidebar so the dialog never covers it. */}
+      {(nodeDialog || edgeDialog) && !isPerspectiveFullscreen ? (
+        <div
+          className={`fixed bottom-4 right-3 top-20 z-[100] [left:calc(var(--senor-doco-rail-width,320px)+0.75rem)] ${
+            showSidePanel ? "hidden" : "block"
+          }`}
+        >
+          {activeDialogPanel}
+        </div>
+      ) : null}
+    </main>
   );
 }

@@ -8,13 +8,11 @@ import { act, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { DOCO_TEMPLATES, findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import NewDoco from "../new-doco";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-vi.mock("~/components/site-header", () => ({ SiteHeader: () => null }));
 
 function App({ templateHandle }: { templateHandle: string }) {
   const loaderData = {

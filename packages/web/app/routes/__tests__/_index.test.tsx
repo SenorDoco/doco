@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The route module imports the session helper, which pulls in @doco/db at the
 // top level. Stub it so the static render doesn't drag in Postgres.
@@ -20,17 +20,6 @@ async function render(): Promise<string> {
   );
 }
 
-beforeAll(() => {
-  // VersionPill reads these vite-injected build-time globals during render;
-  // vitest doesn't define them, so stub them to avoid a ReferenceError.
-  vi.stubGlobal("__DOCO_VERSION__", "0.0.0-test");
-  vi.stubGlobal("__DOCO_RELEASE_AT__", "2026-01-01T00:00:00.000Z");
-});
-
-afterAll(() => {
-  vi.unstubAllGlobals();
-});
-
 beforeEach(() => {
   getCurrentPrincipal.mockReset();
   getCurrentPrincipal.mockResolvedValue(null);
@@ -40,7 +29,7 @@ describe("Home", () => {
   it("says what Doco is and hands over the agent instructions with a Copy button", async () => {
     const html = await render();
     expect(html).toContain(">Doco</h1>");
-    expect(html).toContain("Shared knowledge and context for AI and teams");
+    expect(html).toContain("Shared context for AI and teams");
     expect(html).toContain("To use Doco with your agent(s), give them these instructions:");
     expect(html).toContain(">Copy</button>");
     // The instructions render verbatim (HTML-escaped) so an agent reading the
@@ -51,18 +40,27 @@ describe("Home", () => {
     expect(html).toContain(escaped.slice("<pre>".length, -"</pre>".length));
   });
 
-  it("is the same simple page for a signed-in person, under the app shell's header alone", async () => {
+  it("sends a signed-in person to their workspaces", async () => {
     getCurrentPrincipal.mockResolvedValue({ id: "user_1", username: "ana" });
-    const html = await render();
-    expect(html).toContain("Shared knowledge and context for AI and teams");
-    expect(html).not.toContain("<header");
-    expect(html).not.toContain("Dashboard");
-    expect(html).not.toContain('href="/sign-in"');
+    const response = await loader({ request: new Request("https://doco.test/") }).then(
+      () => null,
+      (thrown: unknown) => thrown,
+    );
+    expect(response).toBeInstanceOf(Response);
+    expect((response as Response).status).toBe(302);
+    expect((response as Response).headers.get("Location")).toBe("/workspaces");
   });
 
-  it("offers sign-in to a signed-out visitor", async () => {
+  it("still shows the page when the session can't be looked up", async () => {
+    getCurrentPrincipal.mockRejectedValue(new Error("db down"));
     const html = await render();
-    expect(html).toContain('href="/sign-in"');
+    expect(html).toContain("Shared context for AI and teams");
+  });
+
+  it("draws no header of its own: the root layout's one header sits above it", async () => {
+    const html = await render();
+    expect(html).not.toContain("<header");
+    expect(html).not.toContain("Dashboard");
   });
 
   it("drops the marketing sections and /llms.txt", async () => {

@@ -8,6 +8,7 @@ export default defineConfig({
       ".agents/**/*.test.ts",
     ],
     globals: false,
+    globalSetup: ["packages/db/src/__tests__/schema-snapshot.global-setup.ts"],
     pool: "threads",
     coverage: {
       provider: "v8",

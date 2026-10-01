@@ -6,10 +6,9 @@ import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { type ScopeOption, loadScopeOptions } from "~/lib/api-keys.server";
 import { canSetChannelDefaultAccess } from "~/lib/group-chat-ux";
-import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
+import { getCurrentPrincipal } from "~/lib/session.server";
 import {
   type SlackInstallationSummary,
   listSlackInstallations,
@@ -18,7 +17,6 @@ import {
 import { rankOf } from "~/lib/user-invite";
 
 interface SlackSetupPageData {
-  me: CurrentPrincipal;
   installation: SlackInstallationSummary;
   workspaceGroups: WorkspacePermissionGroup[];
 }
@@ -79,7 +77,6 @@ export async function loader({ request }: { request: Request }): Promise<SlackSe
   );
 
   return {
-    me,
     installation,
     workspaceGroups,
   };
@@ -154,7 +151,7 @@ export function meta() {
 }
 
 export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupPageData }) {
-  const { me, installation, workspaceGroups } = loaderData;
+  const { installation, workspaceGroups } = loaderData;
   const [workspaceState, setWorkspaceState] = useState<Record<string, DraftWorkspaceState>>(() =>
     Object.fromEntries(workspaceGroups.map((group) => [group.key, initialWorkspaceState(group)])),
   );
@@ -183,171 +180,167 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="space-y-6 py-6">
-        <PageHeader
-          breadcrumb={[
-            ...hostBreadcrumb({ pageLabel: "App integrations" }),
-            { label: "Slack setup" },
-          ]}
-          title="Set up Slack"
-        >
-          <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground">
-            This Slack team is connected to one doco workspace (chosen when it was installed) — set
-            Señor Doco's default access there below. It can never use a person's access in any other
-            workspace. People can still link their own doco account; their personal access is
-            likewise capped to this workspace and never exceeds the role they already hold.
-          </p>
-        </PageHeader>
+    <SingleColumnPageMain className="space-y-6 py-6">
+      <PageHeader
+        breadcrumb={[
+          ...hostBreadcrumb({ pageLabel: "App integrations" }),
+          { label: "Slack setup" },
+        ]}
+        title="Set up Slack"
+      >
+        <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground">
+          This Slack team is connected to one doco workspace (chosen when it was installed) — set
+          Señor Doco's default access there below. It can never use a person's access in any other
+          workspace. People can still link their own doco account; their personal access is likewise
+          capped to this workspace and never exceeds the role they already hold.
+        </p>
+      </PageHeader>
 
-        <Form method="post" className="max-w-3xl">
-          <input type="hidden" name="workspace_id" value={installation.workspaceId} />
+      <Form method="post" className="max-w-3xl">
+        <input type="hidden" name="workspace_id" value={installation.workspaceId} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Default access</CardTitle>
-              <CardDescription>
-                Slack workspace: {installation.workspaceName}. Set what Señor Doco can do by default
-                for everyone in this Slack team — limited to the
-                {workspaceGroups[0] ? ` ${workspaceGroups[0].handle}` : ""} doco workspace this team
-                is connected to.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {workspaceGroups.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  You don't have access to the doco workspace this Slack team is connected to, so
-                  you can't set its defaults. Ask one of its owners.
-                </p>
-              ) : null}
+        <Card>
+          <CardHeader>
+            <CardTitle>Default access</CardTitle>
+            <CardDescription>
+              Slack workspace: {installation.workspaceName}. Set what Señor Doco can do by default
+              for everyone in this Slack team — limited to the
+              {workspaceGroups[0] ? ` ${workspaceGroups[0].handle}` : ""} doco workspace this team
+              is connected to.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {workspaceGroups.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                You don't have access to the doco workspace this Slack team is connected to, so you
+                can't set its defaults. Ask one of its owners.
+              </p>
+            ) : null}
 
-              {workspaceGroups.map((group) => {
-                const state = workspaceState[group.key] ?? initialWorkspaceState(group);
-                const allWorkspaceAvailable = Boolean(group.workspaceOption);
-                return (
-                  <section
-                    key={group.key}
-                    className="rounded-md border border-border bg-background p-4"
-                  >
-                    {/* The workspace is fixed (chosen at install); not a choice here. */}
-                    <input type="hidden" name="workspace_key" value={group.key} />
-                    <div className="text-sm font-semibold text-foreground">
-                      <span className="block">{group.handle} workspace</span>
-                      <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
-                        {group.docos.length} accessible{" "}
-                        {group.docos.length === 1 ? "doco" : "docos"}
-                      </span>
-                    </div>
+            {workspaceGroups.map((group) => {
+              const state = workspaceState[group.key] ?? initialWorkspaceState(group);
+              const allWorkspaceAvailable = Boolean(group.workspaceOption);
+              return (
+                <section
+                  key={group.key}
+                  className="rounded-md border border-border bg-background p-4"
+                >
+                  {/* The workspace is fixed (chosen at install); not a choice here. */}
+                  <input type="hidden" name="workspace_key" value={group.key} />
+                  <div className="text-sm font-semibold text-foreground">
+                    <span className="block">{group.handle} workspace</span>
+                    <span className="mt-1 block text-xs font-normal leading-relaxed text-muted-foreground">
+                      {group.docos.length} accessible {group.docos.length === 1 ? "doco" : "docos"}
+                    </span>
+                  </div>
 
-                    {state.selected ? (
-                      <div className="mt-4 space-y-4 border-t border-border pt-4">
-                        <div className="grid gap-2 text-sm">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="radio"
-                              name={`workspace_mode:${group.key}`}
-                              value="all"
-                              checked={state.mode === "all"}
-                              disabled={!allWorkspaceAvailable}
-                              onChange={() => updateWorkspace(group.key, { mode: "all" })}
-                            />
-                            All docos in {group.handle}
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="radio"
-                              name={`workspace_mode:${group.key}`}
-                              value="specific"
-                              checked={state.mode === "specific"}
-                              onChange={() => updateWorkspace(group.key, { mode: "specific" })}
-                            />
-                            Specific docos
-                          </label>
-                        </div>
-
-                        {state.mode === "all" && allWorkspaceAvailable ? (
-                          <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            What should be Señor Doco's default level of access for all docos in
-                            this workspace?
-                            <select
-                              name={`workspace_role:${group.key}`}
-                              value={state.workspaceRole}
-                              onChange={(event) =>
-                                updateWorkspace(group.key, {
-                                  workspaceRole: event.target.value as DocoRole,
-                                })
-                              }
-                              className={ROLE_SELECT_CLASS}
-                            >
-                              {rolesFor(group.workspaceOption?.myRole).map((role) => (
-                                <option key={role} value={role}>
-                                  {roleLabel(role)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : null}
-
-                        {state.mode === "all" && !allWorkspaceAvailable ? (
-                          <p className="text-sm text-muted-foreground">
-                            You can set defaults for specific docos in {group.handle}, but you do
-                            not have workspace-wide access to grant every doco in this workspace.
-                          </p>
-                        ) : null}
-
-                        {state.mode === "specific" ? (
-                          <div className="space-y-2">
-                            {group.docos.map((doco) => (
-                              <label
-                                key={doco.id}
-                                className="grid gap-2 rounded-md border border-border p-3 text-sm md:grid-cols-[minmax(0,1fr)_180px] md:items-center"
-                              >
-                                <span className="min-w-0 font-semibold text-foreground">
-                                  {doco.label}
-                                </span>
-                                <select
-                                  name={`doco_role:${doco.id}`}
-                                  value={state.docoRoles[doco.id] ?? "none"}
-                                  onChange={(event) =>
-                                    updateDocoRole(
-                                      group.key,
-                                      doco.id,
-                                      event.target.value as DocoRole | "none",
-                                    )
-                                  }
-                                  className={ROLE_SELECT_CLASS}
-                                >
-                                  <option value="none">No access</option>
-                                  {rolesFor(doco.myRole).map((role) => (
-                                    <option key={role} value={role}>
-                                      {roleLabel(role)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            ))}
-                          </div>
-                        ) : null}
+                  {state.selected ? (
+                    <div className="mt-4 space-y-4 border-t border-border pt-4">
+                      <div className="grid gap-2 text-sm">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name={`workspace_mode:${group.key}`}
+                            value="all"
+                            checked={state.mode === "all"}
+                            disabled={!allWorkspaceAvailable}
+                            onChange={() => updateWorkspace(group.key, { mode: "all" })}
+                          />
+                          All docos in {group.handle}
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name={`workspace_mode:${group.key}`}
+                            value="specific"
+                            checked={state.mode === "specific"}
+                            onChange={() => updateWorkspace(group.key, { mode: "specific" })}
+                          />
+                          Specific docos
+                        </label>
                       </div>
-                    ) : null}
-                  </section>
-                );
-              })}
 
-              <button
-                type="submit"
-                disabled={workspaceGroups.length === 0}
-                className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                Save default permissions
-              </button>
-            </CardContent>
-          </Card>
-        </Form>
-      </SingleColumnPageMain>
-    </div>
+                      {state.mode === "all" && allWorkspaceAvailable ? (
+                        <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          What should be Señor Doco's default level of access for all docos in this
+                          workspace?
+                          <select
+                            name={`workspace_role:${group.key}`}
+                            value={state.workspaceRole}
+                            onChange={(event) =>
+                              updateWorkspace(group.key, {
+                                workspaceRole: event.target.value as DocoRole,
+                              })
+                            }
+                            className={ROLE_SELECT_CLASS}
+                          >
+                            {rolesFor(group.workspaceOption?.myRole).map((role) => (
+                              <option key={role} value={role}>
+                                {roleLabel(role)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+
+                      {state.mode === "all" && !allWorkspaceAvailable ? (
+                        <p className="text-sm text-muted-foreground">
+                          You can set defaults for specific docos in {group.handle}, but you do not
+                          have workspace-wide access to grant every doco in this workspace.
+                        </p>
+                      ) : null}
+
+                      {state.mode === "specific" ? (
+                        <div className="space-y-2">
+                          {group.docos.map((doco) => (
+                            <label
+                              key={doco.id}
+                              className="grid gap-2 rounded-md border border-border p-3 text-sm md:grid-cols-[minmax(0,1fr)_180px] md:items-center"
+                            >
+                              <span className="min-w-0 font-semibold text-foreground">
+                                {doco.label}
+                              </span>
+                              <select
+                                name={`doco_role:${doco.id}`}
+                                value={state.docoRoles[doco.id] ?? "none"}
+                                onChange={(event) =>
+                                  updateDocoRole(
+                                    group.key,
+                                    doco.id,
+                                    event.target.value as DocoRole | "none",
+                                  )
+                                }
+                                className={ROLE_SELECT_CLASS}
+                              >
+                                <option value="none">No access</option>
+                                {rolesFor(doco.myRole).map((role) => (
+                                  <option key={role} value={role}>
+                                    {roleLabel(role)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+
+            <button
+              type="submit"
+              disabled={workspaceGroups.length === 0}
+              className="neu-button inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              Save default permissions
+            </button>
+          </CardContent>
+        </Card>
+      </Form>
+    </SingleColumnPageMain>
   );
 }
 

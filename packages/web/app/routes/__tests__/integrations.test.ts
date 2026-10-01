@@ -100,7 +100,6 @@ describe("/integrations", () => {
 
     const data = await loader({ request: new Request("https://doco.test/integrations") });
 
-    expect(data.me).toEqual({ id: "user_alice", username: "alice" });
     expect(data.rollup.slack).toEqual(slackInstallations);
     expect(data.rollup.workspaces).toHaveLength(1);
     expect(data.rollup.docos).toHaveLength(1);

@@ -61,7 +61,6 @@ export interface ApiKeyRow {
 }
 
 export interface ApiKeysPageData {
-  me: CurrentPrincipal;
   keys: ApiKeyRow[];
   scopeOptions: ScopeOption[];
   /** Origin (protocol://host) used to build OAuth invite URLs. */

@@ -17,7 +17,6 @@ import { hostBreadcrumb } from "~/components/breadcrumb";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
-import { SiteHeader } from "~/components/site-header";
 import { agentInstructions } from "~/lib/agent-instructions";
 import {
   type ApiKeyGrantInput,
@@ -61,7 +60,7 @@ export async function loader({ request }: { request: Request }): Promise<ApiKeys
     loadScopeOptions(me.id),
   ]);
   const host = `${url.protocol}//${url.host}`;
-  return { me, keys, scopeOptions, host, justMinted: null };
+  return { keys, scopeOptions, host, justMinted: null };
 }
 
 type ActionResult =
@@ -218,28 +217,25 @@ export default function ApiKeysPage({
   loaderData: ApiKeysPageData;
   actionData?: ActionResult;
 }) {
-  const { me, keys, scopeOptions } = loaderData;
+  const { keys, scopeOptions } = loaderData;
   const minted =
     actionData && "intent" in actionData && actionData.intent === "mint" ? actionData.minted : null;
   const error = actionData && "error" in actionData ? actionData.error : null;
   const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <SiteHeader me={me} />
-      <SingleColumnPageMain className="py-6 space-y-6">
-        <PageHeader breadcrumb={hostBreadcrumb({ pageLabel: "Tokens/MCP" })} title="Tokens/MCP" />
+    <SingleColumnPageMain className="py-6 space-y-6">
+      <PageHeader breadcrumb={hostBreadcrumb({ pageLabel: "Tokens/MCP" })} title="Tokens/MCP" />
 
-        <TokensTabs
-          scopeOptions={scopeOptions}
-          host={loaderData.host}
-          keys={keys}
-          catalog={catalog}
-          error={error}
-          minted={minted}
-        />
-      </SingleColumnPageMain>
-    </div>
+      <TokensTabs
+        scopeOptions={scopeOptions}
+        host={loaderData.host}
+        keys={keys}
+        catalog={catalog}
+        error={error}
+        minted={minted}
+      />
+    </SingleColumnPageMain>
   );
 }
 

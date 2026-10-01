@@ -1,13 +1,10 @@
 // Reading the Slack mirror: the Doco home's Slack perspective (channels →
 // messages → threads) and Slack results in the Doco's search. PGlite runs the
 // real schema and full-text search.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { vectorLiteral } from "@doco/db";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   loadSlackPerspective,
   renderSlackText,
@@ -15,16 +12,12 @@ import {
   slackPermalink,
 } from "../slack-mirror-read.server";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 type Client = Parameters<typeof loadSlackPerspective>[0];
 let db: PGlite;
 let c: Client;
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   c = db as unknown as Client;
   await db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'acme', 'Acme');

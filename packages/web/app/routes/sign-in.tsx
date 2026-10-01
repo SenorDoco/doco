@@ -2,8 +2,6 @@ import { Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { DocoMark } from "~/components/doco-mark";
-import { VersionPill } from "~/components/version-pill";
 import { findPrincipalById, getSessionPrincipalId } from "~/lib/session.server";
 
 /**
@@ -40,40 +38,30 @@ export default function SignIn({
 }) {
   const { next } = loaderData;
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-background">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
-          <Link to="/" className="inline-flex items-center hover:opacity-80" aria-label="Doco home">
-            <DocoMark height={28} />
+    <main className="mx-auto max-w-md px-6 py-10 space-y-4">
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign in" }]} />
+      <Card>
+        <CardHeader>
+          <CardTitle>Sign in</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Link
+            to={next ? `/auth/github?return=${encodeURIComponent(next)}` : "/auth/github"}
+            className="neu-button bg-primary text-primary-foreground hover:opacity-90 flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
+          >
+            <GitHubMark />
+            Continue with GitHub
           </Link>
-          <VersionPill />
-        </div>
-      </header>
-      <main className="mx-auto max-w-md px-6 py-10 space-y-4">
-        <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign in" }]} />
-        <Card>
-          <CardHeader>
-            <CardTitle>Sign in</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Link
-              to={next ? `/auth/github?return=${encodeURIComponent(next)}` : "/auth/github"}
-              className="neu-button bg-primary text-primary-foreground hover:opacity-90 flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold"
-            >
-              <GitHubMark />
-              Continue with GitHub
-            </Link>
 
-            <p className="mt-4 text-xs text-muted-foreground">
-              New here?{" "}
-              <Link to="/sign-up" className="text-primary hover:underline">
-                Create an account
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            New here?{" "}
+            <Link to="/sign-up" className="text-primary hover:underline">
+              Create an account
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
 

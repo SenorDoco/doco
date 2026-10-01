@@ -3,11 +3,7 @@
 // which lives in that source's own table, not as nodes; a process Doco by its
 // processes; every other kind by its nodes of one type, or all its nodes when
 // it has no known template. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ db: null as unknown as PGlite }));
@@ -15,14 +11,11 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(state.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { copiesByDay, listDocoStats } from "../doco-stats.server";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 beforeEach(async () => {
-  state.db = new PGlite({ extensions: { vector } });
-  await state.db.exec(schemaSql);
+  state.db = await freshDb();
   await state.db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'torre', 'Torre');
     INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data) VALUES

@@ -2,15 +2,8 @@
 // with the same request context a write's changeset records, so the agent a
 // person queried through is named the same way as the one they wrote through.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -25,6 +18,7 @@ vi.mock("../oauth-server.server", () => ({
       : null,
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { recordQuery } from "../query-log.server";
 
 async function rows() {
@@ -40,8 +34,7 @@ async function rows() {
 }
 
 beforeEach(async () => {
-  dbm.db = new PGlite({ extensions: { vector } });
-  await dbm.db.exec(schemaSql);
+  dbm.db = await freshDb();
   await dbm.db.query(
     "INSERT INTO workspaces (id, handle, name) VALUES ('workspace_acme', 'acme', 'Acme')",
   );

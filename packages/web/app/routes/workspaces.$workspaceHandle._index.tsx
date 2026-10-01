@@ -28,7 +28,6 @@ import { ActivityCard } from "~/components/doco-activity";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { OnboardingStepper } from "~/components/onboarding-stepper";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { TopActorsList } from "~/components/top-actors-list";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import {
@@ -216,7 +215,6 @@ export async function loader({
     return {
       workspace,
       summary,
-      me,
       onboarding,
       canInviteUsers,
       canEditConstitution: canInviteUsers,
@@ -269,7 +267,6 @@ export default function WorkspaceHome({
   const {
     workspace,
     summary,
-    me,
     onboarding,
     canInviteUsers,
     canEditConstitution,
@@ -291,120 +288,117 @@ export default function WorkspaceHome({
   }));
 
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
-        <PageHeader
-          breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle })}
-          title={workspace.handle}
-          actions={
-            canInviteUsers ? (
-              <Link
-                to={`/workspaces/${workspace.handle}/settings`}
-                className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
-              >
-                Settings
-              </Link>
-            ) : null
-          }
-        >
-          <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
-        </PageHeader>
-
-        {onboarding ? <OnboardingStepper view={onboarding} /> : null}
-
-        <WorkspaceSummaryCard workspace={summary} showName={false} />
-
-        <DocoListCard
-          title="Docos in this workspace"
-          docos={docoItems}
-          showOwner={false}
-          empty={
-            <p className="text-xs italic text-muted-foreground">
-              This workspace doesn't own any Docos yet.
-            </p>
-          }
-        />
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
-          {/* Left column — the constitution gets the full available width, with
-              the latest activity feed beneath it. Below `lg` this column
-              dissolves into the grid (`contents`) so the feed can be ordered
-              past the sidebar to the bottom of the stacked page; at `lg` it
-              reflows as a real column and the feed returns to its spot beneath
-              the constitution. */}
-          <section className="contents lg:block lg:min-w-0 lg:space-y-4">
-            <WorkspaceConstitutionCard
-              workspaceHandle={workspace.handle}
-              constitution={workspace.constitution}
-              canEdit={canEditConstitution}
-            />
-
-            <Card className="order-last lg:order-none">
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Latest activity</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {items.length === 0 ? (
-                  <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                    No recorded activity yet across this workspace's Docos.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-border">
-                    {items.map((it) => (
-                      <WorkspaceFeedLine key={it.event_id} event={it} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </section>
-
-          {/* Right column — search, then the activity matrix and top
-              contributors. */}
-          <aside className="min-w-0 space-y-4">
-            <Form
-              method="get"
-              action={`/workspaces/${workspace.handle}/search`}
-              className="flex gap-2"
+    <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
+      <PageHeader
+        breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle })}
+        title={workspace.handle}
+        actions={
+          canInviteUsers ? (
+            <Link
+              to={`/workspaces/${workspace.handle}/settings`}
+              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
-              <input
-                name="q"
-                type="search"
-                placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
-                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
-              >
-                Search
-              </button>
-            </Form>
+              Settings
+            </Link>
+          ) : null
+        }
+      >
+        <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
+      </PageHeader>
 
-            <ActivityCard byDay={byDay} />
+      {onboarding ? <OnboardingStepper view={onboarding} /> : null}
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Top contributors</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TopActorsList actors={topContributors} empty="No recorded contributions yet." />
-              </CardContent>
-            </Card>
+      <WorkspaceSummaryCard workspace={summary} showName={false} />
 
-            <Card>
-              <CardHeader className="px-4 py-3">
-                <CardTitle className="text-sm">Top queryers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TopActorsList actors={topQueryers} empty="No recorded queries yet." />
-              </CardContent>
-            </Card>
-          </aside>
-        </div>
-      </main>
-    </div>
+      <DocoListCard
+        title="Docos in this workspace"
+        docos={docoItems}
+        showOwner={false}
+        empty={
+          <p className="text-xs italic text-muted-foreground">
+            This workspace doesn't own any Docos yet.
+          </p>
+        }
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
+        {/* Left column — the constitution gets the full available width, with
+            the latest activity feed beneath it. Below `lg` this column
+            dissolves into the grid (`contents`) so the feed can be ordered
+            past the sidebar to the bottom of the stacked page; at `lg` it
+            reflows as a real column and the feed returns to its spot beneath
+            the constitution. */}
+        <section className="contents lg:block lg:min-w-0 lg:space-y-4">
+          <WorkspaceConstitutionCard
+            workspaceHandle={workspace.handle}
+            constitution={workspace.constitution}
+            canEdit={canEditConstitution}
+          />
+
+          <Card className="order-last lg:order-none">
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Latest activity</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {items.length === 0 ? (
+                <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
+                  No recorded activity yet across this workspace's Docos.
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {items.map((it) => (
+                    <WorkspaceFeedLine key={it.event_id} event={it} />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* Right column — search, then the activity matrix and top
+            contributors. */}
+        <aside className="min-w-0 space-y-4">
+          <Form
+            method="get"
+            action={`/workspaces/${workspace.handle}/search`}
+            className="flex gap-2"
+          >
+            <input
+              name="q"
+              type="search"
+              placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
+              className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+            />
+            <button
+              type="submit"
+              className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+            >
+              Search
+            </button>
+          </Form>
+
+          <ActivityCard byDay={byDay} />
+
+          <Card>
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Top contributors</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TopActorsList actors={topContributors} empty="No recorded contributions yet." />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="px-4 py-3">
+              <CardTitle className="text-sm">Top queryers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TopActorsList actors={topQueryers} empty="No recorded queries yet." />
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+    </main>
   );
 }
 

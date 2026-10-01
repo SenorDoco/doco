@@ -23,6 +23,11 @@ export default defineConfig({
     // `pnpm test:integration`, not `pnpm test`/CI (no Postgres there).
     exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
     globals: false,
+    // Real-DB tests restore the migrated schema from one snapshot per run.
+    globalSetup: ["../db/src/__tests__/schema-snapshot.global-setup.ts"],
+    // The suite is CPU-bound (PGlite): use every core. Vitest's default leaves
+    // one free, which on CI's 2-core runner meant one test file at a time.
+    maxWorkers: "100%",
     testTimeout: 30_000,
   },
   esbuild: {

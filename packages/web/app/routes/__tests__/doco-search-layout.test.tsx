@@ -1,14 +1,8 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RouterProvider, createMemoryRouter } from "react-router";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import SearchInDoco from "../$docoHandle.search";
-
-// VersionPill (rendered by SiteHeader) reads this build-time define.
-beforeAll(() => {
-  vi.stubGlobal("__DOCO_RELEASE_AT__", "2026-01-01T00:00:00.000Z");
-  vi.stubGlobal("__DOCO_VERSION__", "0.0.0-test");
-});
 
 /**
  * The search page is a two-column layout: a left sidebar (`<aside>`) holds the
@@ -36,7 +30,6 @@ function renderSearch(): string {
     docoSlug: "hiring",
     handle: "acme/hiring",
     host: {},
-    me: null,
     filters: { lifecycle: ["active"], nodeType: null, limit: 100 },
     facets: {
       lifecycle: [{ value: "active", count: 11, updatedAt: null }],

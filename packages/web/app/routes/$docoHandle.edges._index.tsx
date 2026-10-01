@@ -14,7 +14,6 @@ import { Link } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -96,89 +95,86 @@ export default function EdgesIndex({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { edges, edgeTypeFilter, handle, ownerSlug, me } = loaderData;
+  const { edges, edgeTypeFilter, handle, ownerSlug } = loaderData;
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
-        <PageHeader
-          breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Edges" })}
-          title="Edges"
-          actions={
-            <div className="text-xs text-muted-foreground">
-              {edges.length} edge{edges.length === 1 ? "" : "s"}
-            </div>
-          }
-        />
-        <Card>
-          <CardHeader className="flex-row items-center justify-between gap-3">
-            <CardTitle className="text-sm">
-              {edgeTypeFilter ? `${edgeTypeFilter} edges` : "Every edge in this doco"}
-            </CardTitle>
-            {edgeTypeFilter ? (
-              <Link to={`/${handle}/edges`} className="text-xs text-primary hover:underline">
-                All edge types
-              </Link>
-            ) : null}
-          </CardHeader>
-          <CardContent className="p-0">
-            {edges.length === 0 ? (
-              <p className="px-5 py-6 text-xs text-muted-foreground">
-                No edges yet. Create relationships with changesets or the edge API and they will
-                appear here.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[28%]">From</TableHead>
-                    <TableHead className="w-[18%]">Edge</TableHead>
-                    <TableHead className="w-[34%]">To</TableHead>
-                    <TableHead className="w-[18%] text-right">Detail</TableHead>
+    <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+      <PageHeader
+        breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Edges" })}
+        title="Edges"
+        actions={
+          <div className="text-xs text-muted-foreground">
+            {edges.length} edge{edges.length === 1 ? "" : "s"}
+          </div>
+        }
+      />
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3">
+          <CardTitle className="text-sm">
+            {edgeTypeFilter ? `${edgeTypeFilter} edges` : "Every edge in this doco"}
+          </CardTitle>
+          {edgeTypeFilter ? (
+            <Link to={`/${handle}/edges`} className="text-xs text-primary hover:underline">
+              All edge types
+            </Link>
+          ) : null}
+        </CardHeader>
+        <CardContent className="p-0">
+          {edges.length === 0 ? (
+            <p className="px-5 py-6 text-xs text-muted-foreground">
+              No edges yet. Create relationships with changesets or the edge API and they will
+              appear here.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[28%]">From</TableHead>
+                  <TableHead className="w-[18%]">Edge</TableHead>
+                  <TableHead className="w-[34%]">To</TableHead>
+                  <TableHead className="w-[18%] text-right">Detail</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {edges.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell>
+                      <Link
+                        to={`/${handle}/${e.from_node_type}/${e.from_id}`}
+                        className="text-primary hover:underline"
+                      >
+                        {e.from_summary ?? e.from_id}
+                      </Link>
+                      <div className="text-[10px] text-muted-foreground">{e.from_node_type}</div>
+                    </TableCell>
+                    <TableCell>
+                      <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">
+                        {e.edge_type}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      <Link
+                        to={`/${handle}/${e.to_node_type}/${e.to_id}`}
+                        className="text-primary hover:underline"
+                      >
+                        {e.to_summary ?? e.to_id}
+                      </Link>
+                      <div className="text-[10px] text-muted-foreground">{e.to_node_type}</div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Link
+                        to={`/${handle}/edges/${e.id}`}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        open →
+                      </Link>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {edges.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell>
-                        <Link
-                          to={`/${handle}/${e.from_node_type}/${e.from_id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {e.from_summary ?? e.from_id}
-                        </Link>
-                        <div className="text-[10px] text-muted-foreground">{e.from_node_type}</div>
-                      </TableCell>
-                      <TableCell>
-                        <code className="rounded bg-input px-1.5 py-0.5 font-mono text-[11px]">
-                          {e.edge_type}
-                        </code>
-                      </TableCell>
-                      <TableCell>
-                        <Link
-                          to={`/${handle}/${e.to_node_type}/${e.to_id}`}
-                          className="text-primary hover:underline"
-                        >
-                          {e.to_summary ?? e.to_id}
-                        </Link>
-                        <div className="text-[10px] text-muted-foreground">{e.to_node_type}</div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Link
-                          to={`/${handle}/edges/${e.id}`}
-                          className="text-xs text-primary hover:underline"
-                        >
-                          open →
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </main>
   );
 }

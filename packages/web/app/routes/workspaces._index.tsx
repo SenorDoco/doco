@@ -10,7 +10,6 @@ import { Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SiteHeader } from "~/components/site-header";
 import { type WorkspaceSetup, WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import { STEP_TITLES, pendingStep } from "~/lib/onboarding-steps";
 import { loadUnfinishedOnboarding } from "~/lib/onboarding.server";
@@ -52,56 +51,53 @@ export default function WorkspacesPage({
   // Every person gets a personal workspace named after them; it isn't a project's.
   const inAProject = workspaces.some((w) => w.handle.toLowerCase() !== me.username.toLowerCase());
   return (
-    <div>
-      <SiteHeader me={me} />
-      <main className="mx-auto max-w-4xl space-y-6 px-6 py-6">
-        <PageHeader
-          breadcrumb={hostBreadcrumb({ pageLabel: "Workspaces" })}
-          title="Workspaces"
-          actions={
+    <main className="mx-auto max-w-4xl space-y-6 px-6 py-6">
+      <PageHeader
+        breadcrumb={hostBreadcrumb({ pageLabel: "Workspaces" })}
+        title="Workspaces"
+        actions={
+          <Link
+            to="/new-workspace"
+            className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+          >
+            New workspace
+          </Link>
+        }
+      />
+
+      {inAProject ? null : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Start with a workspace</CardTitle>
+            <CardDescription>
+              A workspace holds one project's shared knowledge and context: its members, its
+              constitution and its Docos. Create one and Doco walks you through connecting GitHub,
+              your other sources and your agent. Invited to one? Open the invite to join it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <Link
               to="/new-workspace"
-              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
+              className="neu-button inline-flex rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
             >
-              New workspace
+              Create a workspace
             </Link>
-          }
-        />
+          </CardContent>
+        </Card>
+      )}
 
-        {inAProject ? null : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Start with a workspace</CardTitle>
-              <CardDescription>
-                A workspace holds one project's shared knowledge and context: its members, its
-                constitution and its Docos. Create one and Doco walks you through connecting GitHub,
-                your other sources and your agent. Invited to one? Open the invite to join it.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link
-                to="/new-workspace"
-                className="neu-button inline-flex rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-              >
-                Create a workspace
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        <section className="space-y-3" aria-label="Your workspaces">
-          {workspaces.map((workspace) => (
-            <WorkspaceSummaryCard
-              key={workspace.id}
-              workspace={workspace}
-              setup={setup[workspace.id]}
-            />
-          ))}
-          {workspaces.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No workspaces yet.</p>
-          ) : null}
-        </section>
-      </main>
-    </div>
+      <section className="space-y-3" aria-label="Your workspaces">
+        {workspaces.map((workspace) => (
+          <WorkspaceSummaryCard
+            key={workspace.id}
+            workspace={workspace}
+            setup={setup[workspace.id]}
+          />
+        ))}
+        {workspaces.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No workspaces yet.</p>
+        ) : null}
+      </section>
+    </main>
   );
 }

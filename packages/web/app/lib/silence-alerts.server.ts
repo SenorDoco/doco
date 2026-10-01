@@ -4,6 +4,10 @@
 // closes them and emails each new one once; the Workspaces page, each
 // workspace's page and the Docos they concern show the open ones.
 //
+// An integration Doco's data is what it copies from its source; an agent's is
+// every read (the query log) and write (changesets) its person made through a
+// connection they haven't revoked, named as `agentName` names it.
+//
 // What counts as unexpected is learned from each source's own rhythm: the
 // silence so far is compared with the same hours of each of the past four
 // weeks. It alerts once it has lasted a day, and every one of those four weeks
@@ -15,6 +19,7 @@
 // later is a new alert with its own email.
 
 import { generateUlid } from "@doco/shared";
+import { agentName } from "./authoring-provenance";
 import { COPIED_ITEMS_SQL } from "./doco-stats.server";
 import { type Email, type EmailResult, emailConfigured, sendEmail } from "./email.server";
 import { GITHUB_ITEMS_SQL } from "./integration-status.server";
@@ -50,11 +55,13 @@ interface Silence {
  * `n int`) that have gone quiet unexpectedly at `now`, with the last arrival
  * and what the same hours of the past weeks brought on average. Week k's
  * window is the silence shifted back k weeks: from the last arrival to now.
+ * `now` is $1 in `arrivals`; `params` follow from $2.
  */
 async function quietKeys(
   c: QueryClient,
   arrivals: string,
   now: Date,
+  ...params: unknown[]
 ): Promise<{ key: string[]; quietSince: string; usual: number }[]> {
   const rows = (
     await c.query<{ key: string[]; last_at: Date | string; usual: number }>(
@@ -76,7 +83,7 @@ async function quietKeys(
          FROM weeks w JOIN spans s USING (key)
         GROUP BY w.key, s.last_at
        HAVING min(w.n) > 0 AND avg(w.n) >= ${MIN_USUAL}`,
-      [now.toISOString()],
+      [now.toISOString(), ...params],
     )
   ).rows;
   return rows.map((r) => ({
@@ -126,6 +133,96 @@ async function quietIntegrations(c: QueryClient, now: Date): Promise<Silence[]> 
   });
 }
 
+/** Every read (the query log) and write (changesets) a person made in a
+ *  workspace, with the request context that names the agent behind it. A
+ *  search across a whole workspace names no Doco. */
+const PEOPLE_LOG_SQL = `
+  SELECT q.workspace_id, q.doco_id, q.actor, q.source, q.metadata, q.at
+    FROM query_events q WHERE q.actor IS NOT NULL
+  UNION ALL
+  SELECT d.workspace_id, cs.doco_id, cs.actor, cs.source, cs.metadata, cs.recorded_at
+    FROM changesets cs JOIN docos d ON d.id = cs.doco_id WHERE cs.actor IS NOT NULL`;
+
+/** The agents people have connected and not revoked, as [person, name] JSON:
+ *  named the way `agentName` names the reads and writes made through them.
+ *  Revoking one is how its person says it was retired on purpose. */
+async function connectedAgents(c: QueryClient, now: Date): Promise<Set<string>> {
+  const rows = (
+    await c.query<{ user_id: string; token_name: string | null; client_name: string | null }>(
+      `SELECT rt.user_id, rt.token_name, oc.client_name
+         FROM oauth_refresh_tokens rt JOIN oauth_clients oc ON oc.client_id = rt.client_id
+        WHERE NOT rt.revoked AND rt.expires_at > $1`,
+      [now.toISOString()],
+    )
+  ).rows;
+  return new Set(
+    rows.map((r) =>
+      JSON.stringify([
+        r.user_id,
+        agentName("api", { auth: "oauth", token_name: r.token_name, client_name: r.client_name }),
+      ]),
+    ),
+  );
+}
+
+async function quietAgents(c: QueryClient, now: Date): Promise<Silence[]> {
+  const connected = await connectedAgents(c, now);
+  const names = new Set([...connected].map((k) => (JSON.parse(k) as string[])[1]));
+  // The request contexts that name a connected agent, matched in SQL.
+  const contexts = (
+    await c.query<{ source: string; metadata: Record<string, unknown> | null }>(
+      `SELECT DISTINCT source, metadata FROM (${PEOPLE_LOG_SQL}) e`,
+    )
+  ).rows.flatMap(({ source, metadata }) => {
+    const agent = agentName(source, metadata);
+    return agent && names.has(agent) ? [{ source, metadata, agent }] : [];
+  });
+  if (contexts.length === 0) return [];
+  // $2 in both queries below.
+  const agentLog = `
+    SELECT e.workspace_id, e.actor, x.agent, e.doco_id, e.at
+      FROM (${PEOPLE_LOG_SQL}) e
+      JOIN jsonb_to_recordset($2::jsonb) AS x(source text, metadata jsonb, agent text)
+        ON x.source = e.source AND x.metadata IS NOT DISTINCT FROM e.metadata`;
+  const quiet = (
+    await quietKeys(
+      c,
+      `SELECT ARRAY[workspace_id, actor, agent] AS key, at, 1 AS n FROM (${agentLog}) l`,
+      now,
+      JSON.stringify(contexts),
+    )
+  ).filter(({ key: [, userId, agent] }) => connected.has(JSON.stringify([userId, agent])));
+  if (quiet.length === 0) return [];
+  // The Docos each used in its last four weeks, while its person still
+  // belongs to the workspace or one of its Docos.
+  const used = new Map(
+    (
+      await c.query<{ key: string[]; doco_ids: string[] }>(
+        `SELECT k.key, array_remove(array_agg(DISTINCT l.doco_id ORDER BY l.doco_id), NULL) AS doco_ids
+           FROM jsonb_to_recordset($1::jsonb) AS k(key text[], since timestamptz)
+           JOIN (${agentLog}) l
+             ON ARRAY[l.workspace_id, l.actor, l.agent] = k.key
+            AND l.at >= k.since - interval '${WEEKS} weeks'
+          WHERE EXISTS (SELECT 1 FROM workspace_users wu
+                         WHERE wu.workspace_id = k.key[1] AND wu.user_id = k.key[2])
+             OR EXISTS (SELECT 1 FROM doco_users du JOIN docos d ON d.id = du.doco_id
+                         WHERE d.workspace_id = k.key[1] AND du.user_id = k.key[2])
+          GROUP BY k.key`,
+        [
+          JSON.stringify(quiet.map((q) => ({ key: q.key, since: q.quietSince }))),
+          JSON.stringify(contexts),
+        ],
+      )
+    ).rows.map((r) => [JSON.stringify(r.key), r.doco_ids]),
+  );
+  return quiet.flatMap(({ key, quietSince, usual }) => {
+    const [workspaceId, userId, agent] = key;
+    const docoIds = used.get(JSON.stringify(key));
+    if (!workspaceId || !userId || !agent || !docoIds) return [];
+    return [{ workspaceId, docoId: null, userId, agent, docoIds, quietSince, usual }];
+  });
+}
+
 const subjectOf = (s: {
   workspaceId: string;
   docoId: string | null;
@@ -136,15 +233,13 @@ const subjectOf = (s: {
 /**
  * Bring the open alerts in line with what is quiet now: open an alert for each
  * new silence, refresh the ones still quiet, and delete the rest (data or
- * calls resumed, the source was disconnected, the connection revoked).
+ * calls resumed, the source was disconnected, the agent's connection revoked).
  */
 export async function checkSilences(
   c: QueryClient,
   now: Date = new Date(),
 ): Promise<{ opened: number; closed: number; open: number }> {
-  // Agents join once Doco logs each agent's reads (the Activity charts' query
-  // log); their alerts already have their place in the table and the views.
-  const quiet = await quietIntegrations(c, now);
+  const quiet = [...(await quietIntegrations(c, now)), ...(await quietAgents(c, now))];
   const open = (
     await c.query<{
       id: string;

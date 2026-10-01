@@ -9,15 +9,8 @@
 // Points `@doco/db`'s `withClient` at an in-process PGlite loaded with the real
 // schema.sql; the only stubbed boundary is the audit-log sink (file IO).
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -28,6 +21,7 @@ vi.mock("@doco/db", async () => {
 vi.mock("@vercel/functions", () => ({ waitUntil: vi.fn() }));
 vi.mock("../audit-log.server", () => ({ appendAuditEvent: vi.fn() }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { transitionPolicyLifecycle } from "../capture.server";
 
 const DOCO = "doco_01TESTACTIVATE0000000001";
@@ -58,8 +52,7 @@ async function readPolicy(
 
 describe("transitionPolicyLifecycle — re-activating a retired policy", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite({ extensions: { vector } });
-    await dbm.db.exec(schemaSql);
+    dbm.db = await freshDb();
     await dbm.db.exec(`
       INSERT INTO workspaces (id, handle, name) VALUES ('workspace_test', 'ws', 'WS') ON CONFLICT (id) DO NOTHING;
       INSERT INTO docos (id, handle, owner_id, workspace_id, data)

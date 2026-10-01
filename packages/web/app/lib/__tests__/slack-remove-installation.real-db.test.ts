@@ -3,15 +3,8 @@
 // three group_chat_* tables for two Slack teams, and proves that removing one
 // team clears its install + channel defaults + personal links transactionally,
 // leaves the other team untouched, and is idempotent for an unknown team.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -29,6 +22,7 @@ vi.mock("../doco-access.server", () => ({
   getDocoLevelRole: vi.fn(),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { removeSlackInstallation } from "../slack.server";
 
 async function countFor(team: string): Promise<{
@@ -69,8 +63,7 @@ async function seedSlackState(team: string): Promise<void> {
 
 describe("removeSlackInstallation (real DB)", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite({ extensions: { vector } });
-    await dbm.db.exec(schemaSql);
+    dbm.db = await freshDb();
     await dbm.db.query("INSERT INTO users (id, data) VALUES ('user_alice', '{}')");
     await seedSlackState("T_REMOVE");
     await seedSlackState("T_KEEP");
