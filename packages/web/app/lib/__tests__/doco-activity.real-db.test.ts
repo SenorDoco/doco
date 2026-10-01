@@ -1,7 +1,6 @@
-// A Doco's activity, as its home's side column shows it: how much happened
-// each day (nodes captured and what it copied from its source), the latest
-// recorded writes, and who wrote and queried it most. PGlite runs the real
-// schema.
+// A Doco's activity, as its home's side column shows it: its writes (with what
+// it copied from its source) and queries each day, the latest recorded writes,
+// and who wrote and queried it most. PGlite runs the real schema.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,9 +66,13 @@ beforeEach(async () => {
 });
 
 describe("loadDocoActivity", () => {
-  it("counts each day's copies and captures, and lists the latest writes and who made them", async () => {
+  it("counts each day's writes and queries, and lists the latest writes and who made them", async () => {
     const activity = await loadDocoActivity(db as never, "doco_notion");
-    expect(activity.byDay).toEqual({ [day(daysAgo(3))]: 3, [day(daysAgo(10))]: 1 });
+    // Writes: the recorded change, plus the pages copied from Notion.
+    expect(activity.byDay).toEqual({
+      writes: { [day(daysAgo(3))]: 3, [day(daysAgo(10))]: 1 },
+      queries: { [day(daysAgo(1))]: 1 },
+    });
     // Policy writes are the Doco's settings, not its activity.
     expect(activity.items.map((it) => [it.id, it.summary, it.op])).toEqual([
       ["decision_1", "Keep the handbook in Notion", "entity.create"],

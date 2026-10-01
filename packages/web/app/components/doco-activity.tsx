@@ -6,11 +6,11 @@ import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activi
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { TopActorsList } from "~/components/top-actors-list";
+import type { DailyActivity, TopActor } from "~/lib/activity-log.server";
 import type { DocoActivity, DocoFeedItem } from "~/lib/doco-activity.server";
-import type { TopActor } from "~/lib/top-actors.server";
 
-/** How much happened each day of the last year. */
-export function ActivityCard({ byDay }: { byDay: Record<string, number> }) {
+/** Writes and queries each day. */
+export function ActivityCard({ byDay }: { byDay: DailyActivity }) {
   return (
     <Card>
       <CardHeader className="px-4 py-3">

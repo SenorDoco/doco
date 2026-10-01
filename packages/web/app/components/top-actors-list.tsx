@@ -2,8 +2,8 @@
 // agent they worked through, so the same person can appear once per agent and
 // once for the website itself.
 
+import type { TopActor } from "~/lib/activity-log.server";
 import { timeAgo } from "~/lib/time-ago";
-import type { TopActor } from "~/lib/top-actors.server";
 
 export function TopActorsList({ actors, empty }: { actors: TopActor[]; empty: string }) {
   if (actors.length === 0) {

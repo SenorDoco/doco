@@ -260,4 +260,30 @@ describe("workspace queries", () => {
       visitor.topQueryers.map((a: { via: string | null; count: number }) => [a.via, a.count]),
     ).toEqual([["Claude Code", 1]]);
   });
+
+  it("counts writes and queries per day on the Activity calendars", async () => {
+    for (const docoId of ["doco_public", "doco_private"]) {
+      await dbm.db.query(
+        "INSERT INTO changesets (doco_id, actor, source) VALUES ($1, 'user_member', 'ui')",
+        [docoId],
+      );
+    }
+    await addQuery("doco_public", "workspace_acme", CLAUDE_CODE);
+    await addQuery("doco_private", "workspace_acme", CLAUDE_CODE);
+    await addQuery(null, "workspace_acme", JSON.stringify({ surface: "website" }));
+    const today = (await dbm.db.query<{ d: string }>("SELECT to_char(now(), 'YYYY-MM-DD') AS d"))
+      .rows[0].d;
+
+    as("user_member");
+    expect((await homeData("acme")).byDay).toEqual({
+      writes: { [today]: 2 },
+      queries: { [today]: 3 },
+    });
+
+    as(null);
+    expect((await homeData("acme")).byDay).toEqual({
+      writes: { [today]: 1 },
+      queries: { [today]: 1 },
+    });
+  });
 });

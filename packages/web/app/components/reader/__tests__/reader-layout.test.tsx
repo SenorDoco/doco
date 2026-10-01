@@ -74,7 +74,7 @@ const codeShell: ReaderShell = {
   status: github,
   tree: codeTree,
   activity: {
-    byDay: { "2026-09-30": 4 },
+    byDay: { writes: { "2026-09-30": 4 }, queries: {} },
     items: [
       {
         event_id: "ev_1",

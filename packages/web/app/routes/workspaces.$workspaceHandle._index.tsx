@@ -40,13 +40,19 @@ import {
   shouldStrikeActivityTarget,
   verbFromAuditOp,
 } from "~/lib/activity-feed";
+import {
+  type DailyActivity,
+  TOP_ACTORS_LIMIT,
+  type TopActor,
+  countByDay,
+  listTopActors,
+} from "~/lib/activity-log.server";
 import { cn } from "~/lib/cn";
-import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
+import { EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import { loadOnboardingView } from "~/lib/onboarding-view.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { timeAgo } from "~/lib/time-ago";
-import { TOP_ACTORS_LIMIT, type TopActor, listTopActors } from "~/lib/top-actors.server";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
@@ -116,31 +122,18 @@ export async function loader({
         return a.handle.localeCompare(b.handle);
       });
 
-    let byDay: Record<string, number> = {};
+    let byDay: DailyActivity = { writes: {}, queries: {} };
     let topContributors: TopActor[] = [];
     let topQueryers: TopActor[] = [];
     let items: FeedItem[] = [];
 
     if (docoIds.length > 0) {
+      // A search across the workspace spans its private Docos too, so only
+      // members see who ran one, and only members count it.
+      const scope = { docoIds, workspaceId: myRole ? workspace.id : undefined };
       const since = new Date();
       since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
-      const sinceIso = since.toISOString();
-      const heatRows = (
-        await c.query<{ day: string; n: string }>(
-          `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
-             FROM audit_events
-            WHERE doco_id = ANY($1::text[]) AND at >= $2
-            GROUP BY day`,
-          [docoIds, sinceIso],
-        )
-      ).rows;
-      // What the Docos copied from their sources is activity too.
-      byDay = await copiesByDay(c, docoIds, sinceIso);
-      for (const r of heatRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
-
-      // A search across the workspace spans its private Docos too, so only
-      // members see who ran one.
-      const scope = { docoIds, workspaceId: myRole ? workspace.id : undefined };
+      byDay = await countByDay(c, scope, since.toISOString());
       topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
       topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
 

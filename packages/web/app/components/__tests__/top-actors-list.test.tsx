@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { TopActor } from "~/lib/top-actors.server";
+import type { TopActor } from "~/lib/activity-log.server";
 import { TopActorsList } from "../top-actors-list";
 
 const now = new Date().toISOString();

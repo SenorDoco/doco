@@ -99,7 +99,7 @@ describe("the Doco home of a reader Doco", () => {
 describe("the reader's frame", () => {
   it("carries the Doco's activity", async () => {
     const activity = {
-      byDay: { "2026-09-30": 4 },
+      byDay: { writes: { "2026-09-30": 4 }, queries: {} },
       items: [],
       topContributors: [],
       topQueryers: [],
