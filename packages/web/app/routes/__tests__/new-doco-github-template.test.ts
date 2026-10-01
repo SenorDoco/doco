@@ -17,8 +17,8 @@ vi.mock("~/lib/workspace-helpers.server", () => ({
   lookupWorkspaceHandle: mocks.lookupWorkspaceHandle,
 }));
 
+vi.mock("~/lib/workspace-create.server", () => ({ createWorkspace: vi.fn() }));
 vi.mock("~/lib/redeem.server", () => ({
-  addWorkspaceByHandle: vi.fn(),
   createDocoInWorkspace: mocks.createDocoInWorkspace,
   ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),

@@ -147,12 +147,33 @@ describe("agentInstructions", () => {
 });
 
 describe("agentInstructionsForWorkspace", () => {
-  // Right after creating a workspace, the person copies instructions that
-  // already connect the project to it: the same block as the home page, then
-  // the line step 2 reads.
-  it("is the home page block followed by the workspace line", () => {
-    expect(agentInstructionsForWorkspace("https://doco.test/", "acme")).toBe(
+  const forAcme = agentInstructionsForWorkspace("https://doco.test/", "acme");
+  const [request, block] = forAcme.split(`\n\n${INSTRUCTIONS_BEGIN}`);
+
+  // Alexander, 2026-10-01: inviting an agent from a workspace names the
+  // workspace, and asks the agent to note in Agents chats that it got the
+  // instructions, which finishes the workspace's onboarding step.
+  it("asks the agent to start using Doco in the named workspace", () => {
+    expect(request).toContain("Start using Doco in this project, in the workspace acme");
+    expect(request).toContain("with acme as the project's workspace");
+  });
+
+  it("asks the agent to note in the workspace's Agents chats Doco that it got them", () => {
+    expect(request).toContain(
+      "`doco_capture` a Log in acme's Agents chats Doco saying you received these instructions",
+    );
+  });
+
+  // The request and the workspace line sit outside the block, so the block is
+  // the home page's, byte for byte, and stays under the MCP length cap.
+  it("then hands over the home page block and the line that connects the workspace", () => {
+    expect(`${INSTRUCTIONS_BEGIN}${block}`).toBe(
       `${text}Doco workspace: https://doco.test/workspaces/acme\n`,
     );
+  });
+
+  it("keeps the request on one line and out of the first person", () => {
+    expect(request.split("\n")).toHaveLength(1);
+    expect(firstPersonLines(request)).toEqual([]);
   });
 });

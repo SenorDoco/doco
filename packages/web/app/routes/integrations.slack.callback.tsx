@@ -1,6 +1,7 @@
 import { getWorkspaceRole } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { redirect } from "react-router";
+import { isLocalPath } from "~/lib/local-path";
 import { startSlackMirror, turnOnSlackMirror } from "~/lib/slack-mirror-setup.server";
 import {
   exchangeSlackOAuthCode,
@@ -69,7 +70,11 @@ export async function loader({ request }: { request: Request }) {
           );
         }),
       );
-      throw redirect(`/${result.handle}/integrations/slack?slack=mirroring`);
+      throw redirect(
+        isLocalPath(parsedState.next)
+          ? parsedState.next
+          : `/${result.handle}/integrations/slack?slack=mirroring`,
+      );
     }
 
     const params = new URLSearchParams({ team_id: teamId });

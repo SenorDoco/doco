@@ -30,11 +30,10 @@ import { PageHeader } from "~/components/page-header";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import {
   buildInstallUrl,
-  connectRepositories,
+  connectPicked,
   getDocoConnectionsContext,
   listGitHubInstallationChoicesForDocos,
   pickConnections,
-  subscribeInstallation,
 } from "~/lib/github-connection.server";
 import { GITHUB_IMPORTS, type GitHubImport } from "~/lib/github-imports";
 import { type ImportTarget, ensureImportDocos, listImportDocos } from "~/lib/github-setup.server";
@@ -170,20 +169,9 @@ export async function action({ request }: { request: Request }): Promise<ActionR
     installations: form.getAll("installation").map(String),
   });
   if ("error" in picked) return picked;
-  const connectedAt = new Date().toISOString();
   const origin = new URL(request.url).origin;
   for (const doco of docos) {
-    for (const choice of picked.installations) {
-      await subscribeInstallation(doco.id, {
-        installation_id: choice.installation_id,
-        account: choice.account,
-        connected_at: connectedAt,
-      });
-    }
-    if (picked.connections.length > 0) {
-      await connectRepositories(doco.id, picked.connections);
-      waitUntil(kickBackfillRun(origin, doco.id));
-    }
+    if (await connectPicked(doco.id, picked)) waitUntil(kickBackfillRun(origin, doco.id));
   }
   throw redirect(`${next}&github=importing&count=${picked.connections.length}`);
 }

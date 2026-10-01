@@ -3,35 +3,42 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const addWorkspaceByHandle = vi.fn();
+const createWorkspace = vi.fn();
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
 vi.mock("~/lib/redeem.server", () => ({
-  addWorkspaceByHandle: (args: unknown) => addWorkspaceByHandle(args),
   ensurePersonalWorkspace: vi.fn(),
   findAvailableWorkspaceHandle: vi.fn(),
+}));
+vi.mock("~/lib/workspace-create.server", () => ({
+  createWorkspace: (args: unknown) => createWorkspace(args),
 }));
 vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: vi.fn(async () => ({ id: "user_alice", username: "alice" })),
 }));
 
 import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
-import { action as createWorkspace } from "../new-workspace";
+import { action as submitNewWorkspace } from "../new-workspace";
 import WorkspaceAgentPage from "../workspaces.$workspaceHandle.agent";
 
-beforeEach(() => addWorkspaceByHandle.mockReset());
+beforeEach(() => createWorkspace.mockReset());
 
 describe("after creating a workspace", () => {
-  // Creating a workspace is step 1; the next thing the person needs is the
-  // instructions to hand their agent, not the workspace's constitution.
-  it("goes straight to connecting an agent to it", async () => {
-    addWorkspaceByHandle.mockResolvedValue({ handle: "acme" });
+  // Alexander, 2026-10-01: a new workspace walks its creator through three
+  // steps on its own page, and its welcome email links there.
+  it("goes to the workspace, whose steps set it up", async () => {
+    createWorkspace.mockResolvedValue({ id: "workspace_acme", handle: "acme" });
     const body = new URLSearchParams({ handle: "acme" });
-    const thrown = await createWorkspace({
+    const thrown = await submitNewWorkspace({
       request: new Request("https://doco.test/new-workspace", { method: "POST", body }),
     }).catch((e: unknown) => e);
     expect(thrown).toBeInstanceOf(Response);
-    expect((thrown as Response).headers.get("Location")).toBe("/workspaces/acme/agent");
+    expect((thrown as Response).headers.get("Location")).toBe("/workspaces/acme");
+    expect(createWorkspace).toHaveBeenCalledWith({
+      handle: "acme",
+      ownerUserId: "user_alice",
+      autoSuffix: false,
+    });
   });
 });
 

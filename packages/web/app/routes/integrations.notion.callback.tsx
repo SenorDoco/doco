@@ -46,5 +46,5 @@ export async function loader({ request }: { request: Request }) {
     const params = new URLSearchParams({ notion: result.reason, handle: result.handle });
     throw redirect(`${panel}?${params.toString()}`);
   }
-  throw redirect(`${panel}?notion=mirroring`);
+  throw redirect(state.next ?? `${panel}?notion=mirroring`);
 }

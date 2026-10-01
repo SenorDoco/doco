@@ -103,6 +103,27 @@ CREATE TABLE IF NOT EXISTS workspace_users (
 );
 CREATE INDEX IF NOT EXISTS workspace_users_user_idx ON workspace_users (user_id);
 
+-- Onboarding: one row per person a workspace walks through getting started.
+-- Whoever creates a workspace sets it up in three steps (connect GitHub,
+-- connect other sources of knowledge, ask their agent to start using Doco);
+-- whoever joins it from an invite only asks their agent. Each step reads as
+-- done from what the database already holds (web lib/onboarding.server.ts);
+-- the row keeps only what nothing else records: when it started (the reminder
+-- email's clock), when the person finished or skipped the other-sources step,
+-- and when the reminder email went out. Workspaces created before onboarding
+-- existed have no rows, so their people never see it.
+CREATE TABLE IF NOT EXISTS workspace_onboarding (
+  workspace_id     text NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  user_id          text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  joined_as        text NOT NULL CHECK (joined_as IN ('creator', 'invitee')),
+  started_at       timestamptz NOT NULL DEFAULT now(),
+  sources_done_at  timestamptz,
+  reminded_at      timestamptz,
+  PRIMARY KEY (workspace_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS workspace_onboarding_due_idx
+  ON workspace_onboarding (started_at) WHERE reminded_at IS NULL;
+
 -- Every Doco has a single public `handle`. It lives in the same flat
 -- namespace as top-level host routes. The internal ULID `id` stays as
 -- the FK target for entity tables; `handle` is what URLs and public API
@@ -1094,8 +1115,10 @@ CREATE TABLE IF NOT EXISTS notion_pages (
   doco_id          text NOT NULL REFERENCES notion_mirrors(doco_id) ON DELETE CASCADE,
   page_id          text NOT NULL,                 -- Notion uuid (dashed)
   object           text NOT NULL CHECK (object IN ('page','data_source')),
-  parent_id        text,                          -- page or data source uuid; NULL at a shared root
-  parent_type      text,                          -- page | data_source | database | workspace | block
+  -- Page or data source uuid; NULL at a shared root, or until the page
+  -- holding the block Notion keeps it in (a column, a toggle) names it.
+  parent_id        text,
+  parent_type      text,                          -- page | data_source | database | workspace
   title            text NOT NULL DEFAULT '',
   icon             text,
   -- https://www.notion.so/<id>: stable across renames (Notion's own url embeds the title).
@@ -1125,6 +1148,11 @@ CREATE TABLE IF NOT EXISTS notion_pages (
   PRIMARY KEY (doco_id, page_id)
 );
 CREATE INDEX IF NOT EXISTS notion_pages_parent_idx  ON notion_pages (doco_id, parent_id);
+-- A block was once kept as a page's parent, which no page in the copy is, so
+-- the page sat at the top of the tree. The page holding the block places it
+-- instead (the sync's content scan reads every page again for that). Only a
+-- block-parented row matches, so a reboot changes nothing.
+UPDATE notion_pages SET parent_id = NULL, parent_type = NULL WHERE parent_type = 'block';
 CREATE INDEX IF NOT EXISTS notion_pages_pending_idx
   ON notion_pages (doco_id, fetch_attempts, page_id) WHERE fetch_pending;
 CREATE INDEX IF NOT EXISTS notion_pages_edited_idx  ON notion_pages (doco_id, last_edited_time DESC);

@@ -8,8 +8,8 @@ vi.mock("~/lib/workspace-helpers.server", () => ({
   listMyWorkspaces: vi.fn(),
   lookupWorkspaceHandle: vi.fn(),
 }));
+vi.mock("~/lib/workspace-create.server", () => ({ createWorkspace: vi.fn() }));
 vi.mock("~/lib/redeem.server", () => ({
-  addWorkspaceByHandle: vi.fn(),
   createDocoInWorkspace: vi.fn(),
   ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),

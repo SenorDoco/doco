@@ -1,7 +1,6 @@
-// /workspaces/:workspaceHandle/agent — step 2 of Get started for one
-// workspace: the instructions to give an agent, ending with the line that
-// connects the project to this workspace. Creating a workspace lands here,
-// and each workspace's Invite agent button opens it.
+// /workspaces/:workspaceHandle/agent — each workspace's Invite agent button:
+// the message that asks an agent to start using Doco in this workspace, the
+// same one its onboarding's last step and reminder email hand over.
 
 import { getPublicBaseUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
@@ -58,7 +57,7 @@ export default function WorkspaceAgentPage({
         }
       />
       <AgentInstructionsBlock
-        title="Give your agent these instructions. The last line connects the project to this workspace."
+        title={`Send your agent this message. It asks your agent to start using Doco in ${workspace.handle}.`}
         instructions={instructions}
       />
     </main>

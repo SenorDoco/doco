@@ -16,12 +16,12 @@ import {
 import { sourceIntegrationFor } from "~/lib/integrations-catalog";
 import { withCreatedDocoId } from "~/lib/post-create-doco-route";
 import {
-  addWorkspaceByHandle,
   createDocoInWorkspace,
   ensurePersonalWorkspace,
   findAvailableDocoHandle,
 } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { createWorkspace } from "~/lib/workspace-create.server";
 import {
   isWorkspaceMember,
   listMyWorkspaces,
@@ -204,7 +204,7 @@ export async function action({ request }: { request: Request }) {
       }
       chosenWorkspaceId = state.workspaceId;
     } else {
-      const created = await addWorkspaceByHandle({
+      const created = await createWorkspace({
         handle: state.newWorkspaceHandle,
         ownerUserId: me.id,
         autoSuffix: true,
