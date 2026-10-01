@@ -54,7 +54,6 @@ function summary(overrides: Partial<NotionPageSummary>): NotionPageSummary {
     where: "Handbook",
     lastEditedAt: "2026-09-27T10:00:00.000Z",
     lastEditedBy: "Ana Ruiz",
-    children: 0,
     ...overrides,
   };
 }
@@ -75,30 +74,24 @@ function render(view: PagesView, source: NotionIntegrationStatus | null = status
 }
 
 describe("PagesReaderView home", () => {
-  it("opens on the pages edited most recently and the top-level pages", () => {
-    const html = render({
-      view: "home",
-      recent: [summary({})],
-      top: [summary({ pageId: HB, title: "Handbook", icon: "📘", where: "", children: 2 })],
-      trail: [],
-    });
+  it("opens on the pages edited most recently, and no top-level pages", () => {
+    const html = render({ view: "home", recent: [summary({})] });
     expect(html).toContain("Recently edited");
     expect(html).toContain(`href="/acme-notion/pages/${ONB}"`);
+    expect(html).toContain("Handbook");
     expect(html).toContain("Ana Ruiz");
-    expect(html).toContain("Top-level pages");
-    expect(html).toContain(`href="/acme-notion/pages/${HB}"`);
-    expect(html).toContain("2 pages inside");
+    expect(html).not.toContain("Top-level pages");
   });
 
   it("points a Doco that doesn't mirror Notion at the setup page", () => {
-    const html = render({ view: "home", recent: [], top: [], trail: [] }, null);
+    const html = render({ view: "home", recent: [] }, null);
     expect(html).toContain("No Notion workspace is connected");
     expect(html).toMatch(/href="\/acme-notion\/integrations\/notion"[^>]*>Connect Notion/);
   });
 
   it("says pages are on their way while the first copy runs", () => {
     const html = render(
-      { view: "home", recent: [], top: [], trail: [] },
+      { view: "home", recent: [] },
       { ...status, state: "importing", pagesDone: 0, pages: 0 },
     );
     expect(html).toContain("The pages shared with Doco in Notion appear here as they are copied.");
@@ -125,7 +118,6 @@ describe("PagesReaderView page", () => {
         backlinks: [{ pageId: HB, title: "Handbook", icon: "📘", copied: true }],
         truncated: true,
       }),
-      trail: [HB, ONB],
     });
 
     expect(html).toMatch(/<h2[^>]*>(?:(?!<\/h2>).)*Onboarding<\/h2>/);
@@ -158,7 +150,6 @@ describe("PagesReaderView page", () => {
         ].join("\n"),
         links: [{ pageId: HB, title: "Handbook", icon: null, copied: false }],
       }),
-      trail: [HB, ONB],
     });
 
     expect(html).toContain(`href="/acme-notion/pages/${HB}"`);
@@ -171,7 +162,6 @@ describe("PagesReaderView page", () => {
     const html = render({
       view: "page",
       page: page({ copied: false, markdown: "" }),
-      trail: [HB, ONB],
     });
     expect(html).toContain("This page is not in the copy yet");
     expect(html).toContain(`href="${notionUrl(ONB)}"`);
@@ -195,7 +185,6 @@ describe("PagesReaderView search", () => {
           copied: true,
         },
       ],
-      trail: [],
     });
     expect(html).toContain("Day one: <mark>Laptop</mark> Badge");
     expect(html).toContain("Handbook");
@@ -218,12 +207,9 @@ describe("PagesReaderView search", () => {
           copied: false,
         },
       ],
-      trail: [],
     });
     expect(html).toContain("Not copied yet");
     expect(html).toContain("read it in Notion");
-    expect(render({ view: "search", query: "zzz", hits: [], trail: [] })).toContain(
-      "No pages match “zzz”.",
-    );
+    expect(render({ view: "search", query: "zzz", hits: [] })).toContain("No pages match “zzz”.");
   });
 });

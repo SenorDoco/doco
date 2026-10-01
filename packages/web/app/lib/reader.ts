@@ -1,7 +1,7 @@
 // The reader: how a Doco that copies files or pages from a source is browsed.
 // A codebase Doco opens at /<doco>/code, a Notion Doco at /<doco>/pages,
-// instead of the node home: the tree of what was copied on the left, the
-// file or page in the middle. Every item has one address in the reader: a
+// instead of the node home: a codebase's tree of what was copied on the
+// left (a Notion copy has no tree), the file or page in the middle. Every item has one address in the reader: a
 // file by its repository and path, as on GitHub, a page by its Notion id.
 // Pure, so the browser shares it with the server.
 
@@ -53,8 +53,8 @@ export function readerHref(handle: string, reader: ReaderKind, id = ""): string 
 }
 
 /** The tree's first listings for an item: the top, then each step of its
- *  trail that has something under it (a file or a page without children
- *  has nothing; neither does an item the copy lacks). */
+ *  trail that has something under it (a file has nothing; neither does an
+ *  item the copy lacks). */
 export async function listingsAlong(
   trail: string[],
   list: (under: string) => Promise<ReaderListing>,

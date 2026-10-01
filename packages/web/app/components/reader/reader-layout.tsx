@@ -1,7 +1,7 @@
 // The reader's frame, around whatever it shows (a folder, a file, a page, a
 // search): the Doco's name and kind with one status line for its copy, one
-// search box, and the tree, which turns into a drawer on a phone. "/"
-// focuses the search.
+// search box, and a codebase's tree, which turns into a drawer on a phone.
+// "/" focuses the search.
 import { ListTree, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
@@ -38,8 +38,9 @@ export interface ReaderShell {
   canAdmin: boolean;
   /** How the copy from the Doco's source is doing. */
   status: IntegrationStatus;
-  /** The tree's first listings: the top (""), and the open item's place. */
-  tree: Record<string, ReaderListing>;
+  /** A codebase tree's first listings: the top (""), and the open item's
+   *  place. Null for a Notion copy, which has no tree. */
+  tree: Record<string, ReaderListing> | null;
   /** The Doco's activity column. */
   activity: DocoActivity;
 }
@@ -57,7 +58,7 @@ function copied(shell: ReaderShell): string | null {
   if (status.integration === "notion") {
     return `${status.workspaceName} · ${count(status.pagesDone, "page", "pages")}`;
   }
-  const top = shell.tree[""] ?? { items: [], more: 0 };
+  const top = shell.tree?.[""] ?? { items: [], more: 0 };
   const files = top.items.reduce((sum, item) => sum + (item.files ?? 0), 0);
   return `${count(top.items.length + top.more, "repository", "repositories")} · ${count(files, "file", "files")}`;
 }
@@ -136,7 +137,6 @@ export function ReaderLayout({
 
   const integration = status.integration;
   const kind = findDocoTemplateMeta(shell.template)?.label ?? null;
-  const things = reader === "code" ? "Files" : "Pages";
 
   return (
     <main className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-5 sm:px-6 sm:pb-6">
@@ -191,15 +191,17 @@ export function ReaderLayout({
 
       <section className="neu-surface flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-card">
         <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
-          <button
-            type="button"
-            onClick={() => setDrawer(true)}
-            className={cn(OUTLINE_BTN, "md:hidden")}
-            aria-label={`Show the ${things.toLowerCase()}`}
-          >
-            <ListTree aria-hidden className="h-3.5 w-3.5" />
-            {things}
-          </button>
+          {shell.tree ? (
+            <button
+              type="button"
+              onClick={() => setDrawer(true)}
+              className={cn(OUTLINE_BTN, "md:hidden")}
+              aria-label="Show the files"
+            >
+              <ListTree aria-hidden className="h-3.5 w-3.5" />
+              Files
+            </button>
+          ) : null}
           <ReaderSearch handle={handle} reader={reader} query={query} inputRef={searchRef} />
           {query ? (
             <Link to={location.pathname} className={OUTLINE_BTN}>
@@ -207,45 +209,55 @@ export function ReaderLayout({
             </Link>
           ) : null}
         </div>
-        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-          {drawer ? (
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => setDrawer(false)}
-              className="fixed inset-0 z-40 bg-foreground/20 md:hidden"
-            />
-          ) : null}
-          <aside
-            className={cn(
-              "min-h-0 flex-col border-r border-border bg-card",
-              drawer
-                ? "fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-xs shadow-xl md:static md:z-auto md:w-auto md:max-w-none md:shadow-none"
-                : "hidden md:flex",
-            )}
-          >
-            {drawer ? (
-              <div className="flex items-center justify-between px-3 pt-3 md:hidden">
-                <span className="text-xs font-semibold">{things}</span>
+        <div
+          className={cn(
+            "relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)]",
+            shell.tree
+              ? "md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_320px]"
+              : "xl:grid-cols-[minmax(0,1fr)_320px]",
+          )}
+        >
+          {shell.tree ? (
+            <>
+              {drawer ? (
                 <button
                   type="button"
+                  aria-label="Close"
                   onClick={() => setDrawer(false)}
-                  aria-label={`Hide the ${things.toLowerCase()}`}
-                  className="rounded p-1 text-muted-foreground hover:text-foreground"
-                >
-                  <X aria-hidden className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
-            <ReaderTree
-              handle={handle}
-              reader={reader}
-              listings={shell.tree}
-              trail={trail}
-              current={query ? null : (trail.at(-1) ?? "")}
-              onNavigate={() => setDrawer(false)}
-            />
-          </aside>
+                  className="fixed inset-0 z-40 bg-foreground/20 md:hidden"
+                />
+              ) : null}
+              <aside
+                className={cn(
+                  "min-h-0 flex-col border-r border-border bg-card",
+                  drawer
+                    ? "fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-xs shadow-xl md:static md:z-auto md:w-auto md:max-w-none md:shadow-none"
+                    : "hidden md:flex",
+                )}
+              >
+                {drawer ? (
+                  <div className="flex items-center justify-between px-3 pt-3 md:hidden">
+                    <span className="text-xs font-semibold">Files</span>
+                    <button
+                      type="button"
+                      onClick={() => setDrawer(false)}
+                      aria-label="Hide the files"
+                      className="rounded p-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <X aria-hidden className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null}
+                <ReaderTree
+                  handle={handle}
+                  listings={shell.tree}
+                  trail={trail}
+                  current={query ? null : (trail.at(-1) ?? "")}
+                  onNavigate={() => setDrawer(false)}
+                />
+              </aside>
+            </>
+          ) : null}
           <div className="min-h-0 min-w-0 overflow-auto">{children}</div>
           {/* The Doco's activity, as every Doco home has it: only where it
               fits beside what is open. */}
