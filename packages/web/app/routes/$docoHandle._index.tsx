@@ -20,9 +20,7 @@ import { ArrowRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, redirect, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
-import { ActivityHeatmap } from "~/components/activity-heatmap";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { ActivityCard, LatestActivityCard, TopContributorsList } from "~/components/doco-activity";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { IntegrationStatusCard } from "~/components/integration-status-card";
 import {
@@ -56,8 +54,8 @@ import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/li
 import { readChangeCursor } from "~/lib/change-cursor.server";
 import { docoPath } from "~/lib/db.server";
 import { canAdminDoco, canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { loadDocoActivity } from "~/lib/doco-activity.server";
 import { loadDocoHomePerspectiveData } from "~/lib/doco-home-perspective.server";
-import { NODE_TYPES_FOR_STATS_SQL, copiesByDay } from "~/lib/doco-stats.server";
 import {
   type EdgeDialogDetail,
   type EdgeLifecycleStage,
@@ -97,12 +95,8 @@ import {
 } from "~/lib/pull-requests";
 import { readerFor, readerHref } from "~/lib/reader";
 import { computeFilterFacets } from "~/lib/search-filters.server";
-import { timeAgo } from "~/lib/time-ago";
 import { useFullscreen } from "~/lib/use-fullscreen";
 
-const FEED_LIMIT = 20;
-const HEATMAP_WEEKS = 52;
-const TOP_CONTRIBUTORS_LIMIT = 10;
 // The side panel — the activity column, or the node dialog — sits to the
 // RIGHT of the perspective only when the two fit side by side: the
 // perspective and the panel together (excluding the gap between them) must
@@ -112,17 +106,6 @@ const TOP_CONTRIBUTORS_LIMIT = 10;
 const SIDE_PANEL_MIN_COMBINED_WIDTH = 768;
 // Matches the grid's gap-6 between the perspective and the side panel.
 const RIGHT_COLUMN_GRID_GAP = 24;
-
-interface FeedItem extends ActivityFeedLineItem {
-  event_id: string;
-}
-
-interface TopContributor {
-  userId: string;
-  username: string;
-  lastAt: string;
-  eventCount: number;
-}
 
 const NODE_TYPE_LABELS: Record<string, string> = {
   decision: "Decisions",
@@ -190,132 +173,8 @@ export async function loader({
     throw new Response("Unknown node type", { status: 404 });
   }
   return withClient(async (c) => {
-    type AuditFeedRow = {
-      event_id: string;
-      at: Date | string;
-      entity_type: string;
-      entity_id: string;
-      op: string;
-      before_json: Record<string, unknown> | null;
-      after_json: Record<string, unknown> | null;
-    };
-    // Activity surfaces (feed, heatmap, contributors) reflect notes
-    // activity only — policies are Doco-level metadata with their
-    // own surface, and counting their bulk-imported writes here makes
-    // a fresh Doco look like work has been captured when none has.
-    const rawItems = (
-      await c.query<AuditFeedRow>(
-        `SELECT event_id, at, entity_type, entity_id, op, before_json, after_json
-           FROM audit_events
-          WHERE doco_id = $1
-            AND entity_type NOT IN ('policy')
-          ORDER BY at DESC
-          LIMIT $2`,
-        [ctx.meta.docoId, FEED_LIMIT],
-      )
-    ).rows;
-
-    const entityIds = Array.from(new Set(rawItems.map((r) => r.entity_id)));
-    const entityById = new Map<string, { label: string | null; lifecycle: string | null }>();
-    if (entityIds.length > 0) {
-      const entityLabelRows = await c.query<{
-        id: string;
-        label: string | null;
-        lifecycle: string | null;
-      }>(
-        // All node types live in `nodes`. Labels are the first line of
-        // `prose`, except principals (prose='') label on `name`.
-        // Policies keep their own tables and their `policy` column.
-        `SELECT id,
-                split_part(prose, E'\n', 1) AS label,
-                lifecycle
-           FROM nodes
-          WHERE doco_id = $1 AND id = ANY($2::text[])
-            AND node_type IN ('decision', 'intent', 'idea', 'rule', 'action', 'log', 'eval', 'state', 'reference', 'principal')
-         UNION ALL SELECT id, COALESCE(NULLIF(data->'predicate'->>'agent_instruction', ''), kind, 'policy') AS label, lifecycle FROM policies WHERE doco_id = $1 AND id = ANY($2::text[])`,
-        [ctx.meta.docoId, entityIds],
-      );
-      for (const row of entityLabelRows.rows) {
-        entityById.set(row.id, { label: row.label, lifecycle: row.lifecycle });
-      }
-    }
-
-    const items: FeedItem[] = rawItems.map((it) => {
-      const entity = entityById.get(it.entity_id);
-      // Audit events carry prose under the type-named key for nodes
-      // and `policy` for policies. The first non-empty line wins.
-      const proseKey = it.entity_type;
-      return {
-        event_id: it.event_id,
-        id: it.entity_id,
-        entity_type: it.entity_type,
-        summary:
-          entity?.label ??
-          firstLine(stringField(it.after_json, proseKey)) ??
-          firstLine(stringField(it.before_json, proseKey)) ??
-          stringField(it.after_json, "policy") ??
-          stringField(it.before_json, "policy"),
-        lifecycle: entity?.lifecycle ?? null,
-        at: it.at instanceof Date ? it.at.toISOString() : new Date(String(it.at)).toISOString(),
-        op: it.op,
-        before: it.before_json,
-        after: it.after_json,
-      };
-    });
-
+    const { items, byDay, topContributors } = await loadDocoActivity(c, ctx.meta.docoId);
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
-
-    const since = new Date();
-    since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
-    const sinceIso = since.toISOString();
-    const activityRows = (
-      await c.query<{ day: string; n: string }>(
-        // Post-collapse: one scan of `nodes` over the 10 node types
-        // (9 prose types + principals; no policies).
-        `SELECT day, COUNT(*)::text AS n FROM (
-           SELECT to_char(created_at, 'YYYY-MM-DD') AS day
-             FROM nodes
-            WHERE doco_id = $1
-              AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})
-         ) t WHERE day >= $2
-         GROUP BY day`,
-        [ctx.meta.docoId, sinceIso.slice(0, 10)],
-      )
-    ).rows;
-    // What the Doco copied from its source is activity too.
-    const byDay = await copiesByDay(c, [ctx.meta.docoId], sinceIso);
-    for (const r of activityRows) byDay[r.day] = (byDay[r.day] ?? 0) + Number(r.n);
-
-    const contributorRows = (
-      await c.query<{
-        user_id: string;
-        user_name: string;
-        last_at: Date | string;
-        event_count: string;
-      }>(
-        `SELECT ae.by_user AS user_id,
-                COALESCE(c.github_login, c.email, c.id) AS user_name,
-                MAX(ae.at) AS last_at,
-                COUNT(*)::text AS event_count
-           FROM audit_events ae
-           JOIN users c ON c.id = ae.by_user
-          WHERE ae.doco_id = $1
-            AND ae.entity_type NOT IN ('policy')
-          GROUP BY ae.by_user, c.github_login, c.email, c.id
-          ORDER BY COUNT(*) DESC, MAX(ae.at) DESC
-          LIMIT $2`,
-        [ctx.meta.docoId, TOP_CONTRIBUTORS_LIMIT],
-      )
-    ).rows;
-    const topContributors: TopContributor[] = contributorRows.map((r) => ({
-      userId: r.user_id,
-      username: r.user_name,
-      lastAt:
-        r.last_at instanceof Date
-          ? r.last_at.toISOString()
-          : new Date(String(r.last_at)).toISOString(),
-      eventCount: Number(r.event_count),
-    }));
     const selectedNode = requestedNode
       ? await loadNodeDialogDetail(c, ctx.meta, {
           handle,
@@ -1745,14 +1604,7 @@ export default function DocoHome({
                 <IntegrationStatusCard key={status.integration} handle={handle} status={status} />
               ))}
 
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ActivityHeatmap byDay={byDay} weeks={HEATMAP_WEEKS} />
-                </CardContent>
-              </Card>
+              <ActivityCard byDay={byDay} />
 
               <NodesOverviewCard
                 sections={sections}
@@ -1764,36 +1616,17 @@ export default function DocoHome({
                 aside={<TopContributorsList contributors={topContributors} />}
               />
 
-              <Card>
-                <CardHeader className="px-4 py-3">
-                  <CardTitle className="text-sm">Latest activity</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {items.length === 0 ? (
-                    <div className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
-                      No recorded activity yet. Capture a node from the API or CLI; this feed
-                      records UI, CLI, and API writes.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-border">
-                      {items.map((it) => (
-                        <ActivityFeedLine
-                          key={it.event_id}
-                          item={it}
-                          docoHandle={handle}
-                          onOpenNode={(item, href) => {
-                            void loadNodeDialog(
-                              item.entity_type,
-                              item.id,
-                              withPerspectiveParam(href, activeSlug),
-                            );
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <LatestActivityCard
+                items={items}
+                handle={handle}
+                onOpenNode={(item, href) => {
+                  void loadNodeDialog(
+                    item.entity_type,
+                    item.id,
+                    withPerspectiveParam(href, activeSlug),
+                  );
+                }}
+              />
             </section>
             {/* Wide content pane: dialog overlays the right column
                 while the user reads it. Narrow content pane: the fixed
@@ -1817,46 +1650,5 @@ export default function DocoHome({
         ) : null}
       </main>
     </div>
-  );
-}
-
-function stringField(
-  obj: Record<string, unknown> | null | undefined,
-  field: string,
-): string | null {
-  const value = obj?.[field];
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function firstLine(value: string | null): string | null {
-  if (!value) return null;
-  const line = value.split("\n", 1)[0];
-  return line ?? value;
-}
-
-function TopContributorsList({ contributors }: { contributors: TopContributor[] }) {
-  return (
-    <section className="space-y-1">
-      <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
-      {contributors.length === 0 ? (
-        <p className="text-xs italic text-muted-foreground">No recorded contributions yet.</p>
-      ) : (
-        contributors.map((c) => (
-          <div key={c.userId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-            <span className="truncate text-xs" title={c.username}>
-              {c.username}
-            </span>
-            <time
-              dateTime={c.lastAt}
-              title={c.lastAt}
-              suppressHydrationWarning
-              className="min-w-14 whitespace-nowrap text-right text-[10px] tabular-nums text-muted-foreground"
-            >
-              {timeAgo(c.lastAt)}
-            </time>
-          </div>
-        ))
-      )}
-    </section>
   );
 }
