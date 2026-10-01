@@ -20,6 +20,7 @@ import { type DocoRouteParams, canAdminDoco, loadDocoRouteForRead } from "~/lib/
 import { loadIntegrationStatuses } from "~/lib/integration-status.server";
 import { pageTreeAt } from "~/lib/notion-mirror-read.server";
 import { readerFor } from "~/lib/reader";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 
 /** How often the reader refreshes while its copy is still coming in. */
 const IMPORT_POLL_MS = 5000;
@@ -53,6 +54,7 @@ export async function loader({
       goal: ctx.meta.goal,
       canAdmin: await canAdminDoco(ctx.meta, ctx.me?.id ?? null),
       status,
+      alerts: await loadSilenceAlerts(c, [docoId]),
       tree: reader === "code" ? await codeTreeAt(c, docoId, at) : await pageTreeAt(c, docoId, at),
     };
     return { me: ctx.me, shell };

@@ -1,7 +1,7 @@
 // /workspaces/:workspaceHandle — per-Workspace home. On top, the same summary
-// card the Workspaces page shows for it (Doco icons, New Doco or source /
-// Invite person / Invite agent, latest activity), then the detailed list of
-// its Docos. Below those, a wide two-column layout
+// card the Workspaces page shows for it (Doco icons, silence alerts, New Doco
+// or source / Invite person / Invite agent, latest activity), then the
+// detailed list of its Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
 // collapses to a hamburger — it renders as a single column so the constitution
 // keeps a readable measure instead of being crushed beside the 420px sidebar.
@@ -38,6 +38,7 @@ import { cn } from "~/lib/cn";
 import { EMPTY_DOCO_STATS, copiesByDay, listDocoStats } from "~/lib/doco-stats.server";
 import { lifecycleColor } from "~/lib/node-colors";
 import { getCurrentPrincipal } from "~/lib/session.server";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 import { timeAgo } from "~/lib/time-ago";
 import { loadWorkspaceForRead, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
@@ -239,6 +240,7 @@ export async function loader({
       role: myRole,
       docos: docoRows.map((r) => ({ id: r.id, handle: r.handle, template: r.template })),
       lastActivityAt: items[0]?.at ?? null,
+      alerts: await loadSilenceAlerts(c, docoIds),
     };
 
     return {

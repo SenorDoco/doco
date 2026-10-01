@@ -166,6 +166,9 @@ export default [
   route("integrations/notion/callback", "routes/integrations.notion.callback.tsx"),
   route("api/notion/mirror-sync", "routes/api.notion.mirror-sync.tsx"),
   route("api/embeddings/sweep", "routes/api.embeddings.sweep.tsx"),
+  // Vercel-Cron-hit endpoint (hourly) that opens and closes silence alerts
+  // for integrations and agents gone unexpectedly quiet, and emails new ones.
+  route("api/alerts/silence-check", "routes/api.alerts.silence-check.tsx"),
   // Inbound Notion webhook (the public integration's one subscription).
   route("api/notion/webhook", "routes/api.notion.webhook.tsx"),
   route("users/:username", "routes/users.$username.tsx"),

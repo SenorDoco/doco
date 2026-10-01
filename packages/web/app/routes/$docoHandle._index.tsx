@@ -50,6 +50,7 @@ import { ProcessPerspective } from "~/components/perspectives/process-perspectiv
 import { PullRequestsPerspective } from "~/components/perspectives/pull-requests-perspective";
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SlackPerspective } from "~/components/perspectives/slack-perspective";
+import { SilenceAlertList } from "~/components/silence-alerts";
 import { SiteHeader } from "~/components/site-header";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
@@ -97,6 +98,7 @@ import {
 } from "~/lib/pull-requests";
 import { readerFor, readerHref } from "~/lib/reader";
 import { computeFilterFacets } from "~/lib/search-filters.server";
+import { loadSilenceAlerts } from "~/lib/silence-alerts.server";
 import { timeAgo } from "~/lib/time-ago";
 import { useFullscreen } from "~/lib/use-fullscreen";
 
@@ -408,6 +410,8 @@ export async function loader({
     // status box per source atop the right column: how live the copy is and
     // how far the import of older items has got.
     const integrations = await loadIntegrationStatuses(c, ctx.meta.docoId);
+    // Its source, or an agent that used it, gone unexpectedly quiet.
+    const alerts = await loadSilenceAlerts(c, [ctx.meta.docoId]);
 
     // Live-feed baseline: the latest audit-event id this render reflects. The
     // client polls /changes.json against it and only revalidates when it
@@ -427,6 +431,7 @@ export async function loader({
       ownerIsWorkspace: ctx.meta.ownerId.startsWith("workspace_"),
       canInviteUsers: await canAdminDoco(ctx.meta, me?.id ?? null),
       integrations,
+      alerts,
       host: await loadHostConfig(),
       me,
       graph,
@@ -572,6 +577,7 @@ export default function DocoHome({
     ownerIsWorkspace,
     canInviteUsers,
     integrations,
+    alerts,
     me,
     graph,
     policyCount,
@@ -1518,6 +1524,7 @@ export default function DocoHome({
           }
         >
           {goal ? <p className="text-[11px] text-muted-foreground">{goal}</p> : null}
+          <SilenceAlertList alerts={alerts} />
         </PageHeader>
         <div
           ref={contentPaneRef}
