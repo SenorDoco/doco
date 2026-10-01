@@ -19,6 +19,8 @@ let c: Client;
 
 // Wednesday 30 September 2026, 11:00 UTC.
 const NOW = new Date("2026-09-30T11:00:00.000Z");
+// The request context Doco records for calls through cy's Claude Code.
+const CLAUDE_CODE = '{"auth": "oauth", "client_name": "Claude Code"}';
 
 beforeEach(async () => {
   db = new PGlite({ extensions: { vector } });
@@ -164,6 +166,108 @@ describe("checkSilences", () => {
     `);
     await checkSilences(c, NOW);
     expect((await openAlerts()).map((a) => a.doco_id)).toEqual(["doco_prs"]);
+  });
+});
+
+describe("checkSilences for agents", () => {
+  beforeEach(async () => {
+    await db.exec(`
+      INSERT INTO oauth_clients (client_id, client_name, redirect_uris)
+        VALUES ('client_cc', 'Claude Code', '{http://localhost/cb}');
+      INSERT INTO oauth_refresh_tokens (token, client_id, user_id, granted_doco_ids, expires_at)
+        VALUES ('rt_cy', 'client_cc', 'user_cy', '{}', '2027-01-01T00:00:00Z');
+    `);
+  });
+
+  /** cy's Claude Code reads torre-ideas on the even working hours and writes
+   *  to it on the odd ones, from `from` through `to`. */
+  async function workdayCalls(from: string, to: string) {
+    const hours = `generate_series($1::timestamptz, $2::timestamptz, interval '1 hour') AS h
+      WHERE extract(isodow FROM h AT TIME ZONE 'UTC') < 6
+        AND extract(hour FROM h AT TIME ZONE 'UTC') BETWEEN 9 AND 17`;
+    await db.query(
+      `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata, at)
+       SELECT 'user_cy', 'workspace_1', 'doco_plain', 'api', '${CLAUDE_CODE}', h FROM ${hours}
+          AND extract(hour FROM h AT TIME ZONE 'UTC')::int % 2 = 0`,
+      [from, to],
+    );
+    await db.query(
+      `INSERT INTO changesets (doco_id, actor, source, metadata, recorded_at)
+       SELECT 'doco_plain', 'user_cy', 'api', '${CLAUDE_CODE}', h FROM ${hours}
+          AND extract(hour FROM h AT TIME ZONE 'UTC')::int % 2 = 1`,
+      [from, to],
+    );
+  }
+
+  async function agentAlerts() {
+    return (
+      await db.query<{ user_id: string; agent: string; doco_ids: string[]; usual: number }>(
+        "SELECT user_id, agent, doco_ids, usual FROM silence_alerts WHERE agent IS NOT NULL",
+      )
+    ).rows;
+  }
+
+  // Reads and writes count alike, eleven in the same hours of each past week.
+  it("opens an alert when an agent that read and wrote every working hour stops", async () => {
+    await workdayCalls("2026-08-24T09:00:00Z", "2026-09-29T09:00:00Z");
+
+    expect(await checkSilences(c, NOW)).toEqual({ opened: 1, closed: 0, open: 1 });
+    expect(await agentAlerts()).toEqual([
+      { user_id: "user_cy", agent: "Claude Code", doco_ids: ["doco_plain"], usual: 11 },
+    ]);
+  });
+
+  it("closes the alert when the agent's connection is revoked", async () => {
+    await workdayCalls("2026-08-24T09:00:00Z", "2026-09-29T09:00:00Z");
+    await checkSilences(c, NOW);
+    await db.exec("UPDATE oauth_refresh_tokens SET revoked = true");
+    expect(await checkSilences(c, NOW)).toEqual({ opened: 0, closed: 1, open: 0 });
+  });
+
+  it("closes the alert when the agent's person leaves the workspace", async () => {
+    await workdayCalls("2026-08-24T09:00:00Z", "2026-09-29T09:00:00Z");
+    await checkSilences(c, NOW);
+    await db.exec("DELETE FROM workspace_users WHERE user_id = 'user_cy'");
+    expect(await checkSilences(c, NOW)).toEqual({ opened: 0, closed: 1, open: 0 });
+  });
+
+  // A person searching on the website isn't an agent.
+  it("ignores what people do on the website", async () => {
+    await db.query(
+      `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata, at)
+       SELECT 'user_cy', 'workspace_1', 'doco_plain', 'ui', '{"surface": "website"}', h
+         FROM generate_series('2026-08-24T09:00:00Z'::timestamptz, '2026-09-29T09:00:00Z', interval '1 hour') AS h`,
+    );
+    expect(await checkSilences(c, NOW)).toEqual({ opened: 0, closed: 0, open: 0 });
+  });
+
+  it("shows the agent and the Docos it used, and emails its person and the owners", async () => {
+    await workdayCalls("2026-08-24T09:00:00Z", "2026-09-29T09:00:00Z");
+    await checkSilences(c, NOW);
+
+    expect(await loadSilenceAlerts(c, ["doco_plain"])).toEqual([
+      {
+        id: expect.stringMatching(/^alert_/),
+        kind: "agent",
+        workspaceHandle: "torre",
+        quietSince: "2026-09-29T09:00:00.000Z",
+        usual: 11,
+        agentName: "Claude Code",
+        agentUser: "cy",
+        docoHandles: ["torre-ideas"],
+      },
+    ]);
+
+    vi.stubEnv("RESEND_API_KEY", "re_test");
+    const sent: Email[] = [];
+    await emailNewAlerts(c, "https://doco.to", async (email) => {
+      sent.push(email);
+      return { sent: true };
+    });
+    expect(sent.map((e) => e.to).sort()).toEqual(["ana@example.com", "cy@example.com"]);
+    expect(sent[0]?.subject).toBe("Doco alert: Claude Code stopped using the torre workspace");
+    expect(sent[0]?.text).toContain("https://doco.to/torre-ideas");
+    expect(sent[0]?.text).toContain("https://doco.to/tokens");
   });
 });
 
