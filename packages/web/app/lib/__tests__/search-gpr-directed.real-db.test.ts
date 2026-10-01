@@ -7,18 +7,12 @@
 // many edges — accumulates rank as an authority. This pins that against real
 // Postgres (PGlite), through the actual `attachSearchGlobalPageRank` query.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { type SearchHit, attachSearchGlobalPageRank } from "../search.server";
 
 type Client = Parameters<typeof attachSearchGlobalPageRank>[0];
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 async function node(db: PGlite, id: string, nodeType: string): Promise<void> {
   await db.query(
@@ -45,8 +39,7 @@ async function edge(
 
 // Intent I served by three events; decision D fans out to four actions.
 async function seed(): Promise<Client> {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   await db.query("INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS')");
   await db.query(
     "INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES ('doco_1','d','ws','ws','{}'::jsonb)",

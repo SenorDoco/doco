@@ -1,13 +1,10 @@
 // Reading the Notion mirror: the reader's page tree, finding pages by title, its home,
 // each page, search, and Notion results in the Doco's search.
 // PGlite runs the real schema and full-text search.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { vectorLiteral } from "@doco/db";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   findPages,
   listPageTree,
@@ -16,9 +13,6 @@ import {
   pageTreeAt,
   searchNotionMirror,
 } from "../notion-mirror-read.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 type Client = Parameters<typeof loadPagesView>[0];
 let db: PGlite;
@@ -67,8 +61,7 @@ async function seedPage(row: {
 }
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   c = db as unknown as Client;
   await db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'acme', 'Acme');

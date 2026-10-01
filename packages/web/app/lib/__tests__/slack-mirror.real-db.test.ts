@@ -8,15 +8,8 @@
 //     channels shared with another organization;
 //   - replays (Slack retries) and out-of-order edits are harmless;
 //   - a deletion in Slack is a real deletion here.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -24,13 +17,13 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { mirrorSlackEvent } from "../slack-mirror.server";
 
 const TEAM = "T1";
 
 async function seed(): Promise<void> {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   dbm.db = db;
   await db.query(
     "INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'acme', 'Acme')",

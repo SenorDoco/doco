@@ -3,15 +3,8 @@
 // call and one conversations.replies call (Slack's limit for apps not listed on
 // its Marketplace), filling every channel newest-first. PGlite runs the real
 // schema; Slack is a fake routed by method name.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -19,6 +12,7 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { listActiveSlackMirrors, runSlackMirrorTick } from "../slack-mirror-sync.server";
 
 const T0 = new Date("2026-09-26T12:00:00Z");
@@ -48,8 +42,7 @@ const msg = (ts: string, extra: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(async () => {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   dbm.db = db;
   await db.query(
     "INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'acme', 'Acme')",

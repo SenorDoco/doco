@@ -2,15 +2,8 @@
 // flags the page it concerns for the sync to fetch, a deletion is real, and
 // the schema keeps a mirror Doco private. PGlite runs the real schema; only
 // @doco/db's withClient is pointed at it.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -18,6 +11,7 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   deleteNotionPage,
   flagNotionPage,
@@ -64,8 +58,7 @@ async function pages() {
 }
 
 beforeEach(async () => {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   dbm.db = db;
   await db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('workspace_1', 'acme', 'Acme');

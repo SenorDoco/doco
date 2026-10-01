@@ -264,9 +264,13 @@ the same in a SessionStart hook so every session starts ready. ("I can't
 test here" is almost always just this missing step.)
 
 **A real Postgres runs in-process.** `@electric-sql/pglite` is a dev
-dependency. Point `@doco/db`'s `withClient` at a `new PGlite()` loaded with
-`packages/db/src/schema.sql` and the *real* server code runs against *real*
-Postgres semantics — deterministic and CI-safe, no container. For
+dependency. Point `@doco/db`'s `withClient` at `await freshDb()`
+(`packages/db/src/__tests__/fresh-db.ts`: a database with
+`packages/db/src/schema.sql` applied, restored from a snapshot built once per
+run and closed when the test ends) and the *real* server code runs against
+*real* Postgres semantics — deterministic and CI-safe, no container. Don't
+build a `new PGlite()` and replay the schema per test: that is what made the
+suite take ten minutes. For
 backend/logic changes this is a stronger live test than poking production;
 reach for it first. Patterns to copy: `packages/db/src/__tests__/*` and
 `packages/web/app/lib/__tests__/agent-loop.real-db.test.ts` (drives the

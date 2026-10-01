@@ -5,15 +5,8 @@
 // Doco on Sonnet, the authoring-policy judge on Haiku) rather than blending
 // every turn at one model's rate — so a mixed window isn't understated.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -21,6 +14,7 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { aggregateAnthropicUsage } from "../agent-usage.server";
 
 const USER = "user_usage0000000000000000000";
@@ -60,8 +54,7 @@ async function insertTurn(opts: {
 describe("aggregateAnthropicUsage (real DB)", () => {
   beforeEach(async () => {
     turnSeq = 0;
-    dbm.db = new PGlite({ extensions: { vector } });
-    await dbm.db.exec(schemaSql);
+    dbm.db = await freshDb();
     await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
     await dbm.db.query("INSERT INTO chat_conversations (id, user_id) VALUES ($1,$2)", [CONV, USER]);
   });

@@ -1,11 +1,7 @@
 // A codebase Doco's copy of a repository follows the repository's default
 // branch: new and changed files are fetched, unchanged ones skipped, removed
 // ones dropped. PGlite runs the real schema; GitHub is stubbed.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ db: null as unknown as PGlite }));
@@ -13,11 +9,9 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(state.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { MAX_FILE_BYTES, backfillRepoCodebase, syncRepoCodebase } from "../codebase-sync.server";
 import type { RepoFile } from "../github-app.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const sha = (n: number) => n.toString(16).padStart(40, "0");
 const opts = {
@@ -59,8 +53,7 @@ const connected = JSON.stringify({
 });
 
 beforeEach(async () => {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   state.db = db;
   await db.query(
     "INSERT INTO workspaces (id, handle, name) VALUES ('workspace_acme', 'acme', 'Acme')",

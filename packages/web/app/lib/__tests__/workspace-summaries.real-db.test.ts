@@ -1,24 +1,17 @@
 // The Workspaces page lists every workspace a person reaches, each with the
 // icons of its Docos and the latest thing that happened in it; a workspace's
 // own page shows the same summary on top. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { loadWorkspaceSummaries } from "../workspace-summaries.server";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 type Client = Parameters<typeof loadWorkspaceSummaries>[0];
 let db: PGlite;
 let c: Client;
 
 beforeEach(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
   c = db as unknown as Client;
   await db.exec(`
     INSERT INTO users (id, github_login, data) VALUES ('user_ana', 'ana', '{}'), ('user_bo', 'bo', '{}');

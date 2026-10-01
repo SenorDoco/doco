@@ -12,15 +12,8 @@
 //
 // Runs against an in-process PGlite loaded with the REAL schema, so the
 // dropped column is genuinely gone — the only thing that proves the fix.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 // node-detail resolves the viewer's role via a pooled connection; stub that one
 // boundary so the test stays in-process. Everything else runs the real SQL.
@@ -28,6 +21,7 @@ vi.mock("../doco-access.server", () => ({
   getDocoLevelRole: vi.fn(async () => "owner"),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { loadDocoHomePerspectiveData } from "../doco-home-perspective.server";
 import { loadEdgeDialogDetail } from "../edge-detail.server";
 import { loadNodeDialogDetail } from "../node-detail.server";
@@ -44,8 +38,7 @@ const EDGE2 = "edge_01KTA0NHD73WR1ZB9ZFTE7WEKB";
 let db: InstanceType<typeof PGlite>;
 
 beforeAll(async () => {
-  db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  db = await freshDb();
 
   await db.query(`INSERT INTO workspaces (id, handle, name) VALUES ($1, 'torre', 'torre')`, [
     OWNER,

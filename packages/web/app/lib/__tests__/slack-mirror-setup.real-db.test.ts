@@ -2,15 +2,8 @@
 // recording the mirror, then discovering and joining the team's public
 // channels and loading its members. PGlite runs the real schema; Slack's Web
 // API is a fake routed by method name.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -18,6 +11,7 @@ vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   SlackApiError,
   enableSlackMirror,
@@ -47,8 +41,7 @@ function fakeSlack(routes: Record<string, (params: URLSearchParams) => unknown>)
 }
 
 beforeEach(async () => {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   dbm.db = db;
   await db.query(
     "INSERT INTO users (id, github_login, data) VALUES ('user_owner', 'owner', '{}'::jsonb)",

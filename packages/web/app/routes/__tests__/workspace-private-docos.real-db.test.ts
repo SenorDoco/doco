@@ -10,15 +10,9 @@
 // PGlite backs every query; only the session, host config and embedding
 // provider are stubbed.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 
 const dbm = vi.hoisted(() => ({
   db: null as unknown as InstanceType<typeof PGlite>,
@@ -67,8 +61,7 @@ const home = await import("../workspaces.$workspaceHandle._index");
 const search = await import("../workspaces.$workspaceHandle.search");
 
 async function seed(): Promise<void> {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   dbm.db = db;
   await db.query(
     `INSERT INTO users (id, github_login, data) VALUES

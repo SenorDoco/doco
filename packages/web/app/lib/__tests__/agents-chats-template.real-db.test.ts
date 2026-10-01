@@ -5,9 +5,6 @@
 // evaluator (`@doco/shared`), driven as `authoring-runner.server` drives it.
 // The template's one probabilistic check is a warn, so no LLM judge runs.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   type CandidateFields,
   type Lifecycle,
@@ -15,12 +12,8 @@ import {
   type Violation,
   evaluatePolicies,
 } from "@doco/shared";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -30,6 +23,7 @@ vi.mock("@doco/db", async () => {
 });
 
 import { createDocoInWorkspace } from "@doco/host";
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 
 const WORKSPACE_ID = "workspace_01CHATSTEST00000000000001";
 const USER_ID = "user_01CHATSTEST0000000000000001";
@@ -66,8 +60,7 @@ async function loadSeededPolicies(id: string): Promise<LoadedPolicy[]> {
 }
 
 beforeAll(async () => {
-  dbm.db = new PGlite({ extensions: { vector } });
-  await dbm.db.exec(schemaSql);
+  dbm.db = await freshDb();
   await dbm.db.query("INSERT INTO users (id, github_login, data) VALUES ($1,'chats','{}')", [
     USER_ID,
   ]);

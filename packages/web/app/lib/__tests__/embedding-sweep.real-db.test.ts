@@ -2,15 +2,8 @@
 // configured model, Notion pages whose copied content changed since they were
 // embedded and Slack messages whose text did, one batch per source in turn,
 // live Docos only, until the deadline; a second pass finds nothing to do.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 
@@ -19,6 +12,7 @@ vi.mock("@doco/db", async () => {
   return { ...actual, withClient: (fn: (c: unknown) => unknown) => fn(dbm.db) };
 });
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { sweepEmbeddings } from "../embedding-sweep.server";
 
 function fakeProvider(modelId = "test:model") {
@@ -45,8 +39,7 @@ async function embedded() {
 const NOTHING = { nodes: 0, pages: 0, messages: 0, batches: 0, exhausted: true };
 
 beforeEach(async () => {
-  dbm.db = new PGlite({ extensions: { vector } });
-  await dbm.db.exec(schemaSql);
+  dbm.db = await freshDb();
   await dbm.db.exec(`
     INSERT INTO workspaces (id, handle, name) VALUES ('ws', 'ws', 'WS');
     INSERT INTO docos (id, handle, owner_id, workspace_id, data, deleted_at) VALUES

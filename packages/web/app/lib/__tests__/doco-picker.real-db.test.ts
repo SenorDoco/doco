@@ -1,11 +1,6 @@
 // "Set up..." on a Doco-level integration (GitHub, Notion) from a workspace or
 // the account page opens that page with ?integration=<id>, which lists the
 // Docos the person can set it up on. PGlite runs the real schema.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ db: null as unknown }));
@@ -14,14 +9,11 @@ vi.mock("@doco/db", () => ({
 }));
 vi.mock("~/lib/slack.server", () => ({ listSlackInstallations: vi.fn() }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { loadDocoPicker } from "../integrations-summary.server";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
-
 beforeEach(async () => {
-  const db = new PGlite({ extensions: { vector } });
-  await db.exec(schemaSql);
+  const db = await freshDb();
   state.db = db;
   await db.exec(`
     INSERT INTO users (id, github_login, data) VALUES ('user_ana', 'ana', '{}');

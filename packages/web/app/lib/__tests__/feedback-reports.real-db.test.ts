@@ -4,21 +4,15 @@
 // schema, so the pending-count aggregate and the clear (archive) UPDATE run
 // against actual Postgres semantics.
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({ db: null as unknown as InstanceType<typeof PGlite> }));
 vi.mock("@doco/db", () => ({
   withClient: (fn: (c: unknown) => unknown) => fn(dbm.db),
 }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   type FeedbackReportType,
   clearFeedbackReports,
@@ -54,8 +48,7 @@ async function report(report_type: FeedbackReportType, body: string) {
 
 describe("feedback pending counts + clearing", () => {
   beforeEach(async () => {
-    dbm.db = new PGlite({ extensions: { vector } });
-    await dbm.db.exec(schemaSql);
+    dbm.db = await freshDb();
     await seedUser();
   });
 

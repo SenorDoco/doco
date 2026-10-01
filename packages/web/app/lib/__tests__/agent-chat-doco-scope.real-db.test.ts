@@ -5,15 +5,8 @@
 // in @doco/db are implemented against the same PGlite so the real SQL runs;
 // the model boundaries agent-chat.server pulls in are stubbed (no turn driven).
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { PGlite } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite/vector";
+import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const schemaSql = readFileSync(join(here, "../../../../db/src/schema.sql"), "utf8");
 
 const dbm = vi.hoisted(() => ({
   db: null as unknown as InstanceType<typeof PGlite>,
@@ -87,6 +80,7 @@ vi.mock("../internal-fetch.server", () => ({ internalFetch: vi.fn(async () => nu
 vi.mock("../dotenv.server", () => ({ ensureEnvLoaded: vi.fn() }));
 vi.mock("../telemetry.server", () => ({ upsertAgentTurn: vi.fn(async () => {}) }));
 
+import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import {
   createConversation,
   listConversationsForPrincipal,
@@ -115,9 +109,8 @@ async function seedDoco(handle: string, docoId = DOCO, workspaceId = WS) {
 }
 
 beforeEach(async () => {
-  dbm.db = new PGlite({ extensions: { vector } });
+  dbm.db = await freshDb();
   dbm.canAccess = true;
-  await dbm.db.exec(schemaSql);
   await dbm.db.query("INSERT INTO users (id, data) VALUES ($1,'{}')", [USER]);
 });
 
