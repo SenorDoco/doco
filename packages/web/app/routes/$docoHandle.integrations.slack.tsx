@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { PageHeader } from "~/components/page-header";
 import { SiteHeader } from "~/components/site-header";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { monthYear } from "~/lib/month-year";
 import {
   MIRROR_HISTORY_YEARS,
   loadSlackMirrorStatus,
@@ -225,7 +226,7 @@ function historyProgress(channel: {
 }): string {
   if (channel.historyDone) return "history complete";
   return channel.historyBackTo
-    ? `history back to ${channel.historyBackTo.slice(0, 10)}`
+    ? `copied back to ${monthYear(channel.historyBackTo)} so far`
     : "history queued";
 }
 
@@ -247,7 +248,7 @@ function MirrorStatus({
           <CardDescription>
             {mirrored.length} public {mirrored.length === 1 ? "channel" : "channels"} ·{" "}
             {status.messageCount.toLocaleString()} messages copied · copying history back to{" "}
-            {status.historySince.slice(0, 10)}
+            {monthYear(status.historySince)}
             {status.threadsPending > 0
               ? ` · ${status.threadsPending.toLocaleString()} threads waiting for earlier replies`
               : ""}

@@ -6,6 +6,7 @@ import type {
   GitHubIntegrationStatus,
   IntegrationStatus,
 } from "~/lib/integration-status.server";
+import { monthYear } from "~/lib/month-year";
 import { timeAgo } from "~/lib/time-ago";
 
 // "Manage" CTA — mirrors the primary button on the Integrations index so the
@@ -20,14 +21,6 @@ const CONNECT = {
   slack: "Connect Slack",
   notion: "Connect Notion",
 } as const;
-
-function monthYear(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 function Spinner() {
   return (
@@ -85,16 +78,23 @@ function historyLine(status: ConnectedIntegrationStatus): string {
   }
   const since = monthYear(status.since);
   if (status.state === "done") return `All history copied back to ${since}`;
-  const progress = [
-    status.backTo ? `back to ${monthYear(status.backTo)} of ${since}` : "starting",
-    `${status.channelsDone} of ${status.channels} channels complete`,
+  // How far back every channel has got so far, against how far back it goes.
+  const reached = status.backTo ? monthYear(status.backTo) : null;
+  const dates =
+    status.state === "stalled"
+      ? reached
+        ? `History copy stalled at ${reached} on its way back to ${since}`
+        : `History copy back to ${since} stalled`
+      : reached
+        ? `History copied back to ${reached} so far, going back to ${since}`
+        : `Copying history back to ${since}`;
+  return [
+    dates,
+    `${status.channelsDone.toLocaleString("en-US")} of ${status.channels.toLocaleString("en-US")} channels complete`,
     ...(status.threadsPending > 0
       ? [`${status.threadsPending.toLocaleString("en-US")} threads to fetch`]
       : []),
   ].join(" · ");
-  return status.state === "stalled"
-    ? `History copy stalled: ${progress}`
-    : `Copying history: ${progress}`;
 }
 
 /** Why a finished GitHub import skipped repositories, and what brings them in. */

@@ -143,18 +143,31 @@ describe("IntegrationStatusCard", () => {
     const html = render(slack);
     expect(html).toContain("Slack integration");
     expect(html).toContain("Newest message 2m ago");
-    expect(html).toContain("Copying history: back to Mar 2025 of Sep 2020");
-    expect(html).toContain("12 of 40 channels complete");
-    expect(html).toContain("130 threads to fetch");
+    expect(html).toContain(
+      "History copied back to Mar 2025 so far, going back to Sep 2020 · 12 of 40 channels complete · 130 threads to fetch",
+    );
     expect(html).toContain('href="/torre-slack/integrations/slack"');
   });
 
-  it("says when the history copy hasn't reached a date yet", () => {
-    expect(render({ ...slack, backTo: null })).toContain("Copying history: starting");
+  it("writes large Slack counts with thousands separators", () => {
+    expect(render({ ...slack, channelsDone: 619, channels: 1966, threadsPending: 7091 })).toContain(
+      "619 of 1,966 channels complete · 7,091 threads to fetch",
+    );
   });
 
-  it("flags a stalled history copy", () => {
-    expect(render({ ...slack, state: "stalled" })).toContain("History copy stalled");
+  it("names only the target date while the history copy hasn't reached one", () => {
+    const html = render({ ...slack, backTo: null });
+    expect(html).toContain("Copying history back to Sep 2020 · 12 of 40 channels complete");
+    expect(html).not.toContain("starting");
+  });
+
+  it("flags a stalled history copy, with where it stopped", () => {
+    expect(render({ ...slack, state: "stalled" })).toContain(
+      "History copy stalled at Mar 2025 on its way back to Sep 2020",
+    );
+    expect(render({ ...slack, state: "stalled", backTo: null })).toContain(
+      "History copy back to Sep 2020 stalled",
+    );
   });
 
   it("says when all history is copied", () => {
