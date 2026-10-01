@@ -1,9 +1,9 @@
-// Getting a workspace going. Whoever creates a workspace walks three steps on
-// its page: connect GitHub, connect other sources of knowledge (or skip them),
-// ask their agent to start using Doco. Whoever joins it from an invite walks
-// only the last. The workspace page keeps the person on the first step not
-// done until every one is, and a reminder email goes out 15 minutes after the
-// start if one is still open.
+// Getting a workspace going. Its owners walk three steps on its page: connect
+// GitHub, connect other sources of knowledge (or skip them), ask their agent to
+// start using Doco. Everyone else in it walks only the last. The workspace page
+// (and its card on the list) keeps the person on the first step not done until
+// every one is. Whoever creates a workspace or joins it from an invite gets a
+// reminder email 15 minutes later if a step is still open.
 //
 // Each step reads as done from what the database already holds:
 //   github  — a Doco in the workspace is connected to a GitHub repository or
@@ -12,8 +12,12 @@
 //             skipped it, the one thing nothing else records;
 //   agent   — the person's agent wrote into the workspace's Agents chats Doco
 //             (the instructions ask it to note there that it got them).
-// workspace_onboarding holds a row per person walking the steps; a workspace
-// made before onboarding existed has none, so its people never see it.
+// Every member of a workspace walks them, except in their personal workspace
+// (named after them), which isn't a project's. workspace_onboarding holds what
+// nothing else records: who created the workspace or joined it from an invite,
+// when (the reminder's clock), and when they finished the other-sources step.
+// A member without a row (in a workspace made before the steps, or added
+// another way) walks them by role, and never gets a reminder.
 
 import { type JoinedAs, ONBOARDING_STEPS, type StepState, pendingStep } from "./onboarding-steps";
 
@@ -29,7 +33,6 @@ export interface OnboardingProgress {
   workspaceHandle: string;
   userId: string;
   joinedAs: JoinedAs;
-  startedAt: string;
   /** The person's steps in order, each with whether it is done. */
   steps: StepState[];
 }
@@ -48,15 +51,19 @@ export async function startOnboarding(
   );
 }
 
-/** Finish the other-sources step, with whatever was connected or nothing. */
+/** Finish the other-sources step, with whatever was connected or nothing.
+ *  Only owners walk it, so a member without a row is one; the row it adds
+ *  counts as reminded, since nobody started the steps to be reminded of. */
 export async function finishSourcesStep(
   c: QueryClient,
   opts: { workspaceId: string; userId: string },
 ): Promise<void> {
   await c.query(
-    `UPDATE workspace_onboarding
-        SET sources_done_at = now()
-      WHERE workspace_id = $1 AND user_id = $2 AND sources_done_at IS NULL`,
+    `INSERT INTO workspace_onboarding
+       (workspace_id, user_id, joined_as, sources_done_at, reminded_at)
+     VALUES ($1, $2, 'creator', now(), now())
+     ON CONFLICT (workspace_id, user_id) DO UPDATE
+       SET sources_done_at = COALESCE(workspace_onboarding.sources_done_at, now())`,
     [opts.workspaceId, opts.userId],
   );
 }
@@ -66,10 +73,12 @@ export async function finishSourcesStep(
 // behalf (over the MCP server or the API, never the website, Slack or an
 // import) in one of the workspace's Agents chats Docos.
 const PROGRESS_SQL = `
-  SELECT o.workspace_id, w.handle AS workspace_handle, o.user_id, o.joined_as, o.started_at,
+  SELECT wu.workspace_id, w.handle AS workspace_handle, wu.user_id,
+         COALESCE(o.joined_as, CASE WHEN wu.role = 'owner' THEN 'creator' ELSE 'invitee' END)
+           AS joined_as,
          EXISTS (
            SELECT 1 FROM docos d
-            WHERE d.workspace_id = o.workspace_id
+            WHERE d.workspace_id = wu.workspace_id
               AND d.deleted_at IS NULL
               AND (COALESCE(d.data->'github_integration'->'connections', '[]'::jsonb) <> '[]'::jsonb
                 OR COALESCE(d.data->'github_integration'->'installations', '[]'::jsonb) <> '[]'::jsonb)
@@ -78,21 +87,24 @@ const PROGRESS_SQL = `
          EXISTS (
            SELECT 1 FROM changesets cs
              JOIN docos d ON d.id = cs.doco_id
-            WHERE d.workspace_id = o.workspace_id
+            WHERE d.workspace_id = wu.workspace_id
               AND d.deleted_at IS NULL
               AND d.data->>'template_handle' = 'agents-chats'
-              AND cs.actor = o.user_id
+              AND cs.actor = wu.user_id
               AND cs.source IN ('api', 'mcp')
          ) AS agent
-    FROM workspace_onboarding o
-    JOIN workspaces w ON w.id = o.workspace_id`;
+    FROM workspace_users wu
+    JOIN workspaces w ON w.id = wu.workspace_id
+    JOIN users u ON u.id = wu.user_id
+    LEFT JOIN workspace_onboarding o
+      ON o.workspace_id = wu.workspace_id AND o.user_id = wu.user_id
+   WHERE lower(w.handle) <> lower(COALESCE(u.github_login, ''))`;
 
 interface ProgressRow {
   workspace_id: string;
   workspace_handle: string;
   user_id: string;
   joined_as: JoinedAs;
-  started_at: Date | string;
   github: boolean;
   sources: boolean;
   agent: boolean;
@@ -104,19 +116,18 @@ function toProgress(row: ProgressRow): OnboardingProgress {
     workspaceHandle: row.workspace_handle,
     userId: row.user_id,
     joinedAs: row.joined_as,
-    startedAt: new Date(row.started_at).toISOString(),
     steps: ONBOARDING_STEPS[row.joined_as].map((step) => ({ step, done: row[step] })),
   };
 }
 
-/** Where a person stands in one workspace's steps; null when they never
- *  started them there. */
+/** Where a person stands in one workspace's steps; null when they aren't in
+ *  it, or it's their personal workspace. */
 export async function loadOnboardingProgress(
   c: QueryClient,
   opts: { workspaceId: string; userId: string },
 ): Promise<OnboardingProgress | null> {
   const { rows } = await c.query<ProgressRow>(
-    `${PROGRESS_SQL} WHERE o.workspace_id = $1 AND o.user_id = $2`,
+    `${PROGRESS_SQL} AND wu.workspace_id = $1 AND wu.user_id = $2`,
     [opts.workspaceId, opts.userId],
   );
   return rows[0] ? toProgress(rows[0]) : null;
@@ -127,7 +138,7 @@ export async function loadUnfinishedOnboarding(
   c: QueryClient,
   userId: string,
 ): Promise<Map<string, OnboardingProgress>> {
-  const { rows } = await c.query<ProgressRow>(`${PROGRESS_SQL} WHERE o.user_id = $1`, [userId]);
+  const { rows } = await c.query<ProgressRow>(`${PROGRESS_SQL} AND wu.user_id = $1`, [userId]);
   return new Map(
     rows
       .map(toProgress)
@@ -142,8 +153,8 @@ export interface DueReminder {
 }
 
 /**
- * Claim every reminder that has come due: steps started at least 15 minutes
- * ago (and less than a day ago, so a reminder never arrives days late) with no
+ * Claim every reminder that has come due: a workspace created or joined from an
+ * invite at least 15 minutes ago (and less than a day ago, so a reminder never arrives days late) with no
  * reminder sent. Claiming marks each sent, so two sweeps never both send one;
  * it returns those whose steps are still open, with the person's email.
  */

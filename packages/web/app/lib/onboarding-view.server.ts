@@ -1,7 +1,8 @@
 // What a workspace page needs to walk a person through its steps
 // (components/onboarding-stepper.tsx): where they stand, and for each step
-// what it connects. Null once every step is done, or for someone who never
-// started them there.
+// what it connects. Null once every step is done, or for someone with no steps
+// there. Reaching the agent step gives a workspace made before every new one
+// came with an Agents chats Doco its own, so the agent has somewhere to write.
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
 import { agentInstructionsForWorkspace } from "./agent-instructions";
@@ -20,6 +21,7 @@ import {
   pendingStep,
 } from "./onboarding-steps";
 import { loadOnboardingProgress } from "./onboarding.server";
+import { ensureWorkspaceDoco } from "./workspace-helpers.server";
 
 export interface OnboardingView {
   workspaceHandle: string;
@@ -71,6 +73,15 @@ export async function loadOnboardingView(opts: {
     creator && pending === "github"
       ? await listKnownGitHubAccounts(await listAccessibleDocoIdsForPrincipal(userId))
       : [];
+  const agentsChats =
+    pending === "agent"
+      ? await ensureWorkspaceDoco({
+          workspace,
+          template: "agents-chats",
+          handleSuffix: "agents-chats",
+          userId,
+        })
+      : null;
 
   return withClient(async (c) => {
     const docoFor = async (template: string) =>
@@ -117,7 +128,7 @@ export async function loadOnboardingView(opts: {
       sources,
       agent: {
         instructions: agentInstructionsForWorkspace(getPublicBaseUrl(request), workspace.handle),
-        agentsChatsHandle: (await docoFor("agents-chats"))?.handle ?? null,
+        agentsChatsHandle: (agentsChats ?? (await docoFor("agents-chats")))?.handle ?? null,
       },
     };
   });
