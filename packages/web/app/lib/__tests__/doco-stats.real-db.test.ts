@@ -1,7 +1,8 @@
-// A Doco that copies from a source (a codebase, a Slack or a Notion workspace)
-// holds what it copied in that source's own table, not as nodes. The Doco list
-// counts those copies and dates the Doco by the latest one. PGlite runs the
-// real schema.
+// The Doco list counts each Doco by the one thing it holds: a Doco that copies
+// from a source (a codebase, a Slack or a Notion workspace) by what it copied,
+// which lives in that source's own table, not as nodes; a process Doco by its
+// processes; every other kind by its nodes of one type, or all its nodes when
+// it has no known template. PGlite runs the real schema.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +29,27 @@ beforeEach(async () => {
       ('doco_code', 'torre-codebase', 'workspace_1', 'workspace_1', 'private', '{"template_handle": "codebase"}'),
       ('doco_slack', 'torre-slack', 'workspace_1', 'workspace_1', 'private', '{"template_handle": "slack"}'),
       ('doco_notion', 'torre-notion', 'workspace_1', 'workspace_1', 'private', '{"template_handle": "notion"}'),
-      ('doco_plain', 'torre-ideas', 'workspace_1', 'workspace_1', 'private', '{}');
+      ('doco_plain', 'torre-ideas', 'workspace_1', 'workspace_1', 'private', '{}'),
+      ('doco_prs', 'torre-prs', 'workspace_1', 'workspace_1', 'private', '{"template_handle": "github-pull-requests"}'),
+      ('doco_flow', 'torre-processes', 'workspace_1', 'workspace_1', 'private', '{"template_handle": "process"}'),
+      ('doco_misc', 'torre-notes', 'workspace_1', 'workspace_1', 'private', '{}');
+    INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, updated_at) VALUES
+      ('reference_1', 'doco_prs', 'reference', 'active', 'Merged PR', '2026-09-20T00:00:00Z'),
+      ('reference_2', 'doco_prs', 'reference', 'retired', 'Closed PR', '2026-09-21T00:00:00Z'),
+      ('principal_1', 'doco_prs', 'principal', 'active', 'Reviewer', '2026-09-22T00:00:00Z'),
+      ('action_hire', 'doco_flow', 'action', 'active', 'Hire', '2026-09-20T00:00:00Z'),
+      ('action_screen', 'doco_flow', 'action', 'active', 'Screen', '2026-09-20T00:00:00Z'),
+      ('action_offer', 'doco_flow', 'action', 'active', 'Make an offer', '2026-09-20T00:00:00Z'),
+      ('action_pay', 'doco_flow', 'action', 'active', 'Agree on pay', '2026-09-20T00:00:00Z'),
+      ('decision_fit', 'doco_flow', 'decision', 'active', 'Fit?', '2026-09-20T00:00:00Z'),
+      ('action_lone', 'doco_flow', 'action', 'drafting', 'Sketch', '2026-09-20T00:00:00Z'),
+      ('idea_1', 'doco_misc', 'idea', 'active', 'An idea', '2026-09-20T00:00:00Z'),
+      ('decision_1', 'doco_misc', 'decision', 'retired', 'A decision', '2026-09-20T00:00:00Z');
+    INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type) VALUES
+      ('edge_1', 'doco_flow', 'has_parent', 'action_screen', 'action', 'action_hire', 'action'),
+      ('edge_2', 'doco_flow', 'has_parent', 'action_offer', 'action', 'action_hire', 'action'),
+      ('edge_3', 'doco_flow', 'has_parent', 'action_pay', 'action', 'action_offer', 'action'),
+      ('edge_4', 'doco_flow', 'has_parent', 'decision_fit', 'decision', 'action_screen', 'action');
     INSERT INTO code_files (doco_id, repo, path, sha, size, synced_at) VALUES
       ('doco_code', 'torre/app', 'a.ts', 's1', 1, '2026-09-24T00:00:00Z'),
       ('doco_code', 'torre/app', 'b.ts', 's2', 1, '2026-09-25T00:00:00Z');
@@ -54,31 +75,34 @@ beforeEach(async () => {
 
 const iso = (at: string | null | undefined) => (at ? new Date(at).toISOString() : at);
 
-describe("listDocoStats copies", () => {
-  it("counts what each Doco copied and dates it by the latest copy", async () => {
-    const stats = await listDocoStats(["doco_code", "doco_slack", "doco_notion", "doco_plain"]);
+describe("listDocoStats", () => {
+  it("counts each Doco by the one thing it holds and dates it by the latest change", async () => {
+    const stats = await listDocoStats([
+      "doco_code",
+      "doco_slack",
+      "doco_notion",
+      "doco_plain",
+      "doco_prs",
+      "doco_flow",
+      "doco_misc",
+    ]);
     const seen = (id: string) => {
       const s = stats.get(id);
-      return { nodes: s?.nodes, copied: s?.copied, lastUpdatedAt: iso(s?.lastUpdatedAt) };
+      return { items: s?.items, lastUpdatedAt: iso(s?.lastUpdatedAt) };
     };
-    expect(seen("doco_code")).toEqual({
-      nodes: 0,
-      copied: { count: 2, unit: "file" },
-      lastUpdatedAt: "2026-09-25T00:00:00.000Z",
-    });
+    expect(seen("doco_code")).toEqual({ items: 2, lastUpdatedAt: "2026-09-25T00:00:00.000Z" });
     // Messages of a channel left out of the copy aren't counted.
-    expect(seen("doco_slack")).toEqual({
-      nodes: 0,
-      copied: { count: 2, unit: "message" },
-      lastUpdatedAt: "2026-09-21T00:00:00.000Z",
-    });
+    expect(seen("doco_slack")).toEqual({ items: 2, lastUpdatedAt: "2026-09-21T00:00:00.000Z" });
     // A page not fetched yet isn't copied; a page dates from its last edit in Notion.
-    expect(seen("doco_notion")).toEqual({
-      nodes: 0,
-      copied: { count: 2, unit: "page" },
-      lastUpdatedAt: "2026-09-23T00:00:00.000Z",
-    });
-    expect(seen("doco_plain")).toEqual({ nodes: 0, copied: null, lastUpdatedAt: null });
+    expect(seen("doco_notion")).toEqual({ items: 2, lastUpdatedAt: "2026-09-23T00:00:00.000Z" });
+    expect(seen("doco_plain")).toEqual({ items: 0, lastUpdatedAt: null });
+    // Pull requests are its References, closed ones too; its reviewer is not one.
+    expect(seen("doco_prs")).toEqual({ items: 2, lastUpdatedAt: "2026-09-22T00:00:00.000Z" });
+    // A process is an Action with child Actions: Hire, and Make an offer under it.
+    // A gateway under Screen doesn't make Screen one, nor does a lone Action.
+    expect(seen("doco_flow")).toEqual({ items: 2, lastUpdatedAt: "2026-09-20T00:00:00.000Z" });
+    // With no known template, every node counts.
+    expect(seen("doco_misc")).toEqual({ items: 2, lastUpdatedAt: "2026-09-20T00:00:00.000Z" });
   });
 });
 
