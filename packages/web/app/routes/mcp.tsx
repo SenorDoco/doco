@@ -29,11 +29,72 @@ import { action as edgesAction } from "./$docoHandle.api.edges[.]json";
 import { action as policyIdAction } from "./$docoHandle.api.policies.$id[.]json";
 import { action as policiesAction } from "./$docoHandle.api.policies[.]json";
 import { loader as searchLoader } from "./$docoHandle.search[.]json";
+import { loader as briefLoader } from "./api.v1.brief[.]json";
 import { action as createDocoAction } from "./api.v1.docos[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
 const SERVER_VERSION = "1.0.0-workspace";
+
+const BRIEF_TOOL = {
+  name: "doco_brief",
+  description: [
+    "Brief yourself before you act. Say what you are about to do (`about`) and",
+    "what you touch (`touching`: file paths, URLs, node ids, pull request",
+    "numbers) and get, across every Doco you can read, what you must obey, what",
+    "is already decided, what is in motion, and background, each item with why",
+    "it is there and an id to cite. Obey the first tier; cite the ids in what",
+    "you capture. Call it before the first substantive reply and again before",
+    "each new task. Read the result's `text`; emit `display.found` verbatim",
+    "after it, and end your turn with `display.tally` verbatim (bump its count",
+    "if you also captured).",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      about: {
+        type: "string",
+        description: "What you are about to do, in a sentence or two.",
+      },
+      touching: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "What you will read or change: file paths, URLs, node ids, pull request numbers (#123).",
+      },
+      budget: {
+        type: "integer",
+        minimum: 200,
+        maximum: 20000,
+        default: 4000,
+        description: "Tokens the brief may take (default 4000).",
+      },
+      since: {
+        type: "string",
+        description: "ISO time: start of the 'in motion' window (default: the last 7 days).",
+      },
+      target: {
+        type: "string",
+        description: "Handle of the Doco you will write to: its goal and policies then bind.",
+      },
+      workspace: {
+        type: "string",
+        description: "Handle of one workspace to brief from (default: every Doco you can read).",
+      },
+      rerank: {
+        type: "boolean",
+        default: true,
+        description: "Rerank the items with a cross-encoder (default true).",
+      },
+      synthesize: {
+        type: "boolean",
+        default: true,
+        description: "Open the brief with a one-paragraph synthesis (default true).",
+      },
+    },
+    required: ["about"],
+  },
+};
 
 const SEARCH_TOOL = {
   name: "doco_search",
@@ -394,16 +455,17 @@ const AGENT_DEBUG_TOOL = {
 // doco_search, which duty 1 calls first, names the agent instructions'
 // current version (agentInstructionsPointer).
 function toolsFor(baseUrl: string) {
-  const search = {
-    ...SEARCH_TOOL,
-    description: `${SEARCH_TOOL.description}\n${agentInstructionsPointer(baseUrl)}`,
+  const brief = {
+    ...BRIEF_TOOL,
+    description: `${BRIEF_TOOL.description}\n${agentInstructionsPointer(baseUrl)}`,
   };
-  return TOOLS.map((tool) => (tool === SEARCH_TOOL ? search : tool));
+  return TOOLS.map((tool) => (tool === BRIEF_TOOL ? brief : tool));
 }
 
 const TOOLS = [
   WHOAMI_TOOL,
   LIST_WORKSPACES_TOOL,
+  BRIEF_TOOL,
   SEARCH_TOOL,
   GET_TOOL,
   CAPTURE_TOOL,
@@ -516,6 +578,35 @@ async function resolveDoco(rawDoco: unknown): Promise<{ handle: string } | { err
   const row = await getDocoByIdOrHandle(doco); // already excludes soft-deleted
   if (!row) return { error: toolError(`Doco "${doco}" not found.`) };
   return { handle: row.handle };
+}
+
+// The brief answers across every Doco the bearer can read, so it takes no
+// `doco`: the route narrows the reach to the token's grant itself.
+async function runDocoBrief(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
+  const about = String(args.about ?? "").trim();
+  if (!about) return toolError("doco_brief requires `about`: what you are about to do.");
+  const url = new URL("/api/v1/brief.json", new URL(request.url).origin);
+  url.searchParams.set("about", about);
+  const touching = Array.isArray(args.touching) ? args.touching : [];
+  for (const value of touching) {
+    const touch = String(value ?? "").trim();
+    if (touch) url.searchParams.append("touching", touch);
+  }
+  for (const key of ["budget", "since", "target", "workspace"] as const) {
+    const value = args[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "")
+      url.searchParams.set(key, String(value).trim());
+  }
+  for (const key of ["rerank", "synthesize"] as const) {
+    if (args[key] === false) url.searchParams.set(key, "0");
+  }
+  const req = new Request(url, { headers: bearerHeaders(request) });
+  const result = await delegate("brief from", "your Docos", () => briefLoader({ request: req }));
+  if (result.isError) return result;
+  const data = result.structuredContent as { text?: unknown };
+  // The text rendering is what the agent reads; the JSON stays structured.
+  if (typeof data?.text === "string") result.content = [{ type: "text", text: data.text }];
+  return result;
 }
 
 async function runDocoSearch(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
@@ -869,6 +960,8 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
           return rpcResult(message.id, await runDocoWhoami(request));
         case "list_workspaces":
           return rpcResult(message.id, await runListWorkspaces(request));
+        case "doco_brief":
+          return rpcResult(message.id, await runDocoBrief(request, args));
         case "doco_search":
           return rpcResult(message.id, await runDocoSearch(request, args));
         case "doco_get":

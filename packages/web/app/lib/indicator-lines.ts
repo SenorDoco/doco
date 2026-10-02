@@ -44,3 +44,22 @@ export function buildSearchDisplay(args: {
     tally: `${prefix} ${args.label}: **0** nodes added/updated`,
   };
 }
+
+/** The lines after a brief: how much it served, held back, and took. */
+export function buildBriefDisplay(args: {
+  indicatorPrefix?: string | null;
+  count: number;
+  heldBack: number;
+  durationMs: number;
+}): DocoSearchDisplay {
+  const prefix = args.indicatorPrefix?.trim() || DEFAULT_INDICATOR_PREFIX;
+  const seconds = (Math.max(0, args.durationMs) / 1000).toFixed(1);
+  const count = Math.max(0, Math.trunc(args.count));
+  const heldBack = Math.max(0, Math.trunc(args.heldBack));
+  const held = heldBack > 0 ? `, ${heldBack} held back` : "";
+  return {
+    prefix,
+    found: `${prefix} briefed: ${count} items${held} (${seconds}s)`,
+    tally: `${prefix} brief: **0** nodes added/updated`,
+  };
+}

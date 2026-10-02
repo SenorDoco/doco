@@ -18,25 +18,22 @@ export interface QueryScope {
 }
 
 /** Record one query. Never throws: a missing log row must not fail the read,
- *  so callers hand the promise to `waitUntil` and move on. */
+ *  so callers hand the promise to `waitUntil` and move on. `extra` joins the
+ *  request's metadata: a brief records its id, what it served and its timings. */
 export async function recordQuery(
   request: Request,
   scope: QueryScope,
   actorId: string | null,
+  extra?: Record<string, unknown>,
 ): Promise<void> {
   try {
     const { source, metadata } = await authoringContextForRequest(request);
+    const merged = metadata || extra ? { ...(metadata ?? {}), ...(extra ?? {}) } : null;
     await withClient((c) =>
       c.query(
         `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata)
          VALUES ($1, $2, $3, $4, $5)`,
-        [
-          actorId,
-          scope.workspaceId,
-          scope.docoId,
-          source,
-          metadata ? JSON.stringify(metadata) : null,
-        ],
+        [actorId, scope.workspaceId, scope.docoId, source, merged ? JSON.stringify(merged) : null],
       ),
     );
   } catch (err) {

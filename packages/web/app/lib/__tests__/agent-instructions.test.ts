@@ -113,6 +113,20 @@ describe("agentInstructions", () => {
     expect(text).toContain("or when a client with hooks lacks the reminder hook");
   });
 
+  // Alexander, 2026-10-02 (decision_01M3YYQ1JRBS04Z99KEP869F26): duty 1 is one
+  // call of doco_brief with what the agent is about to do and what it touches,
+  // not a search per Doco; the agent obeys the brief's first tier and cites it.
+  it("has the agent brief itself with doco_brief before it acts", () => {
+    const duty = text.slice(
+      position("**Load context first.**"),
+      position("**Record the conversation.**"),
+    );
+    expect(duty).toContain("call `doco_brief` with what you are about to do and what you touch");
+    expect(duty).toContain("obey its first tier and cite its ids");
+    expect(text).not.toContain("doco_search");
+    expect(DOCO_REMINDER).toContain("doco_brief before you act");
+  });
+
   it("carries the four baseline duties", () => {
     expect(text).toContain("**Load context first.**");
     expect(text).toContain("**Record the conversation.**");

@@ -9,6 +9,7 @@ import { agentInstructions, agentInstructionsVersion } from "~/lib/agent-instruc
 const mocks = vi.hoisted(() => ({
   gateUserMcp: vi.fn(),
   searchLoader: vi.fn(),
+  briefLoader: vi.fn(),
   captureAction: vi.fn(),
   edgesAction: vi.fn(),
   changesetsAction: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("~/lib/access-requests.server", () => ({ requestDocoAccess: mocks.reques
 vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAgentIdentity }));
 vi.mock("~/lib/agent-debug.server", () => ({ gatherAgentDebug: mocks.gatherAgentDebug }));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
+vi.mock("../api.v1.brief[.]json", () => ({ loader: mocks.briefLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
 vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
 vi.mock("../$docoHandle.api.changesets[.]json", () => ({ action: mocks.changesetsAction }));
@@ -203,6 +205,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(body.result.tools.map((t: Json) => t.name)).toEqual([
       "doco_whoami",
       "list_workspaces",
+      "doco_brief",
       "doco_search",
       "doco_get",
       "doco_capture",
@@ -421,17 +424,81 @@ describe("POST /mcp (hosted remote MCP)", () => {
   });
 
   // Alexander, 2026-10-02: an install whose client drops the server's
-  // instructions still sees doco_search's description, which duty 1 calls
+  // instructions still sees doco_brief's description, which duty 1 calls
   // first, so it names the current version and where to get the block.
-  it("doco_search's description names the current agent instructions version", async () => {
+  it("doco_brief's description names the current agent instructions version", async () => {
     const res = await call({ jsonrpc: "2.0", id: 46, method: "tools/list" }, BEARER);
     const body: Json = await res.json();
-    const search = body.result.tools.find((t: Json) => t.name === "doco_search");
+    const brief = body.result.tools.find((t: Json) => t.name === "doco_brief");
     const version = agentInstructionsVersion("https://doco.to");
     expect(agentInstructions("https://doco.to")).toMatch(`<!-- doco:begin v${version} -->`);
-    expect(search.description).toContain(
+    expect(brief.description).toContain(
       `The current Doco agent instructions are version v${version}. If the project's copy of them is missing, has no version or has another, fetch https://doco.to/agents and follow its step 3.`,
     );
+    const search = body.result.tools.find((t: Json) => t.name === "doco_search");
+    expect(search.description).not.toContain("agent instructions are version");
+  });
+
+  // The brief spans every Doco the bearer can read, so the tool takes no
+  // `doco`; the route narrows the reach to the grant. The agent reads the
+  // text rendering; the JSON rides along as structured content.
+  it("doco_brief delegates to the brief route with the bearer and hands back the text", async () => {
+    mocks.briefLoader.mockResolvedValue(
+      Response.json({
+        brief_id: "brief_1",
+        items: [{ id: "rule_1", tier: "must_obey" }],
+        text: "Doco brief brief_1\n\n## Must obey\n- rule_1",
+        display: { found: "[🔮 Doco @alice] briefed: 1 items (0.5s)" },
+      }),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 47,
+        method: "tools/call",
+        params: {
+          name: "doco_brief",
+          arguments: {
+            about: "add a route",
+            touching: ["app/routes/x.tsx", "#12"],
+            budget: 800,
+            target: "decisions",
+            rerank: false,
+          },
+        },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    const callArg: Json = mocks.briefLoader.mock.calls[0][0];
+    const url = new URL(callArg.request.url);
+    expect(url.pathname).toBe("/api/v1/brief.json");
+    expect(url.searchParams.get("about")).toBe("add a route");
+    expect(url.searchParams.getAll("touching")).toEqual(["app/routes/x.tsx", "#12"]);
+    expect(url.searchParams.get("budget")).toBe("800");
+    expect(url.searchParams.get("target")).toBe("decisions");
+    expect(url.searchParams.get("rerank")).toBe("0");
+    expect(url.searchParams.get("synthesize")).toBeNull();
+    expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
+    expect(body.result.content[0].text).toBe("Doco brief brief_1\n\n## Must obey\n- rule_1");
+    expect(body.result.structuredContent.brief_id).toBe("brief_1");
+    expect(body.result.structuredContent.display.found).toContain("briefed: 1 items");
+  });
+
+  it("doco_brief refuses a call that does not say what the agent is about to do", async () => {
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 48,
+        method: "tools/call",
+        params: { name: "doco_brief", arguments: { touching: ["a.ts"] } },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toContain("requires `about`");
+    expect(mocks.briefLoader).not.toHaveBeenCalled();
   });
 
   it("refuses an unknown Doco before delegating", async () => {

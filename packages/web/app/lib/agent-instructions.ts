@@ -27,7 +27,7 @@ export const INSTRUCTIONS_END = "<!-- doco:end -->";
 
 /** The line an agent's hook adds before every user message. */
 export const DOCO_REMINDER =
-  "Doco: search the workspace before answering, capture each decision as it forms, and log this chat in Agents chats.";
+  "Doco: doco_brief before you act, capture each decision as it forms, and log this chat in Agents chats.";
 
 /** The page that shows the block, where every pointer for agents leads. */
 export const AGENT_INSTRUCTIONS_PATH = "/agents";
@@ -45,7 +45,7 @@ export function agentInstructionsVersion(baseUrl: string): string {
 }
 
 /**
- * The line doco_search's description carries: every MCP client shows tool
+ * The line doco_brief's description carries: every MCP client shows tool
  * descriptions to the agent, even one that drops the server's instructions,
  * so an install that never saw the block's current version still meets it.
  */
@@ -64,7 +64,7 @@ This project keeps its shared memory in Doco (${host}): the intents, decisions, 
 
 Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block. Each Doco's policies refine how to do them, never whether.
 
-1. **Load context first.** Before the first substantive reply, \`doco_search\` the workspace's Docos for the intents, decisions, rules and logs that bear on the work. Search again before each substantive question.
+1. **Load context first.** Before the first substantive reply and each new task, call \`doco_brief\` with what you are about to do and what you touch (paths, URLs, ids, PRs); obey its first tier and cite its ids.
 2. **Record the conversation.** Before the session ends, \`doco_capture\` a Log of the chat in the workspace's Agents chats Doco: who took part, what was asked, what was worked on, what came of it and what was left open, with the ids of the nodes it produced.
 3. **Document every decision.** When a choice is made, \`doco_capture\` it as a Decision as it forms (the question, the choice, the alternatives and why they lost) in the Doco for its kind of decision: Product decisions for what to build and why, Design decisions for UX, interaction and visual choices, Architectural decisions for system structure, technology and data.
 4. **Update the process.** When a decision is about a business process, add it to the workspace's Processes Doco as well: change the steps, gateways or rules of the process it affects to match, citing the decision's id.

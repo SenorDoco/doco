@@ -35,7 +35,7 @@ It speaks MCP over Streamable HTTP. An unauthenticated request returns
 (RFC 8414) and run the flow for you. Call \`list_workspaces\` / \`doco_whoami\`
 to see your reach: all workspaces, specific workspaces, or specific Docos.
 The connector is read + write — \`doco_whoami\`, \`list_workspaces\`,
-\`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
+\`doco_brief\`, \`doco_search\`, \`doco_get\`, \`doco_capture\`, \`doco_relate\`,
 \`doco_changeset\`, \`doco_policy\`, and \`doco_request_access\` — and read vs write is a live matrix grant on the
 same token, never a different login. Setup per client lives in Tokens/MCP:
 open ${baseUrl}/tokens and choose the "Add MCP" tab.
