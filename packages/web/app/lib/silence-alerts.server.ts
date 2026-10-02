@@ -21,6 +21,7 @@
 import { generateUlid } from "@doco/shared";
 import { agentName } from "./authoring-provenance";
 import { COPIED_ITEMS_SQL } from "./doco-stats.server";
+import { emailHtml } from "./email-html";
 import { type Email, type EmailResult, emailConfigured, sendEmail } from "./email.server";
 import { GITHUB_ITEMS_SQL } from "./integration-status.server";
 import { type SourceIntegration, sourceIntegrationFor } from "./integrations-catalog";
@@ -409,13 +410,13 @@ function utc(iso: string): string {
   return `${UTC_TIME.format(new Date(iso))} UTC`;
 }
 
-/** One alert, said as an email paragraph with its links. */
-function alertParagraph(alert: SilenceAlert, base: string): string {
+/** One alert, said as email lines with their links. */
+function alertLines(alert: SilenceAlert, base: string): string[] {
   if (alert.kind === "integration") {
     return [
       `${alert.docoHandle} has received nothing from ${SOURCE_NAMES[alert.source]} since ${utc(alert.quietSince)}. The same hours of each of the past four weeks brought about ${alert.usual} updates, so this silence is unusual.`,
       `Check its connection: ${base}/${alert.docoHandle}/integrations/${alert.source}`,
-    ].join("\n");
+    ];
   }
   const who = alert.agentUser ? `@${alert.agentUser}` : "its person";
   return [
@@ -424,9 +425,7 @@ function alertParagraph(alert: SilenceAlert, base: string): string {
       ? `Docos it used: ${alert.docoHandles.map((h) => `${base}/${h}`).join(", ")}`
       : null,
     `If it was retired on purpose, ${who} can revoke its connection at ${base}/tokens and the alert goes away.`,
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
+  ].filter((line): line is string => line !== null);
 }
 
 function alertSubject(alert: SilenceAlert): string {
@@ -440,12 +439,17 @@ export function alertEmail(to: string, alerts: SilenceAlert[], base: string): Em
   const first = alerts[0];
   const subject =
     alerts.length === 1 && first ? alertSubject(first) : `${alerts.length} Doco alerts`;
-  const text = [
-    ...alerts.map((a) => alertParagraph(a, base)),
+  const lines = alerts.map((a) => alertLines(a, base));
+  const closing = [
     "Each alert clears by itself as soon as data or calls resume.",
     `Doco · ${base}`,
-  ].join("\n\n");
-  return { to, subject: `Doco alert: ${subject}`, text };
+  ];
+  return {
+    to,
+    subject: `Doco alert: ${subject}`,
+    text: [...lines.map((l) => l.join("\n")), ...closing].join("\n\n"),
+    html: emailHtml([...lines.flat(), ...closing]),
+  };
 }
 
 /**
