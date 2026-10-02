@@ -2,8 +2,10 @@
 // start of a session (the Doco hook's SessionStart, doco_whoami, the route
 // /api/v1/standing-orders.json): the constitution, every active rule, a line
 // on what each Doco holds and expects of a writer, and what changed since the
-// agent last looked. Small, a target of under 2,000 tokens, and read fresh:
-// five statements on indexed tables cost less than any cache would save.
+// agent last looked. Whoever can read a Doco of the workspace reads its
+// constitution (decision_01M3Z5SXF1VZ4N6DSE5AVVZ41N), as on the workspace page and in
+// the brief. Small, a target of under 2,000 tokens, and read fresh: five
+// statements on indexed tables cost less than any cache would save.
 
 import { countDocoItems, docoItemFor, findDocoTemplateMeta } from "../doco-templates-meta";
 import { IN_MOTION_DAYS, expandedText, summaryOf, tokensOf } from "./brief";
@@ -31,8 +33,6 @@ export interface StandingOrdersScope {
   origin: string;
   /** The Docos the caller may read; null for every live Doco of the workspace. */
   docoIds: string[] | null;
-  /** Whether the caller is of the workspace: the constitution is member content. */
-  member: boolean;
 }
 
 export interface StandingOrdersRequest {
@@ -168,8 +168,7 @@ export async function composeStandingOrders(
       name: workspace.name,
       url: workspaceUrl,
     },
-    constitution:
-      scope.member && workspace.constitution.trim() ? expandedText(workspace.constitution) : null,
+    constitution: workspace.constitution.trim() ? expandedText(workspace.constitution) : null,
     rules: ruleRows.rows.map((row) => ({
       id: row.id,
       doco: handleOf.get(row.doco_id) as string,
@@ -208,8 +207,7 @@ export async function composeStandingOrders(
     },
     warnings,
   };
-  if (scope.member && !orders.constitution)
-    warnings.push(`Workspace ${workspace.name} has no constitution.`);
+  if (!orders.constitution) warnings.push(`Workspace ${workspace.name} has no constitution.`);
   if (orders.rules.length === 0) warnings.push("No active rules in the Docos you can read.");
   const text = renderStandingOrders(orders);
   return { ...orders, tokens: tokensOf(text), text };

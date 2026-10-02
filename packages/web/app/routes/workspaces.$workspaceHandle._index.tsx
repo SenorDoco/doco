@@ -442,7 +442,7 @@ function splitConstitutionParagraphs(text: string): string[] {
 }
 
 const CONSTITUTION_SHARING_DISCLAIMER =
-  "This constitution is always shared with agents that have access to this workspace.";
+  "This constitution is shared with everyone who can read a Doco of this workspace, and with their agents.";
 
 // Workspace constitution, presented like a founding charter: a centered serif
 // title, a rule, and a justified body with a drop-cap opening. Owners get

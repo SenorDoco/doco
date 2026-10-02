@@ -61,7 +61,7 @@ describe("composeStandingOrders", () => {
   it("compiles the constitution, the rules, the Doco map and the changes of one workspace", async () => {
     const orders = await composeStandingOrders(
       c,
-      { workspaceId: "workspace_1", origin: ORIGIN, docoIds: null, member: true },
+      { workspaceId: "workspace_1", origin: ORIGIN, docoIds: null },
       { now: () => NOW },
     );
     expect(orders?.constitution).toBe("Ship small pull requests.");
@@ -159,13 +159,12 @@ describe("composeStandingOrders", () => {
         workspaceId: "workspace_1",
         origin: ORIGIN,
         docoIds: ["doco_glossary", "doco_other"],
-        member: false,
       },
       { since: "2026-10-01T00:00:00Z", now: () => NOW },
     );
-    // Not a member: the constitution is not theirs to read, and no gap says so.
-    expect(orders?.constitution).toBeNull();
-    expect(orders?.text).not.toContain("## Constitution");
+    // Not of the workspace, but a reader of two of its Docos: the constitution is theirs too.
+    expect(orders?.constitution).toBe("Ship small pull requests.");
+    expect(orders?.text).toContain("## Constitution");
     expect(orders?.rules).toEqual([]);
     expect(orders?.docos.map((d) => d.handle)).toEqual(["glossary", "other"]);
     expect(orders?.changes.items).toEqual([]);
@@ -174,7 +173,7 @@ describe("composeStandingOrders", () => {
 
     const beta = await composeStandingOrders(
       c,
-      { workspaceId: "workspace_2", origin: ORIGIN, docoIds: null, member: true },
+      { workspaceId: "workspace_2", origin: ORIGIN, docoIds: null },
       { since: "not a date", now: () => NOW },
     );
     expect(beta?.constitution).toBeNull();
@@ -189,7 +188,6 @@ describe("composeStandingOrders", () => {
         workspaceId: "workspace_none",
         origin: ORIGIN,
         docoIds: null,
-        member: true,
       }),
     ).toBeNull();
   });
