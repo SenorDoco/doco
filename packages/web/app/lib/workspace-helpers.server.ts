@@ -45,7 +45,7 @@ export async function listMyWorkspaces(userId: string): Promise<MyWorkspaceRow[]
 }
 
 export interface WorkspaceForRead {
-  /** The constitution is workspace-member content: blank for non-members. */
+  /** With its constitution: whoever reads a Doco of the workspace reads it (decision_01M3Z5SXF1VZ4N6DSE5AVVZ41N). */
   workspace: WorkspacePublicRow;
   myRole: DocoRole | null;
   /** Only the Docos the caller may read (see `listReadableDocosInWorkspace`). */
@@ -67,11 +67,7 @@ export async function loadWorkspaceForRead(
   const myRole = principalId ? await getWorkspaceRole(workspace.id, principalId) : null;
   const docos = await listReadableDocosInWorkspace(workspace.id, principalId);
   if (!myRole && docos.length === 0) throw notFound;
-  return {
-    workspace: myRole ? workspace : { ...workspace, constitution: "" },
-    myRole,
-    docos,
-  };
+  return { workspace, myRole, docos };
 }
 
 /** Look up an workspace's public handle by its ULID. */

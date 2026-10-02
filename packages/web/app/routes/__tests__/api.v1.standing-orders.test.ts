@@ -88,7 +88,6 @@ describe("GET /api/v1/standing-orders.json", () => {
     expect(mocks.composeStandingOrders.mock.calls[0][1]).toEqual({
       workspaceId: "workspace_1",
       docoIds: ["doco_1", "doco_2"],
-      member: true,
       origin: "https://doco.to",
     });
     expect(mocks.composeStandingOrders.mock.calls[0][2]).toEqual({ since: "2026-10-01" });
@@ -100,16 +99,17 @@ describe("GET /api/v1/standing-orders.json", () => {
     ]);
   });
 
-  it("leaves the constitution to members", async () => {
+  it("gives a reader who is no member the orders of the Docos they can read, constitution included", async () => {
     mocks.loadWorkspaceForRead.mockResolvedValue({
       workspace: { id: "workspace_1", handle: "acme" },
       myRole: null,
       docos: [{ id: "doco_1" }],
     });
     await get("workspace=acme");
-    expect(mocks.composeStandingOrders.mock.calls[0][1]).toMatchObject({
+    expect(mocks.composeStandingOrders.mock.calls[0][1]).toEqual({
+      workspaceId: "workspace_1",
       docoIds: ["doco_1"],
-      member: false,
+      origin: "https://doco.to",
     });
   });
 
@@ -126,7 +126,6 @@ describe("GET /api/v1/standing-orders.json", () => {
     expect(mocks.composeStandingOrders.mock.calls[0][1]).toMatchObject({
       workspaceId: "workspace_9",
       docoIds: null,
-      member: true,
     });
     expect(mocks.recordQuery.mock.calls[0][2]).toBeNull();
     expect((await get("workspace=nine", { authorization: "Bearer doco_pt_x" })).status).toBe(200);

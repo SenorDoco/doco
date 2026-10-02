@@ -5,8 +5,8 @@
 // included — could read a private Doco's handle, its activity feed, and (via
 // search, now the brief) its node prose.
 // A workspace page may only surface what the caller could open directly:
-// public Docos, plus Docos the caller holds a grant on. Workspace-level content
-// (the constitution) is for workspace members.
+// public Docos, plus Docos the caller holds a grant on. The constitution goes
+// with them: whoever can read a Doco of the workspace reads its charter.
 //
 // PGlite backs every query; only the session, host config and embedding
 // provider are stubbed.
@@ -171,12 +171,12 @@ describe("the workspace brief only draws from Docos the caller can read", () => 
 });
 
 describe("workspace home only lists Docos the caller can read", () => {
-  it("shows a signed-out caller only public Docos and their activity, without the constitution", async () => {
+  it("shows a signed-out caller only public Docos and their activity, and the constitution", async () => {
     as(null);
     const data = await homeData("acme");
     expect(data.docos.map((d: { handle: string }) => d.handle)).toEqual(["open-notes"]);
     expect(data.items.map((i: { event_id: string }) => i.event_id)).toEqual(["ev_public"]);
-    expect(data.workspace.constitution).toBe("");
+    expect(data.workspace.constitution).toBe("Acme internal charter");
   });
 
   it("shows a member every Doco, its activity, and the constitution", async () => {

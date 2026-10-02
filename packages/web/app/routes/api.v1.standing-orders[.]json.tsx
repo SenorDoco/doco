@@ -7,9 +7,9 @@
 //
 // Auth: a project token (its workspace; `workspace` may only name that one) or
 // a signed-in principal (cookie or OAuth bearer) who names a workspace they
-// are a member of or can read a Doco of. Non-members get the orders without
-// the constitution. 401 when no caller resolves, 400 without a workspace.
-// Each read is one query of the workspace in the query log.
+// are a member of or can read a Doco of; either reads its constitution. 401
+// when no caller resolves, 400 without a workspace. Each read is one query of
+// the workspace in the query log.
 
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
@@ -35,7 +35,7 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  let scope: { workspaceId: string; docoIds: string[] | null; member: boolean };
+  let scope: { workspaceId: string; docoIds: string[] | null };
   if (projectToken) {
     const handle = await lookupWorkspaceHandle(projectToken.workspace_id);
     if (wanted && wanted !== handle && wanted !== projectToken.workspace_id) {
@@ -44,17 +44,13 @@ export async function loader({ request }: { request: Request }) {
         { status: 403 },
       );
     }
-    scope = { workspaceId: projectToken.workspace_id, docoIds: null, member: true };
+    scope = { workspaceId: projectToken.workspace_id, docoIds: null };
   } else {
     if (!wanted) {
       return Response.json({ error: "Name the workspace (workspace=<handle>)." }, { status: 400 });
     }
     const read = await loadWorkspaceForRead(wanted, (me as { id: string }).id);
-    scope = {
-      workspaceId: read.workspace.id,
-      docoIds: read.docos.map((d) => d.id),
-      member: read.myRole !== null,
-    };
+    scope = { workspaceId: read.workspace.id, docoIds: read.docos.map((d) => d.id) };
   }
 
   const orders = await withClient((c) =>
