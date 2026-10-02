@@ -22,7 +22,7 @@ describe("buildAgentBootstrapBody", () => {
     const tokenPath = Object.keys(
       buildAgentBootstrapBody({
         ...base,
-        projectTokenGrant: { doco_id: "doco_x", role: "reader" },
+        projectTokenGrant: { workspace_id: "workspace_x", role: "reader" },
       }),
     );
     const oauthPath = Object.keys(

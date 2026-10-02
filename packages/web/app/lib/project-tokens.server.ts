@@ -1,20 +1,17 @@
 /**
- * Committable, read-only project tokens for Docos. Stored at
- * .doco/project-tokens.json in repos that have minted one. Used by
- * agents that clone the repo to read the Doco without running OAuth.
+ * Project tokens: a committable, read-only credential for one workspace.
+ * Kept at .doco/project-tokens.json in a repository, so the Doco hook and
+ * the agents that clone the repository read the workspace without OAuth.
  *
  * Distinct from OAuth access tokens (lib/oauth-server.server.ts):
- *   - Not tied to a user. The token represents the Doco
- *     itself; `created_by_user_id` is audit only.
- *   - Fixed scope: `reader` on exactly one Doco.
- *   - No expiry — committed-to-repo lifecycle; the only kill switch
- *     is the `revoked` flag, which an owner can flip from the
- *     project-tokens admin UI.
+ *   - Not tied to a user. The token stands for the repository that holds
+ *     it; `created_by_user_id` is audit only.
+ *   - Fixed scope: `reader` on every live Doco of one workspace.
+ *   - No expiry; the `revoked` flag, flipped by a workspace owner, is the
+ *     only kill switch.
  *
- * Mint policy: owners-only, with the caller acknowledging that
- * anyone with read access to the repo will be able to read the
- * Doco. The acknowledgement is the API-level confirmation hook —
- * the UI surfaces a confirm dialog that maps to this flag.
+ * Owners mint one after acknowledging that anyone who can read the
+ * repository will be able to read the whole workspace.
  */
 import { randomBytes } from "node:crypto";
 import { withClient } from "@doco/db";
@@ -23,7 +20,7 @@ const PROJECT_TOKEN_PREFIX = "doco_pt_";
 
 export interface ProjectToken {
   token: string;
-  doco_id: string;
+  workspace_id: string;
   created_by_user_id: string;
   label: string | null;
   revoked: boolean;
@@ -31,7 +28,7 @@ export interface ProjectToken {
   last_used_at: Date | null;
 }
 
-/** Public summary used in the owner UI — no token body, just metadata. */
+/** What the owner's page shows: no token body, just metadata. */
 export interface ProjectTokenSummary {
   id: string;
   preview: string;
@@ -47,28 +44,20 @@ export function isProjectToken(value: string): boolean {
 }
 
 function mintTokenString(): string {
-  // 32 bytes of entropy, base64url-encoded → 43 chars. Same shape as
-  // oauth access tokens; the prefix keeps log scans unambiguous.
+  // 32 bytes of entropy, base64url-encoded: 43 chars, the shape of an OAuth
+  // access token; the prefix keeps log scans unambiguous.
   return `${PROJECT_TOKEN_PREFIX}${randomBytes(32).toString("base64url")}`;
 }
 
-/**
- * Token "id" exposed in the admin UI — last 8 chars of the body,
- * NOT the full token. The full token never leaves the server after
- * mint; this id is what owners reference when revoking.
- */
+/** The id the owner's page shows and revokes by: the last 8 characters. */
 function tokenIdForSummary(token: string): string {
   return token.slice(-8);
-}
-
-function tokenPreview(token: string): string {
-  return `${PROJECT_TOKEN_PREFIX}…${token.slice(-8)}`;
 }
 
 function summarize(row: ProjectToken): ProjectTokenSummary {
   return {
     id: tokenIdForSummary(row.token),
-    preview: tokenPreview(row.token),
+    preview: `${PROJECT_TOKEN_PREFIX}…${tokenIdForSummary(row.token)}`,
     label: row.label,
     revoked: row.revoked,
     created_at: row.created_at.toISOString(),
@@ -78,7 +67,7 @@ function summarize(row: ProjectToken): ProjectTokenSummary {
 }
 
 export interface MintProjectTokenInput {
-  doco_id: string;
+  workspace_id: string;
   created_by_user_id: string;
   label?: string | null;
 }
@@ -89,9 +78,8 @@ export interface MintProjectTokenResult {
 }
 
 /**
- * Mint a new project token. Caller must already have verified that
- * the actor is the Doco's owner and that they confirmed the "repo
- * readers can read this Doco" trade-off.
+ * Mint a token. The caller has checked that the actor owns the workspace
+ * and confirmed that the repository's readers may read it.
  */
 export async function mintProjectToken(
   input: MintProjectTokenInput,
@@ -100,80 +88,106 @@ export async function mintProjectToken(
   const labelValue = (input.label ?? "").trim() || null;
   const row = await withClient(async (c) => {
     const r = await c.query<ProjectToken>(
-      `INSERT INTO doco_project_tokens
-         (token, doco_id, created_by_user_id, label)
+      `INSERT INTO project_tokens (token, workspace_id, created_by_user_id, label)
        VALUES ($1, $2, $3, $4)
-       RETURNING token, doco_id, created_by_user_id, label,
-                 revoked, created_at, last_used_at`,
-      [token, input.doco_id, input.created_by_user_id, labelValue],
+       RETURNING token, workspace_id, created_by_user_id, label, revoked, created_at, last_used_at`,
+      [token, input.workspace_id, input.created_by_user_id, labelValue],
     );
     return r.rows[0];
   });
   return { full_token: row.token, summary: summarize(row) };
 }
 
-/** List all (revoked + active) tokens for a Doco, newest first. */
-export async function listProjectTokens(doco_id: string): Promise<ProjectTokenSummary[]> {
+/** Every token of a workspace, revoked ones included, newest first. */
+export async function listProjectTokens(workspace_id: string): Promise<ProjectTokenSummary[]> {
   return await withClient(async (c) => {
     const r = await c.query<ProjectToken>(
-      `SELECT token, doco_id, created_by_user_id, label,
-              revoked, created_at, last_used_at
-         FROM doco_project_tokens
-        WHERE doco_id = $1
-        ORDER BY created_at DESC`,
-      [doco_id],
+      `SELECT token, workspace_id, created_by_user_id, label, revoked, created_at, last_used_at
+         FROM project_tokens WHERE workspace_id = $1 ORDER BY created_at DESC`,
+      [workspace_id],
     );
     return r.rows.map(summarize);
   });
 }
 
 /**
- * Revoke a token by its 8-char suffix id (the same id surfaced in
- * the admin UI). Scoped to a specific Doco so an owner of one Doco
- * can't accidentally revoke another Doco's token by guessing its
- * suffix.
+ * Revoke a token by the 8-character id the owner's page shows, within one
+ * workspace, so an owner cannot revoke another workspace's token by guessing
+ * its suffix. False when nothing was revoked.
  */
 export async function revokeProjectTokenById(args: {
-  doco_id: string;
+  workspace_id: string;
   token_suffix_id: string;
 }): Promise<boolean> {
   return await withClient(async (c) => {
     const r = await c.query<{ token: string }>(
-      `UPDATE doco_project_tokens
-          SET revoked = true
-        WHERE doco_id = $1
-          AND token LIKE $2
-          AND revoked = false
+      `UPDATE project_tokens SET revoked = true
+        WHERE workspace_id = $1 AND token LIKE $2 AND revoked = false
         RETURNING token`,
-      [args.doco_id, `%${args.token_suffix_id}`],
+      [args.workspace_id, `%${args.token_suffix_id}`],
     );
     return r.rows.length > 0;
   });
 }
 
 /**
- * Lookup by full token body. Returns null when the token is unknown
- * or revoked. Touches `last_used_at` opportunistically (best-effort;
- * a failure here does not block the read).
+ * The token behind a bearer, or null when it is not a project token, is
+ * unknown or is revoked. Touches `last_used_at` without waiting.
  */
 export async function validateProjectToken(token: string): Promise<ProjectToken | null> {
   if (!isProjectToken(token)) return null;
   const row = await withClient(async (c) => {
     const r = await c.query<ProjectToken>(
-      `SELECT token, doco_id, created_by_user_id, label,
-              revoked, created_at, last_used_at
-         FROM doco_project_tokens
-        WHERE token = $1 AND revoked = false`,
+      `SELECT token, workspace_id, created_by_user_id, label, revoked, created_at, last_used_at
+         FROM project_tokens WHERE token = $1 AND revoked = false`,
       [token],
     );
     return r.rows[0] ?? null;
   });
   if (!row) return null;
-  // Async touch — don't await; this is best-effort telemetry.
   void withClient((c) =>
-    c.query("UPDATE doco_project_tokens SET last_used_at = now() WHERE token = $1", [token]),
+    c.query("UPDATE project_tokens SET last_used_at = now() WHERE token = $1", [token]),
   ).catch(() => {
-    /* swallow: stale last_used_at is fine */
+    /* a stale last_used_at is fine */
   });
   return row;
+}
+
+export interface ProjectTokenDoco {
+  id: string;
+  handle: string;
+  goal: string;
+  owner_id: string;
+}
+
+/** The Docos a token reads: every live Doco of its workspace. */
+export async function queryProjectTokenDocos(
+  c: { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> },
+  workspace_id: string,
+): Promise<ProjectTokenDoco[]> {
+  const r = await c.query<ProjectTokenDoco>(
+    `SELECT id, handle, goal, owner_id FROM docos
+      WHERE workspace_id = $1 AND deleted_at IS NULL ORDER BY handle`,
+    [workspace_id],
+  );
+  return r.rows;
+}
+
+/** What the owner pastes into the repository, shown once with the token. */
+export function projectTokenInstallHint(workspaceHandle: string, fullToken: string): string {
+  return [
+    "Save this token now; it is shown once and cannot be recovered.",
+    "",
+    "Commit it to the repository at `.doco/project-tokens.json`:",
+    "",
+    "```json",
+    "{",
+    `  "${workspaceHandle}": "${fullToken}"`,
+    "}",
+    "```",
+    "",
+    "The Doco hook and the agents that clone the repository then read every doco in the workspace with it, with no OAuth. Any request may also send it as `Authorization: Bearer <token>`.",
+    "",
+    "Revoke it from the workspace's project tokens page when the repository's read access changes.",
+  ].join("\n");
 }

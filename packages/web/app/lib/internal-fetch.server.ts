@@ -128,8 +128,8 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.graph-edge-details[.]json"),
   },
   {
-    pattern: "/:docoHandle/api/project-tokens.json",
-    load: () => import("~/routes/$docoHandle.api.project-tokens[.]json"),
+    pattern: "/api/v1/workspaces/:workspaceHandle/project-tokens.json",
+    load: () => import("~/routes/api.v1.workspaces.$workspaceHandle.project-tokens[.]json"),
   },
   {
     pattern: "/:docoHandle/api/github.json",

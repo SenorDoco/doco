@@ -235,7 +235,24 @@ export default function WorkspaceSettings({
           </Card>
         </section>
 
-        <aside className="min-w-0">
+        <aside className="min-w-0 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Project tokens</CardTitle>
+              <CardDescription>
+                A committable, read-only token lets the agents that clone a repository, and the Doco
+                hook, read every doco in this workspace without OAuth.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link
+                to={`/workspaces/${workspace.handle}/project-tokens`}
+                className="text-sm text-primary hover:underline"
+              >
+                Manage project tokens →
+              </Link>
+            </CardContent>
+          </Card>
           <Card className="border-destructive/40">
             <CardHeader>
               <CardTitle className="text-base text-destructive">Danger zone</CardTitle>

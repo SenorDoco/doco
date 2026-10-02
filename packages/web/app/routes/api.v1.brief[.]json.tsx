@@ -10,8 +10,8 @@
 // text rendering alone.
 //
 // Auth: a signed-in principal (cookie session or OAuth bearer, narrowed to the
-// token's workspace boundary) or a project token (its one Doco). 401 when
-// none resolves. Each brief is one query of the workspace in the query log,
+// token's workspace boundary) or a project token (every live Doco of its
+// workspace). 401 when none resolves. Each brief is one query of the workspace in the query log,
 // with the brief's id, what it served and how long each step took.
 
 import { withClient } from "@doco/db";
@@ -22,7 +22,11 @@ import { DEFAULT_BRIEF_BUDGET, renderBriefText } from "~/lib/brief/brief";
 import { type BriefRequest, composeBrief } from "~/lib/brief/brief.server";
 import { listVisibleDocoIdsForRequest } from "~/lib/doco-access.server";
 import { buildBriefDisplay } from "~/lib/indicator-lines";
-import { isProjectToken, validateProjectToken } from "~/lib/project-tokens.server";
+import {
+  isProjectToken,
+  queryProjectTokenDocos,
+  validateProjectToken,
+} from "~/lib/project-tokens.server";
 import { recordQuery } from "~/lib/query-log.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
@@ -77,12 +81,15 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
   let docoIds = projectToken
-    ? [projectToken.doco_id]
+    ? []
     : await listVisibleDocoIdsForRequest(request, (me as { id: string }).id);
 
   const viewer = me ? await loadAgentDisplayIdentity(request) : null;
   const origin = getPublicBaseUrl(request);
   const { brief, workspaceIds } = await withClient(async (c) => {
+    if (projectToken) {
+      docoIds = (await queryProjectTokenDocos(c, projectToken.workspace_id)).map((d) => d.id);
+    }
     if (params.workspace && docoIds.length > 0) {
       docoIds = (
         await c.query<{ id: string }>(

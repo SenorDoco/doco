@@ -8,6 +8,7 @@
 import { type DocoRole, getWorkspaceRole, withClient } from "@doco/db";
 import { type ReadableWorkspaceDoco, listReadableDocosInWorkspace } from "./doco-access.server";
 import { createDocoInWorkspace } from "./redeem.server";
+import { type CurrentPrincipal, getCurrentPrincipalAsync } from "./session.server";
 
 export interface MyWorkspaceRow {
   id: string;
@@ -154,4 +155,27 @@ export async function ensureWorkspaceDoco(opts: {
     autoSuffix: true,
   });
   return { id: created.docoId, handle: created.handle, visibility: "private" };
+}
+
+/**
+ * The workspace behind a handle and the caller as one of its owners, for the
+ * pages and APIs only owners may use; otherwise the status and the reason.
+ */
+export async function loadWorkspaceForOwner(
+  request: Request,
+  workspaceHandle: string,
+): Promise<
+  | { ok: true; workspace: WorkspacePublicRow; me: CurrentPrincipal }
+  | { ok: false; status: 401 | 403 | 404; error: string }
+> {
+  const workspace = await resolveWorkspaceByHandle(workspaceHandle);
+  if (!workspace) {
+    return { ok: false, status: 404, error: `Workspace "${workspaceHandle}" not found.` };
+  }
+  const me = await getCurrentPrincipalAsync(request);
+  if (!me) return { ok: false, status: 401, error: "Sign in to manage this workspace." };
+  if ((await getWorkspaceRole(workspace.id, me.id)) !== "owner") {
+    return { ok: false, status: 403, error: "Only workspace owners can manage project tokens." };
+  }
+  return { ok: true, workspace, me };
 }

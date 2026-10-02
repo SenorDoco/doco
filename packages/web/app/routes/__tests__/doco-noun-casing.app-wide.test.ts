@@ -25,10 +25,11 @@ describe("doco noun is lowercase app-wide (brand + sentence-initial stay capital
   });
 
   it("project tokens page", () => {
-    const src = read("$docoHandle.project-tokens.tsx");
-    expect(src).toContain("read-only credential for this doco");
-    expect(src).toContain("only the doco's owner");
+    const src = read("workspaces.$workspaceHandle.project-tokens.tsx");
+    expect(src).toContain("every doco in this workspace");
+    expect(src).toContain("Only workspace owners");
     expect(src).not.toContain("this Doco");
+    expect(src).not.toContain("every Doco");
   });
 
   it("device authorization page", () => {
