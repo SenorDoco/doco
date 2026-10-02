@@ -89,8 +89,9 @@ describe("agentInstructions", () => {
     expect(position("Do step 3 when the project's copy of this block is missing")).toBeLessThan(
       position("### 1. Check the Doco connection"),
     );
+    // A copy from before versions starts `<!-- doco:begin -->`: outdated.
     expect(text).toContain(
-      "version differs from the one Doco's connector sent (or, without it, https://doco.test/agents)",
+      "is missing, has no version, or its `doco:begin` version differs from the one Doco's connector sent (else https://doco.test/agents)",
     );
     expect(text.slice(keep)).toContain(
       "replacing any older copy between the markers, then tell the user",

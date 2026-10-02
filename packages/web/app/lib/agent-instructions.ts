@@ -36,8 +36,27 @@ export const AGENT_INSTRUCTIONS_PATH = "/agents";
 export const AI_INSTRUCTIONS_META = `This site is Doco: ${TAGLINE}. If you were told 'let's start using Doco' or similar, follow the agent instructions at ${AGENT_INSTRUCTIONS_PATH}.`;
 
 export function agentInstructions(baseUrl: string): string {
+  return `<!-- doco:begin v${agentInstructionsVersion(baseUrl)} -->\n${block(baseUrl)}`;
+}
+
+/** The version on the block's begin marker. */
+export function agentInstructionsVersion(baseUrl: string): string {
+  return version(block(baseUrl));
+}
+
+/**
+ * The line doco_search's description carries: every MCP client shows tool
+ * descriptions to the agent, even one that drops the server's instructions,
+ * so an install that never saw the block's current version still meets it.
+ */
+export function agentInstructionsPointer(baseUrl: string): string {
   const host = baseUrl.replace(/\/+$/, "");
-  const block = `## Doco
+  return `The current Doco agent instructions are version v${agentInstructionsVersion(host)}. If the project's copy of them is missing, has no version or has another, fetch ${host}${AGENT_INSTRUCTIONS_PATH} and follow its step 3.`;
+}
+
+function block(baseUrl: string): string {
+  const host = baseUrl.replace(/\/+$/, "");
+  return `## Doco
 
 This project keeps its shared memory in Doco (${host}): the intents, decisions, rules and history behind the work. Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.
 
@@ -54,7 +73,7 @@ A doco is the project's record; write what was decided, by whom and why, in the 
 
 Before every reply, recall: \`${DOCO_REMINDER}\`
 
-Do step 3 when the project's copy of this block is missing or its \`doco:begin\` version differs from the one Doco's connector sent (or, without it, ${host}${AGENT_INSTRUCTIONS_PATH}), or when a client with hooks lacks the reminder hook.
+Do step 3 when the project's copy of this block is missing, has no version, or its \`doco:begin\` version differs from the one Doco's connector sent (else ${host}${AGENT_INSTRUCTIONS_PATH}), or when a client with hooks lacks the reminder hook.
 
 ### 1. Check the Doco connection
 
@@ -86,7 +105,6 @@ When the work needs a Doco the workspace lacks, create it with \`doco_create\` i
 Save this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), replacing any older copy between the markers, then tell the user. In the project's shared settings, add a hook that adds the reminder above as context before each user message (Claude Code and Codex: UserPromptSubmit; Gemini CLI: BeforeAgent).
 ${INSTRUCTIONS_END}
 `;
-  return `<!-- doco:begin v${version(block)} -->\n${block}`;
 }
 
 /** FNV-1a: eight hex digits that change whenever the text does. */

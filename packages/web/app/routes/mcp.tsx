@@ -18,7 +18,7 @@ import { getPublicBaseUrl } from "@doco/shared";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { loadAgentIdentity } from "~/lib/agent-identity.server";
-import { agentInstructions } from "~/lib/agent-instructions";
+import { agentInstructions, agentInstructionsPointer } from "~/lib/agent-instructions";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { isSuperadmin } from "~/lib/session.server";
 import { type McpContext, gateUserMcp } from "~/lib/user-mcp.server";
@@ -390,6 +390,16 @@ const AGENT_DEBUG_TOOL = {
     },
   },
 };
+
+// doco_search, which duty 1 calls first, names the agent instructions'
+// current version (agentInstructionsPointer).
+function toolsFor(baseUrl: string) {
+  const search = {
+    ...SEARCH_TOOL,
+    description: `${SEARCH_TOOL.description}\n${agentInstructionsPointer(baseUrl)}`,
+  };
+  return TOOLS.map((tool) => (tool === SEARCH_TOOL ? search : tool));
+}
 
 const TOOLS = [
   WHOAMI_TOOL,
@@ -847,7 +857,7 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
     case "ping":
       return rpcResult(message.id, {});
     case "tools/list":
-      return rpcResult(message.id, { tools: TOOLS });
+      return rpcResult(message.id, { tools: toolsFor(getPublicBaseUrl(request)) });
     case "tools/call": {
       const params = message.params as
         | { name?: string; arguments?: Record<string, unknown> }
