@@ -228,6 +228,9 @@ export default [
   // credential. Powers the post-auth "Authenticated as…" summary that the
   // stdio MCP server renders (agent-identity.server.ts).
   route("api/v1/whoami.json", "routes/api.v1.whoami[.]json.tsx"),
+  // The Doco brief: what an agent must know before it acts, across every Doco
+  // it can read (lib/brief). The MCP tool doco_brief delegates here.
+  route("api/v1/brief.json", "routes/api.v1.brief[.]json.tsx"),
   route("api/v1/feedback-reports.json", "routes/api.v1.feedback-reports[.]json.tsx"),
   // Inbound GitHub App webhook (pull_request events → Reference upserts).
   route("api/github/webhook", "routes/api.github.webhook.tsx"),

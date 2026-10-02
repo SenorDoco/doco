@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Doco: search the workspace before answering, capture each decision as it forms, and log this chat in Agents chats.'"
+            "command": "echo 'Doco: doco_brief before you act, capture each decision as it forms, and log this chat in Agents chats.'"
           }
         ]
       }
