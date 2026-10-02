@@ -26,21 +26,26 @@ export function meta() {
 
 export default function Home() {
   return (
-    <main className="px-6 py-12 md:py-16">
-      <div className="mx-auto flex max-w-3xl flex-col gap-12">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <h1 className="sr-only">Doco</h1>
-          <DocoMark height={72} />
-          <p className="text-2xl font-bold leading-tight md:text-3xl">{TAGLINE}</p>
-          <Link
-            to="/sign-up"
-            className="neu-button mt-4 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground hover:opacity-90"
-          >
-            Get started
-          </Link>
-          <p className="text-sm text-muted-foreground">It takes just one minute</p>
+    <main className="px-6 pb-16">
+      {/* Alexander, 2026-10-02: the same visible gap (48px) between the
+          header and the logo, the headline and Get started, and Get started
+          and How Doco works. Each margin is 48px less the air its element
+          already shows: 4px atop the logo's artwork, the headline's line
+          box below its text, and the caption's below "minute". */}
+      <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+        <h1 className="sr-only">Doco</h1>
+        <DocoMark height={72} className="mt-11" />
+        <p className="mt-3 text-2xl font-bold leading-tight md:text-3xl">{TAGLINE}</p>
+        <Link
+          to="/sign-up"
+          className="neu-button mt-10 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground hover:opacity-90"
+        >
+          Get started
+        </Link>
+        <p className="mt-2 text-sm text-muted-foreground">It takes just one minute</p>
+        <div className="mt-10.5 w-full">
+          <HowDocoWorks />
         </div>
-        <HowDocoWorks />
       </div>
     </main>
   );

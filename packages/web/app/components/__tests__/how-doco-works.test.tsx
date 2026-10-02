@@ -11,10 +11,12 @@ function render(): string {
 }
 
 describe("How Doco works", () => {
-  it("is titled as big as the home page headline", () => {
+  // Alexander, 2026-10-02: the headline-sized title was too big; it sits a
+  // step below the headline (text-2xl/3xl).
+  it("is titled a step smaller than the home page headline", () => {
     const html = render();
     expect(html).toMatch(
-      /<h2[^>]*class="text-2xl font-bold leading-tight md:text-3xl"[^>]*>How Doco works:<\/h2>/,
+      /<h2[^>]*class="text-lg font-bold leading-tight md:text-xl"[^>]*>How Doco works:<\/h2>/,
     );
   });
 
