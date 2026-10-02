@@ -227,6 +227,31 @@ export function renderItem(item: Omit<BriefItem, "detail">, detail: BriefItem["d
   return lines.join("\n");
 }
 
+/** Items the synthesis reads, and the characters of each it sees. */
+export const SYNTHESIS_ITEMS = 12;
+export const SYNTHESIS_ITEM_CHARS = 400;
+
+/**
+ * What the synthesis model reads: the ask and the first items, each cut to
+ * its gist and without its URL. The brief itself may run to its whole budget;
+ * the paragraph only has to name what binds and what is in motion.
+ */
+export function synthesisPrompt(
+  about: string,
+  items: readonly Omit<BriefItem, "detail">[],
+): string {
+  const body = items
+    .slice(0, SYNTHESIS_ITEMS)
+    .map((item) => {
+      const text = item.text.trim();
+      const cut =
+        text.length > SYNTHESIS_ITEM_CHARS ? `${text.slice(0, SYNTHESIS_ITEM_CHARS - 1)}…` : text;
+      return renderItem({ ...item, text: cut, url: null }, "expanded");
+    })
+    .join("\n");
+  return `The agent is about to: ${about || "(not said)"}\n\nItems:\n${body}`;
+}
+
 /**
  * Fill the budget in tier order. Must-obey items are always served expanded;
  * the rest go expanded until EXPANDED_SHARE of the budget is used, then

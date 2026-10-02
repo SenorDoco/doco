@@ -34,6 +34,10 @@ import { action as createDocoAction } from "./api.v1.docos[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
+// doco_brief embeds, reranks and synthesizes with models: past the platform's
+// default seconds.
+export const config = { maxDuration: 60 };
+
 const SERVER_VERSION = "1.0.0-workspace";
 
 const BRIEF_TOOL = {
@@ -79,7 +83,8 @@ const BRIEF_TOOL = {
       },
       workspace: {
         type: "string",
-        description: "Handle of one workspace to brief from (default: every Doco you can read).",
+        description:
+          "The project's workspace handle (the `Doco workspace:` line of its AGENTS.md): its charter and rules bind. Default: every Doco you can read.",
       },
       rerank: {
         type: "boolean",

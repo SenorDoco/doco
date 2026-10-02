@@ -13,7 +13,7 @@ const MODEL = "test:model";
 const ORIGIN = "https://doco.test";
 const NOW = new Date("2026-10-02T12:00:00Z");
 const DAY = 86_400_000;
-const SCOPE = { docoIds: ["doco_dec", "doco_glossary", "doco_prs"], origin: ORIGIN };
+const SCOPE = { docoIds: ["doco_dec", "doco_glossary", "doco_prs", "doco_beta"], origin: ORIGIN };
 
 let c: BriefClient;
 
@@ -31,8 +31,9 @@ const OFF: BriefDeps = {
 beforeEach(async () => {
   const db = await freshDb();
   await db.exec(`
-    INSERT INTO workspaces (id, handle, name, constitution)
-      VALUES ('workspace_1', 'acme', 'Acme', 'Ship small pull requests.');
+    INSERT INTO workspaces (id, handle, name, constitution) VALUES
+      ('workspace_1', 'acme', 'Acme', 'Ship small pull requests.'),
+      ('workspace_2', 'beta', 'Beta', 'Cite the ticket.');
     INSERT INTO docos (id, handle, owner_id, workspace_id, goal, data) VALUES
       ('doco_dec', 'decisions', 'workspace_1', 'workspace_1', 'What was decided and why.',
          '{"template_handle":"product-decisions"}'::jsonb),
@@ -40,7 +41,8 @@ beforeEach(async () => {
          '{"template_handle":"glossary"}'::jsonb),
       ('doco_prs', 'prs', 'workspace_1', 'workspace_1', '',
          '{"template_handle":"github-pull-requests"}'::jsonb),
-      ('doco_other', 'other', 'workspace_1', 'workspace_1', '', '{}'::jsonb);
+      ('doco_other', 'other', 'workspace_1', 'workspace_1', '', '{}'::jsonb),
+      ('doco_beta', 'beta', 'workspace_2', 'workspace_2', '', '{}'::jsonb);
     INSERT INTO policies (id, doco_id, kind, data) VALUES
       ('policy_1', 'doco_dec', 'suggestion',
          '{"predicate":{"agent_instruction":"Name the alternatives that lost."}}'::jsonb);
@@ -92,6 +94,8 @@ beforeEach(async () => {
     "doco_other",
     "A decision the caller cannot read, in search.server.ts.",
   );
+  await node("rule_beta", "doco_beta", "Open a ticket first.", { daysAgo: 25 });
+  await node("decision_beta", "doco_beta", "Keep app/beta.ts free of side effects.");
   await db.query(
     `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type) VALUES
        ('edge_1', 'doco_dec', 'derived_from', 'decision_hybrid', 'decision', 'idea_brief', 'idea'),
@@ -184,7 +188,40 @@ describe("composeBrief", () => {
       "Nothing in Doco names app/nowhere.ts.",
       "No decision mentions what you touch.",
     ]);
-    expect(ids(brief, "must_obey")).toEqual(["workspace_1", "rule_small"]);
+    // Nothing matched anywhere: the standing orders of every workspace it reads.
+    expect(ids(brief, "must_obey")).toEqual([
+      "workspace_1",
+      "workspace_2",
+      "rule_beta",
+      "rule_small",
+    ]);
+  });
+
+  // In production (2026-10-02) a brief across several workspaces opened with
+  // every one of their constitutions. The charter and rules that bind are
+  // those of the workspace the agent works in: the target's, else the ones
+  // its matches come from.
+  it("binds the charter and rules of the workspace it works in, not of every workspace it reads", async () => {
+    const beta = await composeBrief(c, SCOPE, { about: "", touching: ["app/beta.ts"] }, OFF);
+    expect(ids(beta, "must_obey")).toEqual(["workspace_2", "rule_beta", "decision_beta"]);
+    expect(beta.items.find((i) => i.id === "workspace_2")?.text).toBe("Cite the ticket.");
+    expect(beta.gaps).toEqual([]);
+
+    const targeted = await composeBrief(
+      c,
+      SCOPE,
+      { about: "", touching: ["app/beta.ts"], target: "decisions" },
+      OFF,
+    );
+    expect(ids(targeted, "must_obey")).toEqual([
+      "workspace_1",
+      "workspace_2",
+      "doco_dec",
+      "policy_1",
+      "rule_beta",
+      "rule_small",
+      "decision_beta",
+    ]);
   });
 
   it("keeps the first tier whole and holds the rest back when the budget is small", async () => {

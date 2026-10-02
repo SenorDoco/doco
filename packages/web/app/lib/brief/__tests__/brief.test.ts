@@ -9,6 +9,7 @@ import {
   parseTouching,
   renderBriefText,
   renderItem,
+  synthesisPrompt,
   tierOf,
   tokensOf,
 } from "../brief";
@@ -152,6 +153,32 @@ describe("fillBudget", () => {
     const { served, held_back } = fillBudget(items, 1, 0);
     expect(served.map((i) => i.id)).toEqual(["rule_1"]);
     expect(held_back).toBe(3);
+  });
+});
+
+describe("synthesisPrompt", () => {
+  // In production (2026-10-02) the synthesis took six seconds over twenty
+  // expanded items: the model reads the gist of a dozen, and no URLs.
+  it("gives the model the ask and the first items, each cut short, without URLs", () => {
+    const items = Array.from({ length: 15 }, (_, i) => ({
+      ...candidate({ id: `decision_${i}`, text: "y".repeat(1000), url: "https://doco.test/d" }),
+      tier: "decided" as const,
+      summary: "Summary",
+      because: "because",
+    }));
+    const prompt = synthesisPrompt("add a route", items);
+    expect(prompt.split("\n").slice(0, 6)).toEqual([
+      "The agent is about to: add a route",
+      "",
+      "Items:",
+      "- decision_0 (decisions · active) — Summary",
+      "  because: because",
+      `  ${"y".repeat(399)}…`,
+    ]);
+    expect(prompt).toContain("- decision_11 ");
+    expect(prompt).not.toContain("- decision_12 ");
+    expect(prompt).not.toContain("https://doco.test/d");
+    expect(synthesisPrompt("", [])).toBe("The agent is about to: (not said)\n\nItems:\n");
   });
 });
 
