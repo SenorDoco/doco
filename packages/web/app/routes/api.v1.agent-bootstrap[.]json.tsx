@@ -47,9 +47,9 @@ import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
   // Project-token bearers get a focused bootstrap: principal=null,
-  // oauth_grant=null, a project_token_grant marker, and policies for
-  // the single Doco the token is scoped to. This is the read-only
-  // committed-credential path — distinct from the per-user OAuth flow.
+  // oauth_grant=null, a project_token_grant marker, and the policies of
+  // the workspace the token reads. This is the read-only
+  // committed-credential path, distinct from the per-user OAuth flow.
   const projectToken = await getProjectTokenFromRequest(request);
   if (projectToken) {
     const { docoPolicies, workspaceConstitutions } =
@@ -59,7 +59,7 @@ export async function loader({ request }: { request: Request }) {
         origin: new URL(request.url).origin,
         principal: null,
         oauthGrant: null,
-        projectTokenGrant: { doco_id: projectToken.doco_id, role: "reader" },
+        projectTokenGrant: { workspace_id: projectToken.workspace_id, role: "reader" },
         docoPolicies,
         workspaceConstitutions,
       }),

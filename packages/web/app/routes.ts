@@ -38,6 +38,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  *   /workspaces/<workspace-handle>/onboarding  the steps' one-click actions (POST) and where they stand (GET, polled)
  *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
+ *   /workspaces/<workspace-handle>/project-tokens  committable read-only tokens for the workspace (owner only)
  *   /<doco-handle>                 per-Doco recent + search input (a codebase or Notion Doco redirects to its reader)
  *   /<doco-handle>/code/<owner>/<repo>/<path>  codebase reader: repositories, a folder, a file (?q= searches)
  *   /<doco-handle>/pages/<page-id>  Notion reader: home, a page (?q= searches)
@@ -154,6 +155,14 @@ export default [
     "routes/workspaces.$workspaceHandle.onboarding.tsx",
   ),
   route("workspaces/:workspaceHandle/settings", "routes/workspaces.$workspaceHandle.settings.tsx"),
+  route(
+    "workspaces/:workspaceHandle/project-tokens",
+    "routes/workspaces.$workspaceHandle.project-tokens.tsx",
+  ),
+  route(
+    "api/v1/workspaces/:workspaceHandle/project-tokens.json",
+    "routes/api.v1.workspaces.$workspaceHandle.project-tokens[.]json.tsx",
+  ),
   route(
     "workspaces/:workspaceHandle/integrations",
     "routes/workspaces.$workspaceHandle.integrations.tsx",
@@ -312,8 +321,6 @@ export default [
   route(":docoHandle/policies/:policyId/edit", "routes/$docoHandle.policies.$policyId.edit.tsx"),
   route(":docoHandle/invites", "routes/$docoHandle.invites.tsx"),
   route(":docoHandle/api/invites.json", "routes/$docoHandle.api.invites[.]json.tsx"),
-  route(":docoHandle/project-tokens", "routes/$docoHandle.project-tokens.tsx"),
-  route(":docoHandle/api/project-tokens.json", "routes/$docoHandle.api.project-tokens[.]json.tsx"),
   // Visualization perspectives — tabs above the overview body.
   // Picker page lists builtin + user-owned perspectives; the API
   // route handles attach/detach/set-default form posts. Both must

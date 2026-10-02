@@ -558,33 +558,34 @@ error="insufficient_scope"\`. The operation→role table:
 
 ## Project tokens — committable, read-only, no OAuth
 
-OAuth tokens are per-user secrets. Some Docos don't need per-user
-secrets: when the Doco's contents are OK to be readable by anyone
-who can read the repo, the Doco's **owner** can mint a "project
-token" and commit it to the repo. Any agent cloning the repo then
-reads the Doco without OAuth.
+OAuth tokens are per-user secrets. A project maps to one workspace,
+and when every doco in that workspace may be read by anyone who can
+read the project's repository, a workspace **owner** can mint a
+"project token" and commit it to the repository. The Doco hook and
+any agent cloning the repository then read the workspace without
+OAuth.
 
 ### When to suggest this to the user
 
 After completing OAuth once, mention it as one of two options for
 avoiding the auth dance on every fresh container / new clone (the
 other is setting \`DOCO_ACCESS\` as a runtime environment variable).
-Don't make the choice for the
-user — surface both, let them pick.
+Don't make the choice for the user — surface both, let them pick.
 
-### Mint flow (Doco owner only, requires explicit confirmation)
+### Mint flow (workspace owner only, requires explicit confirmation)
 
-1. Open \`${baseUrl}/<handle>/project-tokens\`.
-2. Check the "You understand that anyone with read access to a repo
-   where this token is committed will be able to read this doco" box.
-   The mint button stays disabled until you do.
+1. Open \`${baseUrl}/workspaces/<workspace-handle>/project-tokens\`.
+2. Check the box acknowledging that anyone with read access to a
+   repository where this token is committed will be able to read
+   every doco in the workspace. The mint button stays disabled until
+   you do.
 3. Click "Mint project token". The full token body is shown
    **once** — copy it now. The page never displays the body again.
 
 The API equivalent:
 
 \`\`\`
-POST ${baseUrl}/<handle>/api/project-tokens.json
+POST ${baseUrl}/api/v1/workspaces/<workspace-handle>/project-tokens.json
 Authorization: Bearer doco_at_<owner's-oauth-token>
 Content-Type: application/json
 
@@ -607,26 +608,26 @@ Save the token at \`.doco/project-tokens.json\` in the repo root:
 
 \`\`\`json
 {
-  "<doco-handle>": "doco_pt_<token>"
+  "<workspace-handle>": "doco_pt_<token>"
 }
 \`\`\`
 
-Commit and push. Any agent that clones the repo and runs the
-bundled MCP server (\`.agents/doco-mcp-server.mjs\`) will use this
-token automatically when no \`DOCO_ACCESS\` is set in \`.env\`.
+Commit and push. The Doco hook reads it from there when no
+\`DOCO_TOKEN\` is set in the environment.
 
 ### Use it
 
 \`\`\`
-GET ${baseUrl}/<handle>/search.json?q=<query>
+GET ${baseUrl}/api/v1/brief.json?about=<what you are about to do>
 Authorization: Bearer doco_pt_<token>
 \`\`\`
 
-The token is fixed at **reader** role on exactly one Doco. Writes
-(POST/PATCH/DELETE) fail with HTTP 403 \`insufficient_scope\`. The
-bootstrap (\`GET /api/v1/agent-bootstrap.json\`) returns
-the Doco's policies with \`principal: null\` and a
-\`project_token_grant: { doco_id, role: "reader" }\` marker so
+The token is fixed at **reader** role on every live doco of one
+workspace. Writes (POST/PATCH/DELETE) fail with HTTP 403
+\`insufficient_scope\`. The bootstrap
+(\`GET /api/v1/agent-bootstrap.json\`) returns the workspace's
+constitution and its docos' policies with \`principal: null\` and a
+\`project_token_grant: { workspace_id, role: "reader" }\` marker so
 agents know which path they're on.
 
 ### Revoke
@@ -634,7 +635,7 @@ agents know which path they're on.
 Same page or:
 
 \`\`\`
-DELETE ${baseUrl}/<handle>/api/project-tokens.json?id=<8-char-suffix>
+DELETE ${baseUrl}/api/v1/workspaces/<workspace-handle>/project-tokens.json?id=<8-char-suffix>
 Authorization: Bearer doco_at_<owner's-oauth-token>
 \`\`\`
 

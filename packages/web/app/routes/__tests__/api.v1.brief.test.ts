@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listVisibleDocoIdsForRequest: vi.fn(),
   isProjectToken: vi.fn(),
   validateProjectToken: vi.fn(),
+  queryProjectTokenDocos: vi.fn(),
   loadAgentDisplayIdentity: vi.fn(),
   recordQuery: vi.fn(),
   waitUntil: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("~/lib/doco-access.server", () => ({
 vi.mock("~/lib/project-tokens.server", () => ({
   isProjectToken: mocks.isProjectToken,
   validateProjectToken: mocks.validateProjectToken,
+  queryProjectTokenDocos: mocks.queryProjectTokenDocos,
 }));
 vi.mock("~/lib/agent-identity.server", () => ({
   loadAgentDisplayIdentity: mocks.loadAgentDisplayIdentity,
@@ -169,14 +171,16 @@ describe("GET /api/v1/brief.json", () => {
     expect(mocks.composeBrief.mock.calls[0][1].docoIds).toEqual(["doco_2"]);
   });
 
-  it("gives a project token its one Doco, with no actor", async () => {
+  it("gives a project token every Doco of its workspace, with no actor", async () => {
     mocks.extractBearer.mockReturnValue("doco_pt_x");
     mocks.isProjectToken.mockReturnValue(true);
-    mocks.validateProjectToken.mockResolvedValue({ doco_id: "doco_9" });
+    mocks.validateProjectToken.mockResolvedValue({ workspace_id: "workspace_9" });
+    mocks.queryProjectTokenDocos.mockResolvedValue([{ id: "doco_9" }, { id: "doco_10" }]);
     const res = await get("about=x", { authorization: "Bearer doco_pt_x" });
     expect(res.status).toBe(200);
     expect(mocks.getCurrentPrincipalAsync).not.toHaveBeenCalled();
-    expect(mocks.composeBrief.mock.calls[0][1].docoIds).toEqual(["doco_9"]);
+    expect(mocks.queryProjectTokenDocos.mock.calls[0][1]).toBe("workspace_9");
+    expect(mocks.composeBrief.mock.calls[0][1].docoIds).toEqual(["doco_9", "doco_10"]);
     expect(mocks.recordQuery.mock.calls[0][2]).toBeNull();
     expect((await res.json()).display.found).toContain("[🔮 Doco] briefed");
   });

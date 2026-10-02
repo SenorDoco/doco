@@ -814,13 +814,12 @@ export async function loadDocoForRead(
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
 
-  // Project-token short-circuit. Project tokens are Doco-scoped, fixed
-  // at reader role, and do not carry a user identity — so the
-  // standard "validate-bearer then check principal access" path does
-  // not apply. Resolve and gate them here before falling through to
-  // the OAuth/cookie path.
+  // Project-token short-circuit. A project token reads every Doco of one
+  // workspace at reader role and carries no user identity, so the standard
+  // "validate-bearer then check principal access" path does not apply.
+  // Resolve and gate it here before falling through to the OAuth/cookie path.
   const projectTokenResult = await tryProjectTokenAccess(request, {
-    docoId: row.id,
+    workspaceId: row.workspace_id,
     minRole,
   });
   if (projectTokenResult.handled) {
@@ -880,7 +879,7 @@ export async function loadDocoForRead(
  */
 async function tryProjectTokenAccess(
   request: Request,
-  args: { docoId: string; minRole: DocoRole },
+  args: { workspaceId: string; minRole: DocoRole },
 ): Promise<{ handled: boolean; token?: ProjectToken }> {
   const bearer = extractBearer(request);
   if (!bearer || !isProjectToken(bearer)) return { handled: false };
@@ -901,11 +900,11 @@ async function tryProjectTokenAccess(
       },
     );
   }
-  if (token.doco_id !== args.docoId) {
+  if (token.workspace_id !== args.workspaceId) {
     throw new Response(
       JSON.stringify({
         kind: "access_denied",
-        error: "Project token is scoped to a different Doco.",
+        error: "Project token is scoped to a different workspace.",
       }),
       { status: 403, headers: { "Content-Type": "application/json" } },
     );

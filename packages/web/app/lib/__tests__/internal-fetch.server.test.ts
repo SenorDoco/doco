@@ -20,7 +20,7 @@ describe("internalFetch route registry", () => {
       "/api/v1/agent-chat/conversations.json",
       "/api/v1/agent-chat/conversation/conv_01TEST.json",
       "/api/v1/agent-chat/attachments/attachment_01TEST",
-      "/demo/api/project-tokens.json",
+      "/api/v1/workspaces/acme/project-tokens.json",
       "/demo/api/github.json",
       "/demo/api/edges.json",
       "/demo/api/edges/edge_01TEST.json",
