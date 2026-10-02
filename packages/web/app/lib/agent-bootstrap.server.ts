@@ -58,20 +58,26 @@ export interface BootstrapManifest {
 }
 
 export async function loadPolicyArticles(docoId: string): Promise<PolicyArticle[]> {
-  const rows = await withClient((c) =>
-    c.query<{
-      id: string;
-      kind: string | null;
-      data: Record<string, unknown> | null;
-      lifecycle: string | null;
-    }>(
-      `SELECT id, kind, data, lifecycle
-         FROM policies
-        WHERE doco_id = $1
-          AND COALESCE(lifecycle, 'active') = 'active'
-        ORDER BY created_at DESC`,
-      [docoId],
-    ),
+  return withClient((c) => queryPolicyArticles(c, docoId));
+}
+
+/** The active policies of one Doco as articles, read on the given client. */
+export async function queryPolicyArticles(
+  c: { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> },
+  docoId: string,
+): Promise<PolicyArticle[]> {
+  const rows = await c.query<{
+    id: string;
+    kind: string | null;
+    data: Record<string, unknown> | null;
+    lifecycle: string | null;
+  }>(
+    `SELECT id, kind, data, lifecycle
+       FROM policies
+      WHERE doco_id = $1
+        AND COALESCE(lifecycle, 'active') = 'active'
+      ORDER BY created_at DESC`,
+    [docoId],
   );
   return rows.rows.map((row) => {
     const predicate = (row.data?.predicate ?? null) as PolicyPredicate | null;
