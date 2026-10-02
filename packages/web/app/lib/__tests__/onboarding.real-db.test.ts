@@ -146,6 +146,27 @@ describe("onboarding steps", () => {
     ]);
   });
 
+  it("counts the other sources as done once an agent writes in the workspace", async () => {
+    await startOnboarding(c, { ...ana, joinedAs: "creator" });
+    await agentWrites("doco_decisions", "user_bo", "ui");
+    expect((await steps(ana))?.[1]).toEqual(["sources", false]);
+    await agentWrites("doco_decisions", "user_bo", "mcp");
+    expect(await steps(ana)).toEqual([
+      ["github", false],
+      ["sources", true],
+      ["agent", false],
+    ]);
+  });
+
+  it("counts the other sources as done once an agent reads the workspace", async () => {
+    await db.query("INSERT INTO query_events (workspace_id, actor, source) VALUES ($1, $2, $3)", [
+      "workspace_acme",
+      "user_bo",
+      "api",
+    ]);
+    expect((await steps(ana))?.[1]).toEqual(["sources", true]);
+  });
+
   it("finishes the agent step once the person's agent writes into Agents chats", async () => {
     await startOnboarding(c, { ...bo, joinedAs: "invitee" });
     await agentWrites("doco_chats", "user_bo", "mcp");
