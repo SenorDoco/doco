@@ -1,15 +1,9 @@
 // /workspaces/:workspaceHandle/onboarding — what the steps on a workspace's
 // page post to, each a single click, and (GET) where they stand, which the
-// page polls while it waits for the person's agent.
+// page polls while it waits for the person's agent. Connecting GitHub isn't
+// here: that step posts to the GitHub setup (/integrations/github), which asks
+// which repositories to bring.
 //
-//   intent=github              creates the workspace's GitHub Docos (pull
-//                              requests, bugs, codebase), then goes to GitHub
-//                              to approve Doco's App; GitHub sends the person
-//                              back with every repository it granted importing
-//                              (api.github.setup, `connectAll`).
-//   intent=github installation=<id>
-//                              the same for an account Doco already reaches:
-//                              connects it whole, no trip to GitHub.
 //   intent=source integration=<id>
 //                              creates the source's Doco and goes to approve
 //                              the copy (Slack, Notion), coming back here.
@@ -18,24 +12,13 @@
 // Every outcome redirects to the workspace page; a refusal rides along as
 // ?onboarding=<reason> for the steps to explain.
 import { getWorkspaceRole, withClient } from "@doco/db";
-import { waitUntil } from "@vercel/functions";
 import { redirect } from "react-router";
-import { listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
-import {
-  buildInstallUrl,
-  connectPicked,
-  listGitHubInstallationChoicesForDocos,
-  pickConnections,
-} from "~/lib/github-connection.server";
-import { GITHUB_IMPORTS } from "~/lib/github-imports";
-import { ensureImportDocos } from "~/lib/github-setup.server";
 import { KNOWLEDGE_SOURCE_INTEGRATIONS } from "~/lib/integrations-catalog";
 import { KNOWLEDGE_SOURCE_CONNECTORS } from "~/lib/knowledge-sources.server";
 import { pendingStep } from "~/lib/onboarding-steps";
 import { finishSourcesStep, loadOnboardingProgress } from "~/lib/onboarding.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { ensureWorkspaceDoco, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
-import { kickBackfillRun } from "./api.github.backfill-run";
 
 type RouteArgs = { request: Request; params: { workspaceHandle: string } };
 
@@ -73,26 +56,6 @@ export async function action(args: RouteArgs): Promise<Response> {
 
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-
-  if (intent === "github") {
-    const targets = await ensureImportDocos({ workspace, imports: GITHUB_IMPORTS, userId: me.id });
-    const docoIds = targets.map((t) => t.doco.id);
-    const installation = String(form.get("installation") ?? "");
-    if (!installation) {
-      const url = buildInstallUrl({ userId: me.id, docoIds, next: home, connectAll: true });
-      return url ? redirect(url) : refused("github_unavailable");
-    }
-    const picked = pickConnections(
-      await listGitHubInstallationChoicesForDocos(await listAccessibleDocoIdsForPrincipal(me.id)),
-      { repos: [], installations: [installation] },
-    );
-    if ("error" in picked) return refused("github_failed");
-    const origin = new URL(request.url).origin;
-    for (const docoId of docoIds) {
-      if (await connectPicked(docoId, picked)) waitUntil(kickBackfillRun(origin, docoId));
-    }
-    return redirect(`${home}?github=importing`);
-  }
 
   if (intent === "source") {
     const integration = KNOWLEDGE_SOURCE_INTEGRATIONS.find(

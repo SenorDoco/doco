@@ -84,6 +84,44 @@ describe("one repo per thing brought", () => {
     expect(await listInstallations("doco_prs2")).toEqual([sub]);
     expect(await listInstallations("doco_bugs")).toEqual([sub]);
   });
+
+  // Connecting GitHub in one workspace once emptied other workspaces' Docos of
+  // the same repositories, and the codebase Docos lost their files with them.
+  it("never takes a repo, an org or its files from another workspace's Doco", async () => {
+    await state.db.exec(`
+      INSERT INTO workspaces (id, handle, name) VALUES ('workspace_zeta', 'zeta', 'Zeta');
+      INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data) VALUES
+        ('doco_zeta_prs', 'zeta-pull-requests', 'workspace_zeta', 'workspace_zeta', 'private',
+          '{"template_handle": "github-pull-requests"}'),
+        ('doco_zeta_code', 'zeta-codebase', 'workspace_zeta', 'workspace_zeta', 'private',
+          '{"template_handle": "codebase"}');
+    `);
+    const sub = { installation_id: 9, account: "acme" };
+    await addConnection("doco_zeta_prs", conn);
+    await subscribeInstallation("doco_zeta_prs", sub);
+    await addConnection("doco_zeta_code", conn);
+    await state.db.exec(`
+      INSERT INTO code_files (doco_id, repo, path, sha, size, content)
+      VALUES ('doco_zeta_code', '${REPO}', 'README.md', 'abc', 5, 'hello');
+    `);
+
+    await addConnection("doco_prs", conn);
+    await subscribeInstallation("doco_prs", sub);
+    await addConnection("doco_code", conn);
+
+    expect(await listConnections("doco_zeta_prs")).toEqual([conn]);
+    expect(await listInstallations("doco_zeta_prs")).toEqual([sub]);
+    expect(await listConnections("doco_zeta_code")).toEqual([conn]);
+    const files = await state.db.query(
+      `SELECT path FROM code_files WHERE doco_id = 'doco_zeta_code'`,
+    );
+    expect(files.rows).toEqual([{ path: "README.md" }]);
+    // Both workspaces hear about the repo's pull requests.
+    expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "github-pull-requests"))).toEqual([
+      "acme-pull-requests",
+      "zeta-pull-requests",
+    ]);
+  });
 });
 
 describe("routing repo events", () => {

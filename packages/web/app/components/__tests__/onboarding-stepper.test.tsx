@@ -15,7 +15,7 @@ const CREATOR: OnboardingView = {
     { step: "agent", done: false },
   ],
   pending: "github",
-  github: { available: true, accounts: [], docos: [] },
+  github: { available: true, docos: [] },
   sources: [
     {
       id: "slack",
@@ -71,7 +71,7 @@ const INVITEE: OnboardingView = {
   ...ON_AGENT,
   joinedAs: "invitee",
   steps: [{ step: "agent", done: false }],
-  github: { available: true, accounts: [], docos: [] },
+  github: { available: true, docos: [] },
   sources: [],
 };
 
@@ -94,35 +94,29 @@ function currentStep(html: string): string {
 }
 
 describe("OnboardingStepper", () => {
-  it("starts a workspace's creator on connecting GitHub, in one click", () => {
+  it("starts a workspace's creator on connecting GitHub, which asks which repositories", () => {
     const html = render(CREATOR);
     expect(html).toContain("Set up acme");
     expect(html).toContain("Connect GitHub");
     expect(html).toContain("Connect other sources of knowledge");
     expect(html).toContain("Ask your agent to start using Doco");
     const step = currentStep(html);
-    expect(step).toContain('action="/workspaces/acme/onboarding"');
-    expect(step).toContain('name="intent" value="github"');
-    expect(step).toContain("then sends you back here");
+    // The GitHub setup: it creates the workspace's GitHub Docos and has the
+    // person pick every repository of an organization, or the ones they want.
+    expect(step).toContain('action="/integrations/github"');
+    expect(step).toContain('name="intent" value="choose"');
+    expect(step).toContain('name="workspace" value="acme"');
+    for (const id of ["pull-requests", "github-bugs", "codebase"]) {
+      expect(step).toContain(`name="bring" value="${id}"`);
+    }
+    expect(step).toContain("Nothing comes over until you pick");
     // Names the Docos GitHub fills.
     expect(step).toContain("Pull requests");
     expect(step).toContain("Codebase");
   });
 
-  it("connects a GitHub account Doco already reaches without a trip to GitHub", () => {
-    const html = render({
-      ...CREATOR,
-      github: { ...CREATOR.github, accounts: [{ installationId: 42, account: "acme-inc" }] },
-    });
-    const step = currentStep(html);
-    expect(step).toContain("Connect acme-inc");
-    expect(step).toContain('name="installation" value="42"');
-    expect(step).toContain("Connect another account in GitHub");
-  });
-
   it("offers every other source one click each, and a skip", () => {
-    const html = render(ON_SOURCES, "/workspaces/acme?github=importing");
-    expect(html).toContain("Doco is importing in the background");
+    const html = render(ON_SOURCES);
     const step = currentStep(html);
     expect(step).toContain("Connect Slack");
     expect(step).toContain("Connect Notion");

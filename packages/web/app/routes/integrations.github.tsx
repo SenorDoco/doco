@@ -9,7 +9,8 @@
 //   1. choose  → workspace + what to bring (POST intent=choose)
 //   2. repos   → ?workspace=<handle>&bring=<id>… : pick repositories, or add
 //                an organization in GitHub first
-//   3. started → …&github=importing : the import runs in the background
+//   3. started → …&github=importing : the import runs in the background, and
+//                the person goes back to the workspace
 import { roleAtLeast } from "@doco/db";
 import { waitUntil } from "@vercel/functions";
 import { useState } from "react";
@@ -173,7 +174,12 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   for (const doco of docos) {
     if (await connectPicked(doco.id, picked)) waitUntil(kickBackfillRun(origin, doco.id));
   }
-  throw redirect(`${next}&github=importing&count=${picked.connections.length}`);
+  const started = new URLSearchParams({
+    github: "importing",
+    count: String(picked.connections.length),
+  });
+  for (const org of picked.installations) started.append("org", org.account);
+  throw redirect(`${next}&${started}`);
 }
 
 export function meta() {
@@ -189,7 +195,9 @@ export default function GitHubSetup() {
   if (data.step === "repos" && outcome === "importing") {
     return (
       <GitHubImportStarted
+        workspaceHandle={data.workspaceHandle}
         count={Number(searchParams.get("count") ?? 0)}
+        orgs={searchParams.getAll("org")}
         docos={data.targets.map((t) => ({ handle: t.doco.handle, items: t.import.items }))}
       />
     );

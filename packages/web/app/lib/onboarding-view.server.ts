@@ -6,10 +6,8 @@
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
 import { agentInstructionsForWorkspace } from "./agent-instructions";
-import { listAccessibleDocoIdsForPrincipal } from "./doco-access.server";
 import { findDocoTemplateMeta } from "./doco-templates-meta";
 import { githubAppConfigured } from "./github-app.server";
-import { listKnownGitHubAccounts } from "./github-connection.server";
 import { GITHUB_IMPORTS } from "./github-imports";
 import { listImportDocos } from "./github-setup.server";
 import { KNOWLEDGE_SOURCE_INTEGRATIONS } from "./integrations-catalog";
@@ -32,9 +30,6 @@ export interface OnboardingView {
   github: {
     /** Whether this host can connect GitHub at all. */
     available: boolean;
-    /** The GitHub accounts Doco already reaches for this person, each
-     *  connectable in one click without a trip to GitHub. */
-    accounts: Array<{ installationId: number; account: string }>;
     /** The workspace's Docos GitHub fills, once they exist. */
     docos: Array<{ handle: string; template: string; label: string }>;
   };
@@ -69,10 +64,6 @@ export async function loadOnboardingView(opts: {
 
   const creator = progress.joinedAs === "creator";
   const importDocos = creator ? ((await listImportDocos([workspace.id]))[workspace.id] ?? {}) : {};
-  const accounts =
-    creator && pending === "github"
-      ? await listKnownGitHubAccounts(await listAccessibleDocoIdsForPrincipal(userId))
-      : [];
   const agentsChats =
     pending === "agent"
       ? await ensureWorkspaceDoco({
@@ -118,7 +109,6 @@ export async function loadOnboardingView(opts: {
       pending,
       github: {
         available: githubAppConfigured(),
-        accounts: accounts.map((a) => ({ installationId: a.installation_id, account: a.account })),
         docos: GITHUB_IMPORTS.flatMap((i) =>
           importDocos[i.id]
             ? [{ handle: importDocos[i.id].handle, template: i.template, label: i.label }]
