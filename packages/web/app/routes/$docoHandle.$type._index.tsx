@@ -10,6 +10,7 @@ import { Link } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
+import { cn } from "~/lib/cn";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -106,7 +107,7 @@ export default function ListByTypeInDoco({
                 <TableCell>
                   <Link
                     to={entityUrl({ docoHandle: handle, nodeType: type, id: it.id })}
-                    className="text-primary hover:underline"
+                    className={cn("text-primary hover:underline", !it.name && "font-mono")}
                   >
                     {it.name ?? it.id}
                   </Link>
