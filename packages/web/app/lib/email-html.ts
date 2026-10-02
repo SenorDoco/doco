@@ -6,6 +6,7 @@
 
 const BACKGROUND = "#f3f2ee"; // --color-background
 const FOREGROUND = "#171612"; // --color-foreground
+const MUTED = "#5c5b56"; // --color-muted-foreground
 const INPUT = "#e9e8e4"; // --color-input
 const BORDER = "#c3c2be"; // --color-border over the background
 const PRIMARY = "#9c44a5"; // --color-primary
@@ -14,8 +15,21 @@ const MONO = "'Ubuntu Mono',ui-monospace,Menlo,Consolas,monospace";
 const FONTS =
   "https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Ubuntu+Mono&display=swap";
 
-/** A paragraph, preformatted text, or a button. */
-export type EmailBlock = string | { pre: string } | { link: string; label: string };
+export type EmailBlock =
+  /** A paragraph. */
+  | string
+  /** A section's title. */
+  | { heading: string }
+  /** A bulleted list. */
+  | { list: string[] }
+  /** Preformatted text, such as the message to send an agent. */
+  | { pre: string }
+  /** A button. */
+  | { link: string; label: string }
+  /** Numbers side by side, each above its label. */
+  | { stats: { value: string; label: string }[] }
+  /** Small print closing the email, with a link after it. */
+  | { footer: string; link: string; label: string };
 
 function escapeHtml(text: string): string {
   return text
@@ -35,8 +49,27 @@ function paragraph(text: string): string {
 
 function block(b: EmailBlock): string {
   if (typeof b === "string") return `<p style="margin:0 0 16px">${paragraph(b)}</p>`;
+  if ("heading" in b) {
+    return `<p style="margin:24px 0 8px;font-weight:700">${escapeHtml(b.heading)}</p>`;
+  }
+  if ("list" in b) {
+    const items = b.list.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    return `<ul style="margin:0 0 16px;padding-left:20px">${items}</ul>`;
+  }
   if ("pre" in b) {
     return `<pre style="margin:0 0 16px;padding:16px;border:1px solid ${BORDER};border-radius:8px;background-color:${INPUT};white-space:pre-wrap;word-break:break-word;font-family:${MONO};font-size:13px;line-height:1.5">${escapeHtml(b.pre)}</pre>`;
+  }
+  if ("stats" in b) {
+    const cells = b.stats
+      .map(
+        (st) =>
+          `<td style="padding:0 24px 0 0;vertical-align:top"><div style="font-size:24px;font-weight:700;line-height:1.2">${escapeHtml(st.value)}</div><div style="color:${MUTED}">${escapeHtml(st.label)}</div></td>`,
+      )
+      .join("");
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px"><tr>${cells}</tr></table>`;
+  }
+  if ("footer" in b) {
+    return `<p style="margin:32px 0 0;font-size:12px;color:${MUTED}">${escapeHtml(b.footer)} <a href="${escapeHtml(b.link)}" style="color:${MUTED}">${escapeHtml(b.label)}</a></p>`;
   }
   return `<p style="margin:0 0 16px"><a href="${escapeHtml(b.link)}" style="display:inline-block;padding:10px 16px;border-radius:6px;background-color:${FOREGROUND};color:#ffffff;text-decoration:none;font-weight:700">${escapeHtml(b.label)}</a></p>`;
 }
