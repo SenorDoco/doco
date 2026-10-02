@@ -781,78 +781,150 @@ button[class*="bg-primary"]:active {
   color: oklch(0.48 0.14 262);
 }
 
-/* How Doco works (components/how-doco-works.tsx): Collect on top, Capture
-   and Connect either side of the dial, at the 12, 8 and 4 o'clock stops it
-   turns to. Below 480px Capture and Connect sit side by side under it. */
+/* How Doco works (components/how-doco-works.tsx): a wiring diagram. Sources
+   on the left feed the workspace in the middle, agents on the right read it,
+   and a return wire under them carries what agents write back. The three
+   steps sit under it, each with a bar that fills while its wires are lit.
+   Below 480px the diagram stands upright, a little wider than the text, and
+   the steps stack beside a vertical bar. */
 .hdw {
   container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  text-align: center;
 }
-.hdw-steps {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 6px 14px;
-  align-items: end;
-  justify-items: center;
-}
-.hdw-s1 {
-  grid-column: 1 / -1;
-  max-width: 14rem;
-}
-.hdw-dial {
-  grid-column: 2;
-  grid-row: 2;
-}
-.hdw-s3 {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: end;
-  max-width: 14rem;
-  margin-bottom: 4px;
-  text-align: right;
-}
-.hdw-s2 {
-  grid-column: 3;
-  grid-row: 2;
-  justify-self: start;
-  max-width: 14rem;
-  margin-bottom: 4px;
-  text-align: left;
-}
-@container (max-width: 479px) {
-  .hdw-steps {
-    grid-template-columns: 1fr 1fr;
-  }
-  .hdw-dial {
-    grid-column: 1 / -1;
-  }
-  .hdw-s3,
-  .hdw-s2 {
-    grid-row: 3;
-    justify-self: stretch;
-    margin: 0;
-  }
-  .hdw-s2 {
-    grid-column: 2;
-  }
-}
-
-/* A step lifts when the dial points at it. Its padding never changes, so
-   nothing shifts as the lift moves on. */
-.hdw-step {
+.hdw-flow {
   display: block;
   width: 100%;
-  padding: 8px 12px;
-  border-radius: 10px;
-  text-align: inherit;
-  cursor: pointer;
-  transition: box-shadow 300ms ease;
+  max-width: 720px;
+  height: auto;
+  overflow: visible;
 }
-.hdw-step[aria-current="step"] {
-  box-shadow: 3px 3px 7px var(--neu-shadow-soft), -3px -3px 6px var(--neu-highlight);
+.hdw-flow-phone {
+  display: none;
+}
+.hdw-flow text {
+  font-family: var(--font-serif);
+}
+.hdw-hdr {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  fill: var(--color-muted-foreground);
+}
+.hdw-back-label {
+  font-size: 10px;
+  font-style: italic;
+  fill: var(--color-muted-foreground);
+}
+
+/* Chips lift a touch off the paper; the ones in play turn purple. */
+.hdw-chip {
+  color: var(--color-muted-foreground);
+  transition: color 300ms ease;
+}
+.hdw-chip rect {
+  fill: color-mix(in oklch, white 50%, var(--color-background));
+  stroke: var(--color-border);
+  transition: stroke 300ms ease, fill 300ms ease;
+}
+.hdw-chip text {
+  font-weight: 700;
+  fill: var(--color-foreground);
+}
+.hdw-chip-more rect {
+  fill: none;
+  stroke-dasharray: 3 3;
+}
+.hdw-chip-more text {
+  fill: var(--color-muted-foreground);
+}
+.hdw-chip.hdw-on {
+  color: var(--color-primary);
+}
+.hdw-chip.hdw-on rect {
+  /* Mixed in sRGB: in oklch the paper's hue would win and the tint go tan. */
+  fill: color-mix(in srgb, var(--color-primary) 10%, var(--color-background));
+  stroke: var(--color-primary);
+}
+.hdw-chip-more.hdw-on rect {
+  fill: none;
+}
+.hdw-ws rect {
+  fill: var(--color-background);
+  stroke: var(--color-border);
+  stroke-width: 1.2;
+  transition: stroke 300ms ease;
+}
+.hdw-ws[data-lit="true"] rect {
+  stroke: var(--color-primary);
+}
+.hdw-ws text {
+  font-weight: 700;
+  fill: var(--color-foreground);
+}
+.hdw-wire {
+  fill: none;
+  stroke: var(--color-border);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 4;
+  transition: stroke 300ms ease;
+}
+.hdw-wire.hdw-on {
+  stroke: var(--color-primary);
+  stroke-dasharray: none;
+}
+.hdw-pulse-dot {
+  fill: var(--color-primary);
+}
+.hdw-pulse-halo {
+  fill: var(--color-primary);
+  opacity: 0.18;
+}
+
+/* The steps: a bar above each fills while its wires are lit (--p, 0 to 1,
+   set by the component's frame loop). */
+.hdw-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  width: 100%;
+  max-width: 720px;
+  text-align: left;
+}
+.hdw-step {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding-top: 12px;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+.hdw-step::before,
+.hdw-step::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+}
+.hdw-step::before {
+  right: 0;
+  background: var(--color-border);
+}
+.hdw-step::after {
+  width: calc(var(--p, 0) * 100%);
+  background: var(--color-primary);
 }
 .hdw-verb {
   font-weight: 700;
   color: var(--color-muted-foreground);
+  transition: color 300ms ease;
 }
 .hdw-step[aria-current="step"] .hdw-verb {
   color: var(--color-foreground);
@@ -866,64 +938,49 @@ button[class*="bg-primary"]:active {
   line-height: 1.5;
   color: var(--color-muted-foreground);
 }
-
-/* The dial: an inset bezel, a raised face that turns, the orb that stays. */
-.hdw-dial {
-  position: relative;
-  width: 176px;
-  height: 176px;
-}
-.hdw-bezel,
-.hdw-face,
-.hdw-cap {
-  position: absolute;
-  border-radius: 50%;
-}
-.hdw-bezel {
-  inset: 6px;
-  box-shadow: var(--neu-inset);
-}
-.hdw-face {
-  inset: 32px;
-  box-shadow: var(--neu-raised);
-  transition: transform 800ms cubic-bezier(0.3, 0.7, 0.2, 1);
-}
-.hdw-face::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 10px;
-  width: 8px;
-  height: 20px;
-  margin-left: -4px;
-  border-radius: 4px;
-  background: var(--color-primary);
-  box-shadow: inset 1px 1px 2px color-mix(in oklch, black 25%, transparent);
-}
-.hdw-cap {
-  inset: 0;
-  display: grid;
-  place-items: center;
-}
-.hdw-tick {
-  position: absolute;
-  width: 20px;
-  height: 20px;
-  margin: -10px 0 0 -10px;
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-muted-foreground);
-  transition: color 300ms ease;
-}
-.hdw-tick-on {
-  color: var(--color-primary);
+@container (max-width: 479px) {
+  .hdw-flow-desktop {
+    display: none;
+  }
+  .hdw-flow-phone {
+    display: block;
+    width: calc(100% + 32px);
+    max-width: none;
+    margin-inline: -16px;
+  }
+  .hdw-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .hdw-step {
+    padding: 0 0 0 14px;
+  }
+  .hdw-step::before,
+  .hdw-step::after {
+    top: 2px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+  .hdw-step::before {
+    bottom: 2px;
+  }
+  .hdw-step::after {
+    height: calc(var(--p, 0) * (100% - 4px));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hdw-face,
-  .hdw-step,
-  .hdw-tick {
+  .hdw-step[aria-current="step"] {
+    --p: 1;
+  }
+  .hdw-pulse {
+    display: none;
+  }
+  .hdw-chip,
+  .hdw-chip rect,
+  .hdw-ws rect,
+  .hdw-wire,
+  .hdw-verb {
     transition: none;
   }
 }
