@@ -10,5 +10,17 @@
       "mcp__7087442d-26eb-4e3d-8452-02da344449d7__list_deployments",
       "mcp__7087442d-26eb-4e3d-8452-02da344449d7__get_deployment"
     ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Doco: search the workspace before answering, capture each decision as it forms, and log this chat in Agents chats.'"
+          }
+        ]
+      }
+    ]
   }
 }
