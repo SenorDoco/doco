@@ -862,13 +862,13 @@ export function OverviewGraph({
           labelOpacity,
           labelStyle: {
             fontSize: 9,
-            color: "#737373",
+            color: "var(--color-muted-foreground)",
             fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
             fontWeight: 500,
             pointerEvents: "none" as const,
           },
           labelBoxStyle: {
-            background: "#f5f5f5",
+            background: "var(--color-background)",
             borderRadius: 4,
             padding: "2px 4px",
           },

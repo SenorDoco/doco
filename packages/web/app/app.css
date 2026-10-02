@@ -13,31 +13,36 @@
     "Times New Roman", Times, serif;
   --font-display: "Playfair Display", "Source Serif 4", Georgia, "Times New Roman", Times, serif;
 
-  --color-background: oklch(0.94 0.012 245);
-  --color-foreground: oklch(0.2 0.015 248);
-  --color-muted: oklch(0.9 0.011 248);
-  --color-muted-foreground: oklch(0.47 0.013 248);
-  --color-card: oklch(0.94 0.012 245);
-  --color-card-foreground: oklch(0.2 0.015 248);
+  /* torre.ai's page background, #f3f2ee (its light theme's background-0),
+     so Doco and Torre read as one family. Every neutral below shares its
+     warm hue (95); the neumorphic shadows and highlights derive from them.
+     Written in oklch(), never hex: color-mix(in oklch) treats a near-grey
+     hex as hueless, so its mix with white turns pink. */
+  --color-background: oklch(0.961 0.0054 95.1);
+  --color-foreground: oklch(0.2 0.008 95);
+  --color-muted: oklch(0.921 0.006 95);
+  --color-muted-foreground: oklch(0.47 0.008 95);
+  --color-card: oklch(0.961 0.0054 95.1);
+  --color-card-foreground: oklch(0.2 0.008 95);
   /* Same near-foreground tint at 22% alpha that `.neu-surface` paints
      for its outer ring. Using the same token here means
      `border-b border-border` / `divide-y divide-border` lines read as
      a continuation of the etched edge, not as a stronger solid bar. */
-  --color-border: oklch(0.2 0.015 248 / 22%);
-  --color-input: oklch(0.91 0.013 248);
+  --color-border: oklch(0.2 0.008 95 / 22%);
+  --color-input: oklch(0.931 0.006 95);
   --color-primary: oklch(0.54 0.17 324);
-  --color-primary-foreground: oklch(0.99 0.003 245);
+  --color-primary-foreground: oklch(0.99 0.003 95);
   --color-accent: oklch(0.55 0.14 195);
-  --color-accent-foreground: oklch(0.99 0.003 245);
+  --color-accent-foreground: oklch(0.99 0.003 95);
   /* The Activity calendars: writes are the primary purple, queries this teal
      (told apart from the purple under every common color blindness). */
   --color-queries: oklch(0.63 0.101 183);
   --color-destructive: oklch(0.55 0.22 25);
-  --color-destructive-foreground: oklch(0.99 0.003 245);
+  --color-destructive-foreground: oklch(0.99 0.003 95);
   --color-success: oklch(0.5 0.14 165);
-  --color-success-foreground: oklch(0.99 0.003 245);
+  --color-success-foreground: oklch(0.99 0.003 95);
   --color-warning: oklch(0.62 0.15 75);
-  --color-warning-foreground: oklch(0.2 0.015 248);
+  --color-warning-foreground: oklch(0.2 0.008 95);
   --color-ring: oklch(0.62 0.12 324);
 
   --radius-sm: 4px;
@@ -755,69 +760,10 @@ button[class*="bg-primary"]:active {
   max-height: 14px;
 }
 
-/* Append-only version-history pane in the node detail drawer. */
-.node-detail-drawer__history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.node-detail-drawer__history-empty {
-  color: #888;
-  padding: 12px;
-  font-size: 13px;
-}
-.node-detail-drawer__history-entry {
-  border-left: 3px solid #ddd;
-  padding: 6px 10px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 0 4px 4px 0;
-}
-.node-detail-drawer__history-entry.op-create {
-  border-left-color: #3b82f6;
-}
-.node-detail-drawer__history-entry.op-update {
-  border-left-color: #f59e0b;
-}
-.node-detail-drawer__history-entry.op-retire {
-  border-left-color: #ef4444;
-}
-.node-detail-drawer__history-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.node-detail-drawer__history-op {
-  font-weight: 600;
-  text-transform: capitalize;
-  font-size: 13px;
-}
-.node-detail-drawer__history-ver {
-  color: #888;
-  font-size: 12px;
-}
-.node-detail-drawer__history-when {
-  margin-left: auto;
-  color: #888;
-  font-size: 12px;
-}
-.node-detail-drawer__history-who {
-  color: #888;
-  font-size: 12px;
-  margin-top: 2px;
-}
-.node-detail-drawer__history-why {
-  font-size: 13px;
-  font-style: italic;
-  margin-top: 2px;
-}
-
 /* The code reader's token colors (code-highlight.server.ts): comment,
    string, keyword, type, number, function, tag. */
 .tok-c {
-  color: oklch(0.56 0.02 248);
+  color: oklch(0.5 0.012 95);
   font-style: italic;
 }
 .tok-s {
