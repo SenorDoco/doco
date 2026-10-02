@@ -43,8 +43,10 @@ export function HowDocoWorks() {
     setTurn((t) => t + ((step - (t % 3) + 3) % 3));
   }
 
+  // Alexander, 2026-10-02: twice the air between the title and the first
+  // step's box, about 44px from the bottom of the title's text.
   return (
-    <section className="hdw flex flex-col gap-4 text-center">
+    <section className="hdw flex flex-col gap-9.5 text-center">
       <h2 className="text-lg font-bold leading-tight md:text-xl">How Doco works:</h2>
       <ol className="hdw-steps">
         {STEPS.map((step, i) => (
