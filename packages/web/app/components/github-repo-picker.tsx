@@ -225,10 +225,6 @@ const SETUP_NOTICES: Record<string, { text: string; error: boolean }> = {
   },
   signin_required: { text: "Sign in, then run Connect again.", error: true },
   connected: { text: "GitHub is connected. Choose the repositories below.", error: false },
-  importing: {
-    text: "GitHub is connected. Doco is importing in the background; each Doco shows how far it has got.",
-    error: false,
-  },
 };
 
 /** What the GitHub install callback reported (`?github=<outcome>`), if anything. */
@@ -262,16 +258,22 @@ export function ActionNotice({ data }: { data: { error: string } | { message: st
 
 /**
  * The standalone screen right after repositories are connected (a PRG
- * redirect from the connect action): one clear message, and a way into each
- * Doco the import fills.
+ * redirect from the connect action): one clear message, a way back to the
+ * workspace (where its setup goes on), and a way into each Doco the import
+ * fills. Only an organization picked whole brings its later repositories.
  */
 export function GitHubImportStarted({
+  workspaceHandle,
   count,
+  orgs,
   docos,
 }: {
+  workspaceHandle: string;
   count: number;
+  orgs: string[];
   docos: Array<{ handle: string; items: string }>;
 }) {
+  const list = new Intl.ListFormat("en", { type: "conjunction" });
   return (
     <main className="mx-auto max-w-xl px-6 py-16">
       <div className="flex flex-col items-center gap-4 text-center">
@@ -295,13 +297,18 @@ export function GitHubImportStarted({
               {count === 1 ? "repository" : "repositories"}
             </>
           ) : null}{" "}
-          in the background. You can keep working — they&apos;ll appear as they sync, and new repos
-          in the organization sync automatically.
+          in the background. You can keep working; they&apos;ll appear as they sync.
+          {orgs.length > 0
+            ? ` Repositories added to ${list.format(orgs)} later come in too.`
+            : null}
         </p>
         <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Link to={`/workspaces/${workspaceHandle}`} className={PRIMARY_BTN}>
+            Back to {workspaceHandle}
+          </Link>
           {docos.map((d) => (
-            <Link key={d.handle} to={`/${d.handle}`} className={PRIMARY_BTN}>
-              {docos.length === 1 ? "Continue" : `Open ${d.handle}`}
+            <Link key={d.handle} to={`/${d.handle}`} className={NEUTRAL_BTN}>
+              Open {d.handle}
             </Link>
           ))}
         </div>

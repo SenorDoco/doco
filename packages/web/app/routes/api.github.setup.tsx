@@ -10,11 +10,9 @@
 // Then we record the installation as available to each Doco the state names
 // and return to the page the install started from (`state.next`: the GitHub
 // setup page or a Doco's GitHub page), where the user picks exactly which
-// repos to connect. A workspace's one-click Connect GitHub (`state.connectAll`)
-// picks for them: every repository the installation grants, and the
-// organization as a whole, start importing before they're back.
+// repos to connect: every repository of an organization, or the ones they
+// want. Nothing is connected here.
 import { getDocoByIdOrHandle, roleAtLeast } from "@doco/db";
-import { waitUntil } from "@vercel/functions";
 import { redirect } from "react-router";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import {
@@ -23,14 +21,10 @@ import {
   listUserInstallationIds,
 } from "~/lib/github-app.server";
 import {
-  connectPicked,
-  listGitHubInstallationChoicesForDocos,
-  pickConnections,
   recordInstallationAuthorization,
   verifyInstallState,
 } from "~/lib/github-connection.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
-import { kickBackfillRun } from "./api.github.backfill-run";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -72,17 +66,7 @@ export async function loader({ request }: { request: Request }) {
         connected_at: connectedAt,
       });
     }
-    if (!state.connectAll) return back("connected");
-    const picked = pickConnections(await listGitHubInstallationChoicesForDocos(docoIds), {
-      repos: [],
-      installations: [String(installationId)],
-    });
-    if ("error" in picked) return back("setup_error");
-    const origin = new URL(request.url).origin;
-    for (const docoId of docoIds) {
-      if (await connectPicked(docoId, picked)) waitUntil(kickBackfillRun(origin, docoId));
-    }
-    return back("importing");
+    return back("connected");
   } catch (err) {
     // Most likely a bad DOCO_GITHUB_APP_* credential (e.g. an unparseable
     // private key or client secret). Don't 500 the user — log and bounce back

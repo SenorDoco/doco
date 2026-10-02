@@ -1,10 +1,12 @@
 // The steps that get a workspace going, on top of its page until every one is
 // done: connect GitHub, connect other sources of knowledge (or skip them), ask
 // your agent to start using Doco. Someone who joined from an invite only has
-// the last. The page keeps the person on the first step not done; each step is
-// one click (routes/workspaces.$workspaceHandle.onboarding.tsx) and comes back
-// here saying what happened, and the agent step waits in view for the agent's
-// note in the workspace's Agents chats Doco.
+// the last. The page keeps the person on the first step not done. Connecting
+// GitHub goes through the GitHub setup (routes/integrations.github.tsx), which
+// asks which repositories to bring; the other steps are one click each
+// (routes/workspaces.$workspaceHandle.onboarding.tsx) and come back here saying
+// what happened, and the agent step waits in view for the agent's note in the
+// workspace's Agents chats Doco.
 
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -13,7 +15,6 @@ import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { BRAND_ICONS, GitHubIcon } from "~/components/brand-icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
-import { GitHubSetupNotice } from "~/components/github-repo-picker";
 import { cn } from "~/lib/cn";
 import { GITHUB_IMPORTS } from "~/lib/github-imports";
 import { type OnboardingStep, STEP_TITLES } from "~/lib/onboarding-steps";
@@ -28,8 +29,6 @@ const SECONDARY =
 const REFUSALS: Record<string, string> = {
   not_owner: "Only an owner of this workspace can connect its sources.",
   github_unavailable: "GitHub isn't set up on this host, so Doco can't connect it.",
-  github_failed:
-    "That GitHub account isn't available to you anymore. Connect it in GitHub instead.",
   source_unavailable: "That source isn't set up on this host, so Doco can't connect it.",
   source_public:
     "Make the source's Doco private first: a copy of a team's Slack or Notion is never public.",
@@ -64,11 +63,6 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
           <p className="mx-5 rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive">
             {refusal}
           </p>
-        ) : null}
-        {searchParams.get("github") ? (
-          <div className="mx-5">
-            <GitHubSetupNotice outcome={searchParams.get("github")} />
-          </div>
         ) : null}
         <ol className="divide-y divide-border border-t border-border">
           {view.steps.map(({ step, done }, index) => (
@@ -145,13 +139,12 @@ function StepBody({
   onFinished: () => void;
 }) {
   const action = `/workspaces/${view.workspaceHandle}/onboarding`;
-  if (step === "github") return <GitHubStep view={view} action={action} />;
+  if (step === "github") return <GitHubStep view={view} />;
   if (step === "sources") return <SourcesStep view={view} action={action} />;
   return <AgentStep view={view} action={action} onFinished={onFinished} />;
 }
 
-function GitHubStep({ view, action }: { view: OnboardingView; action: string }) {
-  const { available, accounts } = view.github;
+function GitHubStep({ view }: { view: OnboardingView }) {
   return (
     <div className="space-y-3 text-sm">
       <p className="text-muted-foreground">
@@ -165,48 +158,27 @@ function GitHubStep({ view, action }: { view: OnboardingView; action: string }) 
           </li>
         ))}
       </ul>
-      {!available ? (
-        <p className="text-xs text-muted-foreground">{REFUSALS.github_unavailable}</p>
-      ) : accounts.length === 0 ? (
+      {view.github.available ? (
         <>
-          <Form method="post" action={action}>
-            <input type="hidden" name="intent" value="github" />
+          <Form method="post" action="/integrations/github">
+            <input type="hidden" name="intent" value="choose" />
+            <input type="hidden" name="workspace" value={view.workspaceHandle} />
+            {GITHUB_IMPORTS.map((i) => (
+              <input key={i.id} type="hidden" name="bring" value={i.id} />
+            ))}
             <button type="submit" className={PRIMARY}>
               <GitHubIcon className="h-3.5 w-3.5" aria-hidden />
               Connect GitHub
             </button>
           </Form>
           <p className="text-xs text-muted-foreground">
-            GitHub asks you to approve Doco for an account or organization and pick its
-            repositories, then sends you back here. Every repository you grant comes over, and ones
-            you grant later follow.
+            Next you choose the repositories to bring: every repository in an organization, or only
+            the ones you pick. Nothing comes over until you pick. If Doco can&apos;t reach your
+            GitHub yet, GitHub asks you to approve it first.
           </p>
         </>
       ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            Doco already reaches these GitHub accounts. Connecting one brings every repository Doco
-            can see in it, and ones added later follow.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {accounts.map((a) => (
-              <Form key={a.installationId} method="post" action={action}>
-                <input type="hidden" name="intent" value="github" />
-                <input type="hidden" name="installation" value={a.installationId} />
-                <button type="submit" className={PRIMARY}>
-                  <GitHubIcon className="h-3.5 w-3.5" aria-hidden />
-                  Connect {a.account}
-                </button>
-              </Form>
-            ))}
-            <Form method="post" action={action}>
-              <input type="hidden" name="intent" value="github" />
-              <button type="submit" className={SECONDARY}>
-                Connect another account in GitHub
-              </button>
-            </Form>
-          </div>
-        </>
+        <p className="text-xs text-muted-foreground">{REFUSALS.github_unavailable}</p>
       )}
     </div>
   );

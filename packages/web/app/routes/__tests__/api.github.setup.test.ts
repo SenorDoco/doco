@@ -67,24 +67,15 @@ vi.mock("../api.github.backfill-run", () => ({
   kickBackfillRun: mocks.kickBackfillRun,
 }));
 
-import { signInstallState } from "~/lib/github-connection.server";
+import { type InstallState, signInstallState } from "~/lib/github-connection.server";
 import { loader } from "../api.github.setup";
 
 function signedState(
   userId = "user_1",
   docoIds = ["doco_1"],
   next = "/prs/integrations/github",
-  connectAll = false,
 ): string {
-  return (
-    signInstallState({
-      userId,
-      docoIds,
-      next,
-      ...(connectAll ? { connectAll } : {}),
-      issuedAt: Date.now(),
-    }) ?? ""
-  );
+  return signInstallState({ userId, docoIds, next, issuedAt: Date.now() }) ?? "";
 }
 
 function setupRequest(
@@ -234,30 +225,31 @@ describe("api.github.setup loader", () => {
     expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
 
-  // A workspace's one-click Connect GitHub: nothing left to pick once GitHub
-  // sends the person back, so every repository the installation grants, and
-  // the organization as a whole, start importing into each Doco.
-  it("connects everything the installation grants when the setup asked for it", async () => {
+  // A workspace's setup once asked GitHub to connect every repository the
+  // installation granted the moment the person came back. A state it signed
+  // before that changed still only makes the repositories selectable.
+  it("never connects repositories on its own, even for a state that asked to", async () => {
     mocks.listGitHubInstallationChoicesForDocos.mockResolvedValue([
       { installation_id: 42, account: "acme", repositories: ["acme/app", "acme/api"] },
-      { installation_id: 7, account: "other", repositories: ["other/site"] },
     ]);
     mocks.connectPicked.mockResolvedValue(true);
-    const state = signedState("user_1", ["doco_1", "doco_2"], "/workspaces/acme", true);
+    const state =
+      signInstallState({
+        userId: "user_1",
+        docoIds: ["doco_1", "doco_2"],
+        next: "/integrations/github?workspace=acme",
+        connectAll: true,
+        issuedAt: Date.now(),
+      } as InstallState) ?? "";
     const response = await loader({
       request: setupRequest(`installation_id=42&code=gh-code&state=${encodeURIComponent(state)}`),
     });
 
-    expect(response.headers.get("Location")).toBe("/workspaces/acme?github=importing");
-    for (const docoId of ["doco_1", "doco_2"]) {
-      expect(mocks.connectPicked).toHaveBeenCalledWith(docoId, {
-        connections: [
-          { repo: "acme/app", installation_id: 42 },
-          { repo: "acme/api", installation_id: 42 },
-        ],
-        installations: [expect.objectContaining({ installation_id: 42, account: "acme" })],
-      });
-      expect(mocks.kickBackfillRun).toHaveBeenCalledWith("https://doco.test", docoId);
-    }
+    expect(response.headers.get("Location")).toBe(
+      "/integrations/github?workspace=acme&github=connected",
+    );
+    expect(mocks.recordInstallationAuthorization).toHaveBeenCalledTimes(2);
+    expect(mocks.connectPicked).not.toHaveBeenCalled();
+    expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
 });

@@ -13,9 +13,7 @@ vi.mock("@doco/db", () => ({
 }));
 vi.mock("../onboarding.server", () => ({ loadOnboardingProgress: mocks.loadOnboardingProgress }));
 vi.mock("../workspace-helpers.server", () => ({ ensureWorkspaceDoco: mocks.ensureWorkspaceDoco }));
-vi.mock("../doco-access.server", () => ({ listAccessibleDocoIdsForPrincipal: async () => [] }));
 vi.mock("../github-app.server", () => ({ githubAppConfigured: () => true }));
-vi.mock("../github-connection.server", () => ({ listKnownGitHubAccounts: async () => [] }));
 vi.mock("../github-setup.server", () => ({ listImportDocos: async () => ({}) }));
 vi.mock("../knowledge-sources.server", () => ({
   KNOWLEDGE_SOURCE_CONNECTORS: {},

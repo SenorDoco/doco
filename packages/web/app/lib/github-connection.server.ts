@@ -16,7 +16,8 @@ import { isLocalPath } from "./local-path";
  * SQL for what the Doco aliased `alias` brings from GitHub — the template of
  * its GITHUB_IMPORTS choice (see github-imports.ts): its own template when that
  * is a choice, pull requests for any other Doco. Repo events route on it, and
- * one repo (or org subscription) belongs to one Doco per thing brought.
+ * one repo (or org subscription) belongs to one Doco per thing brought in a
+ * workspace.
  */
 export function githubImportSql(alias: string): string {
   const fallback = githubImportFor(null).template;
@@ -104,12 +105,9 @@ export interface InstallState {
   userId: string;
   /** The Docos the installation's repositories become selectable on. */
   docoIds: string[];
-  /** Where the callback sends the user back to: a path on this site. */
+  /** Where the callback sends the user back to: a path on this site, where
+   *  they pick the repositories to connect. */
   next: string;
-  /** Connect every repository the installation grants to each Doco, and the
-   *  organization as a whole, as soon as GitHub sends the user back, instead
-   *  of having them pick (a workspace's one-click Connect GitHub). */
-  connectAll?: boolean;
   issuedAt: number;
 }
 
@@ -151,13 +149,7 @@ export function verifyInstallState(raw: string, now = Date.now()): InstallState 
     if (!Number.isFinite(state.issuedAt) || now - state.issuedAt > INSTALL_STATE_TTL_MS) {
       return null;
     }
-    return {
-      userId: state.userId,
-      docoIds,
-      next: state.next,
-      ...(state.connectAll === true ? { connectAll: true } : {}),
-      issuedAt: state.issuedAt,
-    };
+    return { userId: state.userId, docoIds, next: state.next, issuedAt: state.issuedAt };
   } catch {
     return null;
   }
@@ -201,11 +193,12 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
 }
 
 /**
- * Enforce one repo, one Doco per thing brought: remove `repo` from the
- * connections of every OTHER Doco that brings what `keepDocoId` brings, so a
- * repo's pull requests land in one Doco and its bugs in one GitHub bugs Doco.
- * Idempotent; the indexed `@>` predicate touches only the Docos that actually
- * hold the repo.
+ * Enforce one repo, one Doco per thing brought in a workspace: remove `repo`
+ * from the connections of every OTHER Doco in `keepDocoId`'s workspace that
+ * brings what it brings, so a repo's pull requests land in one of the
+ * workspace's Docos and its bugs in one GitHub bugs Doco. Another workspace's
+ * Docos keep theirs: each workspace brings what it picked. Idempotent; the
+ * indexed `@>` predicate touches only the Docos that actually hold the repo.
  */
 export async function detachRepoFromOtherDocos(repo: string, keepDocoId: string): Promise<void> {
   await withClient(async (c) => {
@@ -224,6 +217,7 @@ export async function detachRepoFromOtherDocos(repo: string, keepDocoId: string)
          FROM docos keep
         WHERE keep.id = $2
           AND d.id <> $2
+          AND d.workspace_id = keep.workspace_id
           AND ${githubImportSql("d")} = ${githubImportSql("keep")}
           AND d.data->'github_integration'->'connections'
                 @> jsonb_build_array(jsonb_build_object('repo', $1::text))`,
@@ -240,9 +234,9 @@ export interface AddConnectionDeps {
 }
 
 /**
- * Attach `conn` to `docoId`, enforcing one-repo-one-Doco. The repo is first
- * detached from any OTHER Doco (move semantics, per the project decision), then
- * added here — replacing any stale entry for the same repo on this Doco so a
+ * Attach `conn` to `docoId`, enforcing one repo, one Doco per thing brought in
+ * a workspace. The repo is first detached from the workspace's OTHER Doco
+ * (move semantics, per the project decision), then added here — replacing any stale entry for the same repo on this Doco so a
  * re-connect never duplicates. Returns this Doco's new connection list.
  */
 export async function addConnection(
@@ -813,17 +807,6 @@ async function listKnownGitHubInstallationsForDocos(
   });
 }
 
-/** The GitHub accounts (organizations and users) Doco already reaches through
- *  these Docos, without asking GitHub for their repositories. */
-export async function listKnownGitHubAccounts(
-  docoIds: string[],
-): Promise<Array<Pick<GitHubInstallationChoice, "installation_id" | "account">>> {
-  return (await listKnownGitHubInstallationsForDocos(docoIds)).map((choice) => ({
-    installation_id: choice.installation_id,
-    account: choice.account,
-  }));
-}
-
 /**
  * List reusable GitHub org/repo choices for a signed-in user. The caller passes
  * accessible Doco ids; this function never widens access on its own.
@@ -910,8 +893,9 @@ export async function getDocoConnectionsContext(
 // routes every PR carrying that installation id to the subscribed Doco, so new
 // repos in the org are covered automatically — no per-repo management. Stored
 // as docos.data.github_integration.installations = [{ installation_id, account }].
-// One installation maps to one Doco (subscribing moves it), so a PR is never
-// duplicated across Docos.
+// In a workspace, one installation maps to one Doco per thing brought
+// (subscribing moves it), so a PR is never duplicated across its Docos; each
+// workspace that subscribes gets its own copy.
 
 export interface GitHubInstallationSub {
   /** GitHub App installation id (the org/owner install). */
@@ -1057,10 +1041,10 @@ async function writeInstallations(docoId: string, subs: GitHubInstallationSub[])
 }
 
 /**
- * Enforce one installation, one Doco per thing brought: drop the installation
- * from the installations[] of every OTHER Doco that brings what `keepDocoId`
- * brings. Idempotent; the indexed `@>` predicate touches only the Docos that
- * actually hold the installation.
+ * Enforce one installation, one Doco per thing brought in a workspace: drop
+ * the installation from the installations[] of every OTHER Doco in
+ * `keepDocoId`'s workspace that brings what it brings. Idempotent; the indexed
+ * `@>` predicate touches only the Docos that actually hold the installation.
  */
 export async function detachInstallationFromOtherDocos(
   installationId: number,
@@ -1082,6 +1066,7 @@ export async function detachInstallationFromOtherDocos(
          FROM docos keep
         WHERE keep.id = $2
           AND d.id <> $2
+          AND d.workspace_id = keep.workspace_id
           AND ${githubImportSql("d")} = ${githubImportSql("keep")}
           AND d.data->'github_integration'->'installations'
                 @> jsonb_build_array(jsonb_build_object('installation_id', $1::int))`,
@@ -1173,9 +1158,9 @@ export interface SubscribeInstallationDeps {
 }
 
 /**
- * Subscribe `docoId` to an App installation (an org), enforcing
- * one-installation-one-Doco: the installation is first detached from any other
- * Doco (move), then recorded here — replacing any stale entry for the same
+ * Subscribe `docoId` to an App installation (an org), enforcing one
+ * installation, one Doco per thing brought in a workspace: the installation is
+ * first detached from the workspace's other Doco (move), then recorded here — replacing any stale entry for the same
  * installation id. Returns this Doco's new subscription list.
  */
 export async function subscribeInstallation(

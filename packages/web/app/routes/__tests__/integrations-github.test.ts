@@ -273,6 +273,25 @@ describe("/integrations/github action", () => {
     );
   });
 
+  it("names each organization picked whole, whose later repositories follow", async () => {
+    mocks.listImportDocos.mockResolvedValue({
+      workspace_acme: { "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" } },
+    });
+    const res = await thrown(
+      action({
+        request: post({
+          intent: "connect",
+          workspace: "acme",
+          bring: "github-bugs",
+          installation: "42",
+        }),
+      }),
+    );
+    expect(res.headers.get("Location")).toBe(
+      "/integrations/github?workspace=acme&bring=github-bugs&github=importing&count=2&org=acme",
+    );
+  });
+
   it("never connects a repository the installation doesn't offer", async () => {
     mocks.listImportDocos.mockResolvedValue({
       workspace_acme: { "github-bugs": { id: "doco_bugs", handle: "acme-github-bugs" } },
