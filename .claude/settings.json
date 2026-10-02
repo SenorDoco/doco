@@ -17,7 +17,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Doco: doco_brief before you act, capture each decision as it forms, and log this chat in Agents chats.'"
+            "command": "node packages/web/app/hook/doco-hook.mjs",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node packages/web/app/hook/doco-hook.mjs",
+            "timeout": 15
           }
         ]
       }

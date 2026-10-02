@@ -142,7 +142,17 @@ export async function composeBrief(
   const gaps: string[] = [];
   const now = deps.now ? deps.now() : new Date();
   const about = request.about.trim();
-  const touching = request.touching ?? [];
+  // What the ask itself names counts as touched when nothing else is said to
+  // be: the hook sends a prompt and nothing more.
+  const touching =
+    request.touching?.length || !about
+      ? (request.touching ?? [])
+      : (
+          await c.query<{ value: string }>(
+            "SELECT value FROM node_touches_of($1, NULL) ORDER BY kind, value",
+            [about],
+          )
+        ).rows.map((row) => row.value);
   const touches = parseTouching(touching);
   const budget =
     typeof request.budget === "number" && request.budget > 0
