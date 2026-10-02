@@ -12,7 +12,7 @@
 //   - Constitution (founding-charter presentation, fills the column)
 //   - Latest activity feed (20 events, with per-row Doco context)
 // Right column (compact sidebar):
-//   - Search box (submits to /workspaces/:workspaceHandle/search)
+//   - "What applies to…?" (submits to /workspaces/:workspaceHandle/brief, the brief)
 //   - Activity heatmap (52w)
 //   - Top contributors and Top queryers across the workspace's Docos, one row
 //     per person and agent (or the website)
@@ -342,26 +342,28 @@ export default function WorkspaceHome({
           </Card>
         </section>
 
-        {/* Right column — search, then the activity matrix and top
-            contributors. */}
+        {/* Right column — "What applies to…?" (the brief), then the activity
+            matrix and top contributors. */}
         <aside className="min-w-0 space-y-4">
-          <Form
-            method="get"
-            action={`/workspaces/${workspace.handle}/search`}
-            className="flex gap-2"
-          >
-            <input
-              name="q"
-              type="search"
-              placeholder={`Search across ${docos.length} doco${docos.length === 1 ? "" : "s"}...`}
-              className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-            />
-            <button
-              type="submit"
-              className="neu-button rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
-            >
-              Search
-            </button>
+          <Form method="get" action={`/workspaces/${workspace.handle}/brief`} className="space-y-2">
+            <label htmlFor="brief-about" className="block text-sm font-semibold text-foreground">
+              What applies to…?
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="brief-about"
+                name="about"
+                type="search"
+                placeholder={`What you are about to do, across ${docos.length} doco${docos.length === 1 ? "" : "s"}`}
+                className="w-full rounded-md px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="neu-button shrink-0 rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+              >
+                Ask
+              </button>
+            </div>
           </Form>
 
           <ActivityCard byDay={byDay} />
