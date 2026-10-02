@@ -14,7 +14,7 @@ describe("How Doco works", () => {
   it("is titled as big as the home page headline", () => {
     const html = render();
     expect(html).toMatch(
-      /<h2[^>]*class="text-2xl font-bold leading-tight md:text-3xl"[^>]*>How Doco works<\/h2>/,
+      /<h2[^>]*class="text-2xl font-bold leading-tight md:text-3xl"[^>]*>How Doco works:<\/h2>/,
     );
   });
 
