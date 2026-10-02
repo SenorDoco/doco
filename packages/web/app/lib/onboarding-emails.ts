@@ -5,18 +5,11 @@
 // itself, the same one the workspace page hands over. Pure.
 
 import { agentInstructionsForWorkspace } from "./agent-instructions";
+import { emailHtml } from "./email-html";
 import type { Email } from "./email.server";
 import { ONBOARDING_STEPS, STEP_TITLES, type StepState } from "./onboarding-steps";
 
 type Message = Omit<Email, "to">;
-
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
 
 function lowerFirst(text: string): string {
   return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
@@ -24,22 +17,6 @@ function lowerFirst(text: string): string {
 
 function workspaceUrl(baseUrl: string, handle: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/workspaces/${handle}`;
-}
-
-/** Paragraphs as HTML: each a <p>, or a <pre> for preformatted text. */
-function html(blocks: Array<string | { pre: string } | { link: string; label: string }>): string {
-  const body = blocks
-    .map((block) => {
-      if (typeof block === "string") {
-        return `<p style="margin:0 0 16px">${escapeHtml(block)}</p>`;
-      }
-      if ("pre" in block) {
-        return `<pre style="margin:0 0 16px;padding:16px;border:1px solid #ddd;border-radius:8px;background:#f7f7f7;white-space:pre-wrap;word-break:break-word;font:12px/1.5 ui-monospace,Menlo,monospace">${escapeHtml(block.pre)}</pre>`;
-      }
-      return `<p style="margin:0 0 16px"><a href="${escapeHtml(block.link)}" style="display:inline-block;padding:10px 16px;border-radius:6px;background:#111;color:#fff;text-decoration:none;font-weight:600">${escapeHtml(block.label)}</a></p>`;
-    })
-    .join("\n");
-  return `<div style="max-width:600px;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">\n${body}\n</div>`;
 }
 
 export function welcomeEmail(opts: { baseUrl: string; workspaceHandle: string }): Message {
@@ -52,7 +29,7 @@ export function welcomeEmail(opts: { baseUrl: string; workspaceHandle: string })
   return {
     subject: `Welcome to ${opts.workspaceHandle} on Doco`,
     text: `${intro}\n\n${steps}\n\nOpen ${opts.workspaceHandle}: ${url}\n`,
-    html: html([intro, steps, { link: url, label: `Open ${opts.workspaceHandle}` }]),
+    html: emailHtml([intro, steps, { link: url, label: `Open ${opts.workspaceHandle}` }]),
   };
 }
 
@@ -72,7 +49,7 @@ export function reminderEmail(opts: {
     return {
       subject: `Ask your agent to start using Doco in ${opts.workspaceHandle}`,
       text: `${intro}\n\n${instructions}\n${after}\n`,
-      html: html([intro, { pre: instructions }, after]),
+      html: emailHtml([intro, { pre: instructions }, after]),
     };
   }
   const intro = `${opts.workspaceHandle} is three simple steps from shared knowledge and context for your team and its agents:`;
@@ -83,7 +60,7 @@ export function reminderEmail(opts: {
   return {
     subject: `Finish setting up ${opts.workspaceHandle} on Doco`,
     text: `${intro}\n\n${lines.join("\n")}\n\n${after} ${url}\n`,
-    html: html([
+    html: emailHtml([
       intro,
       ...lines,
       { link: url, label: `Finish setting up ${opts.workspaceHandle}` },
