@@ -15,10 +15,18 @@ function current(container: HTMLElement): string | undefined {
   return container.querySelector('[aria-current="step"]')?.textContent ?? undefined;
 }
 function litWires(container: HTMLElement): string[] {
-  return [...container.querySelectorAll(".hdw-flow-desktop .hdw-wire.hdw-on")].map(
+  return [...container.querySelectorAll(".hdw-dia-desktop .hdw-wire.hdw-on")].map(
     (wire) => wire.getAttribute("class")?.replace("hdw-wire ", "").replace(" hdw-on", "") ?? "",
   );
 }
+/** The chips in play: the sources while they feed the workspace, then the agents. */
+function litChips(container: HTMLElement): string[] {
+  return [...container.querySelectorAll(".hdw-dia-desktop .hdw-chip.hdw-on")].map(
+    (chip) => chip.querySelector("span")?.textContent ?? "",
+  );
+}
+const SOURCES = ["People", "GitHub", "Slack", "Notion", "+ more"];
+const AGENTS = ["Claude", "Cursor", "Codex", "Qwen", "+ more"];
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -43,16 +51,19 @@ describe("How Doco works flow", () => {
     const container = await mount();
     expect(current(container)).toContain("Collect");
     expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-src"]));
+    expect(litChips(container)).toEqual(SOURCES);
     await act(async () => {
       vi.advanceTimersByTime(3500);
     });
     expect(current(container)).toContain("Connect");
     expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-agent"]));
+    expect(litChips(container)).toEqual(AGENTS);
     await act(async () => {
       vi.advanceTimersByTime(3500);
     });
     expect(current(container)).toContain("Capture");
     expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-back"]));
+    expect(litChips(container)).toEqual(AGENTS);
     await act(async () => {
       vi.advanceTimersByTime(3500);
     });
