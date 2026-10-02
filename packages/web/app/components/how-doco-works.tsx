@@ -338,6 +338,8 @@ export function HowDocoWorks() {
             continue;
           }
           const at = pulse.wire.getPointAtLength(pulse.wire.getTotalLength() * ease(u));
+          // A pulse fades in as it sets off and out as it arrives.
+          pulse.g.style.opacity = Math.min(1, u / 0.15, (1 - u) / 0.15).toFixed(2);
           pulse.g.style.display = "";
           pulse.g.setAttribute("transform", `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)})`);
           pulse.halo?.setAttribute("r", (7 + 4 * Math.sin(u * Math.PI)).toFixed(1));
