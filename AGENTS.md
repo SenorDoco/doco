@@ -357,7 +357,7 @@ merge trigger — no local rerun, no idle watching.
 
 ---
 
-<!-- doco:begin v09ce5411 -->
+<!-- doco:begin v139a9a7d -->
 ## Doco
 
 This project keeps its shared memory in Doco (https://doco.to): the intents, decisions, rules and history behind the work. Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.
@@ -375,7 +375,7 @@ A doco is the project's record; write what was decided, by whom and why, in the 
 
 Before every reply, recall: `Doco: search the workspace before answering, capture each decision as it forms, and log this chat in Agents chats.`
 
-Do step 3 when the project's copy of this block is missing or its `doco:begin` version differs from the one Doco's connector sent (or, without it, https://doco.to/agents), or when a client with hooks lacks the reminder hook.
+Do step 3 when the project's copy of this block is missing, has no version, or its `doco:begin` version differs from the one Doco's connector sent (else https://doco.to/agents), or when a client with hooks lacks the reminder hook.
 
 ### 1. Check the Doco connection
 
