@@ -20,6 +20,7 @@
 // A member without a row (in a workspace made before the steps, or added
 // another way) walks them by role, and never gets a reminder.
 
+import { byAgentOverApiSql } from "./authoring-provenance";
 import { type JoinedAs, ONBOARDING_STEPS, type StepState, pendingStep } from "./onboarding-steps";
 
 type QueryClient = {
@@ -71,9 +72,10 @@ export async function finishSourcesStep(
 
 // A GitHub connection is a repository or a whole organization on any live Doco
 // of the workspace. An agent is anyone working over the MCP server or the API
-// (never the website, Slack or an import): any agent's read or write in the
-// workspace finishes the other sources; the agent step needs the person's own
-// agent to write in one of the workspace's Agents chats Docos.
+// (never the website, Slack or Doco's own imports, such as GitHub's): any
+// agent's read or write in the workspace finishes the other sources; the agent
+// step needs the person's own agent to write in one of the workspace's Agents
+// chats Docos.
 const PROGRESS_SQL = `
   SELECT wu.workspace_id, w.handle AS workspace_handle, wu.user_id,
          COALESCE(o.joined_as, CASE WHEN wu.role = 'owner' THEN 'creator' ELSE 'invitee' END)
@@ -91,12 +93,12 @@ const PROGRESS_SQL = `
                JOIN docos d ON d.id = cs.doco_id
               WHERE d.workspace_id = wu.workspace_id
                 AND d.deleted_at IS NULL
-                AND cs.source IN ('api', 'mcp')
+                AND ${byAgentOverApiSql("cs")}
            )
            OR EXISTS (
              SELECT 1 FROM query_events q
               WHERE q.workspace_id = wu.workspace_id
-                AND q.source IN ('api', 'mcp')
+                AND ${byAgentOverApiSql("q")}
            ) AS sources,
          EXISTS (
            SELECT 1 FROM changesets cs
@@ -105,7 +107,7 @@ const PROGRESS_SQL = `
               AND d.deleted_at IS NULL
               AND d.data->>'template_handle' = 'agents-chats'
               AND cs.actor = wu.user_id
-              AND cs.source IN ('api', 'mcp')
+              AND ${byAgentOverApiSql("cs")}
          ) AS agent
     FROM workspace_users wu
     JOIN workspaces w ON w.id = wu.workspace_id

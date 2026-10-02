@@ -318,7 +318,7 @@ function DoneSummary({ step, view }: { step: OnboardingStep; view: OnboardingVie
       <p className="text-xs text-muted-foreground">
         {connected.length > 0
           ? `Connected ${new Intl.ListFormat("en", { type: "conjunction" }).format(connected)}.`
-          : "Skipped. Connect more any time from App integrations."}
+          : "No other sources connected. Connect them any time from App integrations."}
       </p>
     );
   }

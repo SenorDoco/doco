@@ -150,7 +150,11 @@ describe("OnboardingStepper", () => {
     expect(step).toContain("in the workspace acme");
     expect(step).toContain("Waiting for your agent to write in");
     expect(step).toContain("acme-agents-chats");
-    expect(html).toContain("Skipped. Connect more any time from App integrations.");
+    // Done without a source connected: skipped, or agents already work here.
+    expect(html).toContain(
+      "No other sources connected. Connect them any time from App integrations.",
+    );
+    expect(html).not.toContain("Skipped");
   });
 
   it("walks someone who joined from an invite only through asking their agent", () => {

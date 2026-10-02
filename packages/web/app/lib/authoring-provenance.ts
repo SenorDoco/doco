@@ -45,6 +45,14 @@ export function formatAuthoringMechanism(
   return source ? source.replaceAll("_", " ") : null;
 }
 
+/** SQL that holds when a read or write (`t`, a changesets or query_events
+ *  row) came from an agent over the MCP server or the API: a request with a
+ *  credential. An API write with none came from Doco itself, as above, so
+ *  Doco's own imports never count. */
+export function byAgentOverApiSql(t: string): string {
+  return `(${t}.source = 'mcp' OR (${t}.source = 'api' AND ${t}.metadata ? 'auth'))`;
+}
+
 /** The agent a person wrote or queried through, or null when they used the
  *  website themselves. Señor Doco counts as an agent, on the website too. */
 export function agentName(
