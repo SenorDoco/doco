@@ -1,6 +1,6 @@
-// The Doco list counts each Doco by the one thing it holds: a Doco that copies
-// from a source (a codebase, a Slack or a Notion workspace) by what it copied,
-// which lives in that source's own table, not as nodes; a process Doco by its
+// The Doco list counts each Doco by the one thing it holds: a Doco that imports
+// from a source (a codebase, a Slack or a Notion workspace) by what it
+// imported, which lives in that source's own table, not as nodes; a process Doco by its
 // processes; every other kind by its nodes of one type, or all its nodes when
 // it has no known template. PGlite runs the real schema.
 import type { PGlite } from "@electric-sql/pglite";
@@ -12,7 +12,7 @@ vi.mock("@doco/db", () => ({
 }));
 
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
-import { copiesByDay, listDocoStats } from "../doco-stats.server";
+import { listDocoStats } from "../doco-stats.server";
 
 beforeEach(async () => {
   state.db = await freshDb();
@@ -86,7 +86,7 @@ describe("listDocoStats", () => {
     expect(seen("doco_code")).toEqual({ items: 2, lastUpdatedAt: "2026-09-25T00:00:00.000Z" });
     // Messages of a channel left out of the copy aren't counted.
     expect(seen("doco_slack")).toEqual({ items: 2, lastUpdatedAt: "2026-09-21T00:00:00.000Z" });
-    // A page not fetched yet isn't copied; a page dates from its last edit in Notion.
+    // A page not fetched yet isn't imported; a page dates from its last edit in Notion.
     expect(seen("doco_notion")).toEqual({ items: 2, lastUpdatedAt: "2026-09-23T00:00:00.000Z" });
     expect(seen("doco_plain")).toEqual({ items: 0, lastUpdatedAt: null });
     // Pull requests are its References, closed ones too; its reviewer is not one.
@@ -96,22 +96,5 @@ describe("listDocoStats", () => {
     expect(seen("doco_flow")).toEqual({ items: 2, lastUpdatedAt: "2026-09-20T00:00:00.000Z" });
     // With no known template, every node counts.
     expect(seen("doco_misc")).toEqual({ items: 2, lastUpdatedAt: "2026-09-20T00:00:00.000Z" });
-  });
-});
-
-describe("copiesByDay", () => {
-  it("counts each copy on the day it happened in its source, since a given time", async () => {
-    const days = await copiesByDay(
-      state.db as never,
-      ["doco_code", "doco_slack", "doco_notion"],
-      "2026-09-21T00:00:00Z",
-    );
-    expect(days).toEqual({
-      "2026-09-21": 1, // the newer Slack message; the older one is before `since`
-      "2026-09-22": 1, // Notion pages, by their last edit
-      "2026-09-23": 1,
-      "2026-09-24": 1, // code files, by when they were copied
-      "2026-09-25": 1,
-    });
   });
 });

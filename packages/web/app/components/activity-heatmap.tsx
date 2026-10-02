@@ -1,4 +1,4 @@
-// The Activity calendars: one for writes above one for queries, over the same
+// The Activity calendars: writes, then queries, then imports, over the same
 // weeks (columns, Sunday to Saturday, the current week rightmost). They show
 // as many weeks as fit the card, up to a year, so the card never scrolls
 // sideways. Each calendar is shaded by its own quarters: a day's shade says
@@ -55,15 +55,33 @@ const SHADES = {
     "fill-queries/76",
     "fill-queries",
   ],
+  imports: [
+    "fill-foreground/[0.08]",
+    "fill-imports/30",
+    "fill-imports/52",
+    "fill-imports/76",
+    "fill-imports",
+  ],
 } as const;
+
+type Log = keyof typeof SHADES;
+
+/** The calendars, top to bottom, with their names and each count's words. */
+const LOGS: { log: Log; name: string; one: string; many: string }[] = [
+  { log: "writes", name: "Writes", one: "write", many: "writes" },
+  { log: "queries", name: "Queries", one: "query", many: "queries" },
+  { log: "imports", name: "Imports", one: "import", many: "imports" },
+];
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 86_400_000;
 
 const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
-const writes = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "write" : "writes"}`;
-const queries = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "query" : "queries"}`;
+const counted = (n: number, { one, many }: { one: string; many: string }) =>
+  `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+const allCounted = (counts: Record<Log, number>) =>
+  LOGS.map((l) => counted(counts[l.log], l)).join(", ");
 function dayLabel(t: number): string {
   const d = new Date(t);
   return `${WEEKDAYS[d.getUTCDay()]}, ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
@@ -92,15 +110,18 @@ export function ActivityHeatmap({ byDay, now }: { byDay: DailyActivity; now?: Da
   // Days are UTC, as the counts are.
   const today = Math.floor((now ?? new Date()).getTime() / DAY_MS) * DAY_MS;
   const first = today - (new Date(today).getUTCDay() + (weeks - 1) * 7) * DAY_MS;
-  const days: { t: number; col: number; row: number; writes: number; queries: number }[] = [];
+  const days: { t: number; col: number; row: number; counts: Record<Log, number> }[] = [];
   for (let t = first, i = 0; t <= today; t += DAY_MS, i++) {
     const iso = isoDay(t);
     days.push({
       t,
       col: Math.floor(i / 7),
       row: i % 7,
-      writes: byDay.writes[iso] ?? 0,
-      queries: byDay.queries[iso] ?? 0,
+      counts: {
+        writes: byDay.writes[iso] ?? 0,
+        queries: byDay.queries[iso] ?? 0,
+        imports: byDay.imports[iso] ?? 0,
+      },
     });
   }
 
@@ -114,23 +135,27 @@ export function ActivityHeatmap({ byDay, now }: { byDay: DailyActivity; now?: Da
   }
 
   const gridHeight = 7 * step - GAP;
-  const calendars = (["writes", "queries"] as const).map((log, k) => {
-    const counts = days.map((d) => d[log]);
+  const calendars = LOGS.map(({ log, name }, k) => {
+    const counts = days.map((d) => d.counts[log]);
     return {
       log,
-      name: log === "writes" ? "Writes" : "Queries",
+      name,
       top: 18 + k * (16 + gridHeight + 14),
       total: counts.reduce((a, n) => a + n, 0),
       levels: shadeLevels(counts),
     };
   });
-  const height = calendars[1].top + 16 + gridHeight;
+  const totals = Object.fromEntries(calendars.map((cal) => [cal.log, cal.total])) as Record<
+    Log,
+    number
+  >;
+  const height = calendars[calendars.length - 1].top + 16 + gridHeight;
 
   return (
     <div ref={boxRef} className="w-full min-w-0">
       <svg
         role="img"
-        aria-label={`Last ${weeks} weeks: ${writes(calendars[0].total)} and ${queries(calendars[1].total)}`}
+        aria-label={`Last ${weeks} weeks: ${allCounted(totals)}`}
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
@@ -182,7 +207,7 @@ export function ActivityHeatmap({ byDay, now }: { byDay: DailyActivity; now?: Da
                   height={cell}
                   rx={2}
                   className={SHADES[cal.log][cal.levels[i]]}
-                  data-tip={`${dayLabel(d.t)}: ${writes(d.writes)}, ${queries(d.queries)}`}
+                  data-tip={`${dayLabel(d.t)}: ${allCounted(d.counts)}`}
                 />
               ))}
             </g>

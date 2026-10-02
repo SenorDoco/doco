@@ -102,10 +102,16 @@ describe("the Doco home of a reader Doco", () => {
 describe("the reader's frame", () => {
   it("carries the Doco's activity", async () => {
     const activity = {
-      byDay: { writes: { "2026-09-30": 4 }, queries: {} },
+      byDay: { writes: { "2026-09-30": 4 }, queries: {}, imports: {} },
       items: [],
-      topContributors: [],
-      topQueryers: [],
+      lastWeek: {
+        writes: 0,
+        queries: 0,
+        imports: 0,
+        topContributors: [],
+        topQueryers: [],
+        topIntegrations: [],
+      },
     };
     mocks.codeTreeAt.mockResolvedValue({ "": { items: [], more: 0 } });
     mocks.loadDocoActivity.mockResolvedValue(activity);

@@ -4,6 +4,7 @@
 // import of older items has got, or, for a Doco made to fill from a source,
 // that nobody has connected it yet. The Doco home shows it atop the activity
 // column; the Doco's integrations page summarizes it.
+import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
 import {
   IMPORT_STALL_MINUTES,
   type ImportState,
@@ -84,14 +85,6 @@ export type IntegrationStatus = ConnectedIntegrationStatus | UnconnectedIntegrat
 
 const STALL_MS = IMPORT_STALL_MINUTES * 60_000;
 
-/** The pull requests and bug issues a Doco brought from GitHub (a pull
- *  request's Reference, a bug's Eval), as (doco_id, at) rows dated by when
- *  Doco last wrote them. */
-export const GITHUB_ITEMS_SQL = `
-  SELECT doco_id, updated_at AS at FROM nodes
-   WHERE node_type IN ('reference', 'eval')
-     AND locator ~ '^https://github\\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'`;
-
 export async function loadIntegrationStatuses(
   c: QueryClient,
   docoId: string,
@@ -131,13 +124,12 @@ async function loadGitHubStatus(
   ).rows[0];
   const imported = githubImportState(doco?.gh ?? null, now.getTime());
   if (!imported) return null;
-  // A pull request's Reference, a bug issue's Eval or a copied code file:
-  // whatever came from GitHub.
+  // A pull request's Reference, a bug issue's Eval or a code file: whatever
+  // came from GitHub.
   const latest = (
     await c.query<{ at: Date | string | null }>(
-      `SELECT greatest(
-                (SELECT max(at) FROM (${GITHUB_ITEMS_SQL}) items WHERE doco_id = $1),
-                (SELECT max(synced_at) FROM code_files WHERE doco_id = $1)) AS at`,
+      `SELECT max(at) AS at FROM (${IMPORTED_ITEMS_SQL}) items
+        WHERE doco_id = $1 AND integration = 'github'`,
       [docoId],
     )
   ).rows[0]?.at;

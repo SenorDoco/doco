@@ -1,5 +1,5 @@
-// The Activity calendars: writes above queries, the same weeks, each shaded
-// by its own quarters. They show as many weeks as fit the card, so the card
+// The Activity calendars: writes, then queries, then imports, the same weeks,
+// each shaded by its own quarters. They show as many weeks as fit the card, so the card
 // never scrolls sideways.
 
 import { createElement } from "react";
@@ -38,21 +38,24 @@ describe("ActivityHeatmap", () => {
       byDay: {
         writes: { "2026-09-30": 12, "2026-09-29": 3 },
         queries: { "2026-09-30": 140, "2026-10-01": 7 },
+        imports: { "2026-09-30": 2100 },
       },
       now,
     }),
   );
 
-  it("draws a writes calendar above a queries calendar, each with its total", () => {
+  it("draws writes, then queries, then imports, each with its total", () => {
     expect(html.indexOf(">Writes<")).toBeGreaterThan(-1);
     expect(html.indexOf(">Queries<")).toBeGreaterThan(html.indexOf(">Writes<"));
+    expect(html.indexOf(">Imports<")).toBeGreaterThan(html.indexOf(">Queries<"));
     expect(html).toContain(">15<");
     expect(html).toContain(">147<");
+    expect(html).toContain(">2,100<");
   });
 
-  it("names both counts for each day", () => {
-    expect(html).toContain('data-tip="Wed, Sep 30, 2026: 12 writes, 140 queries"');
-    expect(html).toContain('data-tip="Thu, Oct 1, 2026: 0 writes, 7 queries"');
+  it("names every count for each day", () => {
+    expect(html).toContain('data-tip="Wed, Sep 30, 2026: 12 writes, 140 queries, 2,100 imports"');
+    expect(html).toContain('data-tip="Thu, Oct 1, 2026: 0 writes, 7 queries, 0 imports"');
   });
 
   it("never scrolls sideways", () => {

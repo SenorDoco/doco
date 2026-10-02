@@ -235,11 +235,13 @@ describe("workspace queries", () => {
     as("user_member");
     const member = await homeData("acme");
     expect(
-      member.topQueryers.map((a: { username: string; via: string | null; count: number }) => [
-        a.username,
-        a.via,
-        a.count,
-      ]),
+      member.lastWeek.topQueryers.map(
+        (a: { username: string; via: string | null; count: number }) => [
+          a.username,
+          a.via,
+          a.count,
+        ],
+      ),
     ).toEqual([
       ["member", "Claude Code", 2],
       ["member", null, 1],
@@ -250,7 +252,10 @@ describe("workspace queries", () => {
     as(null);
     const visitor = await homeData("acme");
     expect(
-      visitor.topQueryers.map((a: { via: string | null; count: number }) => [a.via, a.count]),
+      visitor.lastWeek.topQueryers.map((a: { via: string | null; count: number }) => [
+        a.via,
+        a.count,
+      ]),
     ).toEqual([["Claude Code", 1]]);
   });
 
@@ -271,12 +276,14 @@ describe("workspace queries", () => {
     expect((await homeData("acme")).byDay).toEqual({
       writes: { [today]: 2 },
       queries: { [today]: 3 },
+      imports: {},
     });
 
     as(null);
     expect((await homeData("acme")).byDay).toEqual({
       writes: { [today]: 1 },
       queries: { [today]: 1 },
+      imports: {},
     });
   });
 });

@@ -1,7 +1,8 @@
-// A Doco's activity, as the side column of its home shows it: its writes and
-// queries per day (the Activity calendars), the latest recorded writes, and
-// who wrote and queried it most. A reader Doco (codebase, Notion) shows the
-// same column beside whatever is open.
+// A Doco's activity, as the side column of its home shows it: its writes,
+// queries and imports per day (the Activity calendars), the latest recorded
+// writes, and who wrote to it, who queried it and what imported into it most in
+// the last 7 days. A reader Doco (codebase, Notion) shows the same column
+// beside whatever is open.
 //
 // Activity leaves policies out: they are Doco-level settings with their own
 // surface, and counting their bulk-imported writes here makes a fresh Doco
@@ -10,11 +11,10 @@
 import type { ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { HEATMAP_WEEKS } from "~/components/activity-heatmap";
 import {
+  type ActivitySummary,
   type DailyActivity,
-  TOP_ACTORS_LIMIT,
-  type TopActor,
   countByDay,
-  listTopActors,
+  summarizeLastWeek,
 } from "./activity-log.server";
 
 const FEED_LIMIT = 20;
@@ -24,14 +24,13 @@ export interface DocoFeedItem extends ActivityFeedLineItem {
 }
 
 export interface DocoActivity {
-  /** Writes and queries each day of the calendars' year. */
+  /** Writes, queries and imports each day of the calendars' year. */
   byDay: DailyActivity;
   /** The latest recorded writes, newest first. */
   items: DocoFeedItem[];
-  /** Who wrote to the Doco most, per person and agent. */
-  topContributors: TopActor[];
-  /** Who queried the Doco most, per person and agent. */
-  topQueryers: TopActor[];
+  /** The last 7 days: who wrote to and queried the Doco most, per person and
+   *  agent, and which integrations imported most into it. */
+  lastWeek: ActivitySummary;
 }
 
 type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
@@ -112,10 +111,9 @@ export async function loadDocoActivity(c: QueryClient, docoId: string): Promise<
   since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
   const scope = { docoIds: [docoId] };
   const byDay = await countByDay(c, scope, since.toISOString());
-  const topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
-  const topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
+  const lastWeek = await summarizeLastWeek(c, scope);
 
-  return { byDay, items, topContributors, topQueryers };
+  return { byDay, items, lastWeek };
 }
 
 function stringField(

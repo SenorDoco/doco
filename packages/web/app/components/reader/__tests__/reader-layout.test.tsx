@@ -75,7 +75,7 @@ const codeShell: ReaderShell = {
   alerts: [],
   tree: codeTree,
   activity: {
-    byDay: { writes: { "2026-09-30": 4 }, queries: {} },
+    byDay: { writes: { "2026-09-30": 4 }, queries: {}, imports: {} },
     items: [
       {
         event_id: "ev_1",
@@ -89,16 +89,22 @@ const codeShell: ReaderShell = {
         after: null,
       },
     ],
-    topContributors: [
-      {
-        userId: "user_ana",
-        username: "ana",
-        via: "Claude Code",
-        count: 1,
-        lastAt: "2026-09-30T10:00:00.000Z",
-      },
-    ],
-    topQueryers: [],
+    lastWeek: {
+      writes: 1,
+      queries: 0,
+      imports: 0,
+      topContributors: [
+        {
+          userId: "user_ana",
+          username: "ana",
+          via: "Claude Code",
+          count: 1,
+          lastAt: "2026-09-30T10:00:00.000Z",
+        },
+      ],
+      topQueryers: [],
+      topIntegrations: [],
+    },
   },
 };
 
@@ -215,18 +221,20 @@ describe("ReaderLayout search and tree", () => {
 });
 
 // Like every other Doco, the reader shows the Doco's activity beside whatever
-// is open: the Activity chart, who wrote and queried most, and the latest
-// writes.
+// is open: the Activity chart, who wrote, queried and imported most in the
+// last 7 days, and the latest writes.
 describe("ReaderLayout activity column", () => {
   it("shows the Doco's activity beside an open file", () => {
     const html = render(codeShell, { url: "/acme-codebase/code/acme/app/README.md" });
     expect(html).toContain("the open file");
     expect(html).toContain('aria-label="Doco activity"');
     expect(html).toContain(">Activity<");
-    expect(html).toContain(">Top contributors<");
+    expect(html).toContain(">Top contributors <span");
+    expect(html).toContain("· last 7 days");
     expect(html).toContain("ana <span");
     expect(html).toContain("via Claude Code");
-    expect(html).toContain(">Top queryers<");
+    expect(html).toContain(">Top queryers <span");
+    expect(html).toContain(">Top integrations <span");
     expect(html).toContain(">Latest activity<");
     expect(html).toContain("Keep the API in its own repository");
   });

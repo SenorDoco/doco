@@ -15,6 +15,10 @@ export interface AuthoringPair {
  *  itself, by a person rather than an agent. */
 const WEBSITE = "Website";
 
+/** What `formatAuthoringMechanism` calls a write no request recorded: one an
+ *  integration's import made, not a person or their agent. */
+export const IMPORT = "Import";
+
 export function formatAuthoringMechanism(
   source: string | null | undefined,
   metadata: Record<string, unknown> | null | undefined,
@@ -38,8 +42,8 @@ export function formatAuthoringMechanism(
   if (source === "api" && auth) return "API";
   // Every request records how it arrived (an auth or a surface), so a write
   // with neither came from Doco itself, such as the GitHub import.
-  if (source === "api") return "Import";
-  if (source === "import") return "Import";
+  if (source === "api") return IMPORT;
+  if (source === "import") return IMPORT;
   if (source === "reset") return "Reset";
   if (source === "system") return "System";
   return source ? source.replaceAll("_", " ") : null;
@@ -53,6 +57,12 @@ export function agentName(
 ): string | null {
   const mechanism = formatAuthoringMechanism(source, metadata);
   return mechanism === WEBSITE ? null : mechanism;
+}
+
+/** How a top list names the way a person worked: "via <agent>", or "on the
+ *  website" (`via` null). */
+export function viaLabel(via: string | null): string {
+  return via ? `via ${via}` : "on the website";
 }
 
 export function authoringEntry(input: {

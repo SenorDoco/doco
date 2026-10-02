@@ -4,53 +4,18 @@
 //
 // What counts as one item comes from the Doco's template: its nodes of one
 // type, any of its nodes (policies are not nodes; they are surfaced via
-// /<handle>/api/policies.json), the copies it made of its source (code files,
+// /<handle>/api/policies.json), what it imported from its source (code files,
 // Slack messages, Notion pages, which are not nodes), or its processes.
 // `lastUpdatedAt` is the newest of the max `at` from `audit_events`, node
-// `updated_at` (imported/pre-audit Docos) and the latest copy.
+// `updated_at` (imported/pre-audit Docos) and the latest import.
 
 import { withClient } from "@doco/db";
+import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
 import { docoItemFor } from "./doco-templates-meta";
 
 export interface DocoStats {
   items: number;
   lastUpdatedAt: string | null;
-}
-
-/** Every copy a Doco holds of its source, as (doco_id, at) rows: the files of
- *  a codebase, the messages of the Slack channels it copies, and the Notion
- *  pages fetched so far. `at` is when it happened in the source where the
- *  source says (a message posted, a page last edited; null when Notion gave no
- *  time), else when Doco copied it (a code file). */
-export const COPIED_ITEMS_SQL = `
-  SELECT doco_id, synced_at AS at FROM code_files
-  UNION ALL
-  SELECT m.doco_id, m.posted_at
-    FROM group_chat_messages m
-    JOIN group_chat_channels ch USING (doco_id, channel_id)
-   WHERE NOT ch.excluded
-  UNION ALL
-  SELECT doco_id, last_edited_time FROM notion_pages WHERE synced_at IS NOT NULL`;
-
-type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
-
-/** How many copies of these Docos happened each day since `since`, keyed by
- *  YYYY-MM-DD, for the activity charts. */
-export async function copiesByDay(
-  c: QueryClient,
-  docoIds: readonly string[],
-  since: string,
-): Promise<Record<string, number>> {
-  const rows = (
-    await c.query<{ day: string; n: string }>(
-      `SELECT to_char(at, 'YYYY-MM-DD') AS day, COUNT(*)::text AS n
-         FROM (${COPIED_ITEMS_SQL}) copied
-        WHERE doco_id = ANY($1::text[]) AND at >= $2
-        GROUP BY day`,
-      [[...docoIds], since],
-    )
-  ).rows;
-  return Object.fromEntries(rows.map((r) => [r.day, Number(r.n)]));
 }
 
 // Post-collapse: every node lives in the unified `nodes` table,
@@ -85,7 +50,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const [docoRows, nodeRows, processRows, auditRows, copiedRows] = await Promise.all([
+    const [docoRows, nodeRows, processRows, auditRows, importedRows] = await Promise.all([
       c.query<{ id: string; template: string | null }>(
         "SELECT id, data->>'template_handle' AS template FROM docos WHERE id = ANY($1)",
         [ids],
@@ -116,7 +81,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
       ),
       c.query<{ doco_id: string; n: string; last_at: string | null }>(
         `SELECT doco_id, COUNT(*)::text AS n, MAX(at)::text AS last_at
-           FROM (${COPIED_ITEMS_SQL}) t
+           FROM (${IMPORTED_ITEMS_SQL}) t
           WHERE doco_id = ANY($1)
           GROUP BY doco_id`,
         [ids],
@@ -126,11 +91,11 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     const counts = (rows: { doco_id: string; n: string }[]) =>
       new Map(rows.map((r) => [r.doco_id, Number(r.n)]));
     const processes = counts(processRows.rows);
-    const copies = counts(copiedRows.rows);
+    const imports = counts(importedRows.rows);
     const items = (id: string, template: string | null): number => {
       const { counts: what } = docoItemFor(template);
       if (what === "process") return processes.get(id) ?? 0;
-      if (what === "copy") return copies.get(id) ?? 0;
+      if (what === "import") return imports.get(id) ?? 0;
       return nodeRows.rows
         .filter((r) => r.doco_id === id && (what === "node" || r.node_type === what))
         .reduce((sum, r) => sum + Number(r.n), 0);
@@ -141,7 +106,7 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
       const s = out.get(r.id);
       if (s) s.items = items(r.id, r.template);
     }
-    for (const r of [...nodeRows.rows, ...auditRows.rows, ...copiedRows.rows]) {
+    for (const r of [...nodeRows.rows, ...auditRows.rows, ...importedRows.rows]) {
       const s = out.get(r.doco_id);
       if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
     }

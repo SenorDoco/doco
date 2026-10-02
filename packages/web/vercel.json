@@ -31,6 +31,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/activity-digest",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/admin/purge-deleted-docos",
       "schedule": "0 3 * * *"
     }
