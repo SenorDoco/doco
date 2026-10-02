@@ -144,6 +144,23 @@ describe("composeBrief", () => {
     expect(brief.brief_id).toMatch(/^brief_[0-9A-HJKMNP-TV-Z]{26}$/);
   });
 
+  // The hook sends a prompt as `about` and nothing as `touching`: the paths,
+  // URLs, ids and pull requests the prompt names count as touched.
+  it("reads what the ask names when nothing is said to be touched", async () => {
+    const brief = await composeBrief(
+      c,
+      SCOPE,
+      { about: "Edit packages/web/app/lib/search.server.ts for #1333", rerank: false },
+      OFF,
+    );
+    expect(brief.touching).toEqual(["packages/web/app/lib/search.server.ts", "#1333"]);
+    expect(ids(brief, "must_obey")).toEqual(["workspace_1", "rule_small", "decision_hybrid"]);
+    expect(brief.items.find((i) => i.id === "decision_hybrid")?.because).toMatch(
+      /^names packages\/web\/app\/lib\/search\.server\.ts/,
+    );
+    expect(ids(brief, "in_motion")).toEqual(["reference_pr", "idea_brief"]);
+  });
+
   it("seeds by meaning and words, hops one edge, shows replacements and what is in motion", async () => {
     const brief = await composeBrief(
       c,

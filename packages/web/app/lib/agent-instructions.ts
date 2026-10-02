@@ -1,7 +1,7 @@
 // The instructions a person gives their agent to use Doco. The /agents page
 // shows them with a Copy button; the agent keeps them in the project's
 // AGENTS.md (or CLAUDE.md, or its client's project instructions), between the
-// two markers, next to a hook that reminds it of Doco before every reply.
+// two markers, next to the Doco hook that briefs it before every reply.
 //
 // The begin marker carries a version computed from the block's text, so it
 // changes whenever the wording does. Every session the agent compares its
@@ -25,7 +25,7 @@ import { TAGLINE } from "~/lib/tagline";
 
 export const INSTRUCTIONS_END = "<!-- doco:end -->";
 
-/** The line an agent's hook adds before every user message. */
+/** The line the Doco hook (app/hook/doco-hook.mjs holds the same text) adds before every user message. */
 export const DOCO_REMINDER =
   "Doco: doco_brief before you act, capture each decision as it forms, and log this chat in Agents chats.";
 
@@ -73,7 +73,7 @@ A doco is the project's record; write what was decided, by whom and why, in the 
 
 Before every reply, recall: \`${DOCO_REMINDER}\`
 
-Do step 3 when the project's copy of this block is missing, has no version, or its \`doco:begin\` version differs from the one Doco's connector sent (else ${host}${AGENT_INSTRUCTIONS_PATH}), or when a client with hooks lacks the reminder hook.
+Do step 3 when the project's copy of this block is missing, has no version, or its \`doco:begin\` version differs from the one Doco's connector sent (else ${host}${AGENT_INSTRUCTIONS_PATH}), or when a client with hooks lacks the Doco hook.
 
 ### 1. Check the Doco connection
 
@@ -102,7 +102,7 @@ When the work needs a Doco the workspace lacks, create it with \`doco_create\` i
 
 ### 3. Keep this block in the project
 
-Save this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), replacing any older copy between the markers, then tell the user. In the project's shared settings, add a hook that adds the reminder above as context before each user message (Claude Code and Codex: UserPromptSubmit; Gemini CLI: BeforeAgent).
+Save this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), replacing any older copy between the markers, then tell the user. Then install the Doco hook as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows: it briefs the agent before each prompt and file edit, with the reminder above first.
 ${INSTRUCTIONS_END}
 `;
 }

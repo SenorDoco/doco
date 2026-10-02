@@ -100,17 +100,17 @@ describe("agentInstructions", () => {
 
   // Alexander, 2026-10-02: agents drift from instructions read once a
   // session, so a hook adds a one-line reminder before every reply, and
-  // clients without hooks recall it themselves.
-  it("reminds the agent of Doco before every reply, through a hook where the client has one", () => {
+  // clients without hooks recall it themselves. Since the Doco Brief
+  // (decision_01M3YYQ1JRBS04Z99KEP869F26) that hook is the Doco hook, which
+  // briefs the agent too; /agents#hook shows how to install it.
+  it("reminds the agent of Doco before every reply, through the Doco hook where the client has hooks", () => {
     expect(position(`Before every reply, recall: \`${DOCO_REMINDER}\``)).toBeLessThan(
       position("### 1. Check the Doco connection"),
     );
     const step3 = text.slice(position("### 3. Keep this block in the project"));
-    expect(step3).toContain(
-      "add a hook that adds the reminder above as context before each user message",
-    );
-    expect(step3).toContain("Claude Code and Codex: UserPromptSubmit; Gemini CLI: BeforeAgent");
-    expect(text).toContain("or when a client with hooks lacks the reminder hook");
+    expect(step3).toContain("Then install the Doco hook as https://doco.test/agents#hook shows");
+    expect(step3).toContain("briefs the agent before each prompt and file edit");
+    expect(text).toContain("or when a client with hooks lacks the Doco hook");
   });
 
   // Alexander, 2026-10-02 (decision_01M3YYQ1JRBS04Z99KEP869F26): duty 1 is one
@@ -171,7 +171,9 @@ describe("agentInstructions", () => {
       `${agentInstructions("https://doco.to")}Doco workspace: https://doco.to/workspaces/meta-doco\n`,
     );
     const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", root), "utf8"));
-    expect(JSON.stringify(settings.hooks.UserPromptSubmit)).toContain(DOCO_REMINDER);
+    const hook = "node packages/web/app/hook/doco-hook.mjs";
+    expect(JSON.stringify(settings.hooks.UserPromptSubmit)).toContain(hook);
+    expect(JSON.stringify(settings.hooks.PreToolUse)).toContain(hook);
   });
 
   // Claude Code keeps only the first 4096 characters of an MCP server's

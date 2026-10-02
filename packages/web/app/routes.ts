@@ -140,6 +140,8 @@ export default [
   // MCP runtime. Covers localhost-loopback (Recipe A) + Device Flow
   // (Recipe B). Public; served as text/markdown.
   route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
+  // The Doco hook script, which /agents tells a project to save.
+  route("agents/doco-hook.mjs", "routes/agents.doco-hook[.]mjs.tsx"),
   // Self-service create. The doco-create flow starts with one form,
   // then continues under :docoHandle/welcome.
   route("new-doco", "routes/new-doco.tsx"),
