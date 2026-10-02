@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "react-router dev --port 5173",
-    "prebuild": "cd ../.. && pnpm --workspace-concurrency=1 --filter='./packages/*' --filter='!@doco/web' build",
+    "prebuild": "cd ../.. && pnpm run build:packages",
     "build": "react-router build",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc -p tsconfig.json --noEmit",
