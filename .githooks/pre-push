@@ -1,10 +1,10 @@
 #!/bin/sh
 # Pre-push gate — the fast, high-signal half of the CI contract, run before code
 # leaves your machine. It builds, typechecks, and lints (the cheap checks that
-# catch most red work in ~1 min) but deliberately SKIPS the test suite (~5 min),
+# catch most red work in ~1 min) but deliberately SKIPS the test suite,
 # which CI (.github/workflows/ci.yml) re-runs and enforces as the authoritative
 # required gate. Running the full `pnpm verify` here taxed every push with the
-# same ~5-min pipeline CI runs anyway; this keeps the local tripwire without the
+# same pipeline CI runs anyway; this keeps the local tripwire without the
 # tax. Agent-neutral: fires for any tool or human that pushes via git (Claude,
 # Cursor, Codex, a human shell, …). Auto-installed by the "prepare" script:
 # `pnpm install` points core.hooksPath here.

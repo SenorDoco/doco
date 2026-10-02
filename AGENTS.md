@@ -44,10 +44,10 @@ authorized it directly.
 ## Don't chase `main` — a green PR merges even when `main` moved on
 
 `main` is busy: during a burst a new commit lands every few minutes,
-while CI (`pnpm verify`) takes ~4 minutes. The trap to avoid: if you act
+while CI (`pnpm verify`) takes ~2 minutes. The trap to avoid: if you act
 as though the PR must be *up to date* with `main` before it can merge,
 every new `main` commit knocks you "behind," so you re-merge
-`origin/main`, which restarts your ~4-min CI, during which `main` moves
+`origin/main`, which restarts your ~2-min CI, during which `main` moves
 again — an unwinnable chase (the #1103 → #1107 → … loop that motivated
 this note).
 
@@ -129,10 +129,12 @@ re-fetching job logs, re-reading PR state, and re-checking `main` churn
 across turn after turn, then stalling out by asking the user how to
 land. Conclude once and act.
 
-**The signature of an infra cancellation, not a test failure:** the
-check goes red in a few seconds, and the job log is a 404 / has no
-downloadable output. A genuine `pnpm verify` failure takes minutes and
-leaves a real log with the failing test or lint. So:
+**The signature of an infra cancellation, not a test failure:** a CI
+job goes red in a few seconds (`build · typecheck · test · lint` then
+reports it as `cancelled`), and that job's log is a 404 / has no
+downloadable output. A genuine failure takes a minute or more and leaves
+a real log, in the `test (…)` or `build, typecheck, lint` job, with the
+failing test or lint. So:
 
 - **Red in ~seconds, no downloadable log → it's a cancelled/infra run.**
   The fix is to **re-trigger the run** (push an empty commit, or re-run
@@ -339,11 +341,14 @@ your full-pipeline check and (via `--auto`) your merge trigger. Reach for
 before merge, or you're landing without a PR.
 
 This is enforced **agent-neutrally**, not by any single tool's config:
-`.github/workflows/ci.yml` runs `pnpm verify` on every PR to `main`, so a
-red suite blocks the merge for every agent *and* every human — even for
-commits pushed through the GitHub API, which bypass all local and
-per-tool hooks. The `build · typecheck · test · lint` check is a
-**required status check** in a `main` ruleset, so a red or pending run
+`.github/workflows/ci.yml` runs the `pnpm verify` steps on every PR to
+`main`, split into jobs that run side by side (build, typecheck and lint
+in one; the tests in five: the other packages, and the web suite in four
+`vitest --shard`s), so a red suite blocks the merge for every agent *and*
+every human — even for commits pushed through the GitHub API, which
+bypass all local and per-tool hooks. Its last job,
+`build · typecheck · test · lint`, passes only when every other job
+passed, and it is a **required status check** in a `main` ruleset, so a red or pending run
 holds `mergeable_state` at `blocked` until it goes green — which is also
 what lets `enable_pr_auto_merge` arm. With auto-merge
 (`gh pr merge --auto --squash`) the PR lands itself the moment that run

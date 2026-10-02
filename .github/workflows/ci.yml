@@ -1,10 +1,11 @@
 name: CI
 
-# Agent-neutral enforcement gate: runs the same `pnpm verify` contract that
-# humans and any agent run locally, on every PR into `main`. Make this a
-# required status check in branch protection so a red suite blocks the merge
-# for everyone — including commits made through the GitHub API (which bypass
-# every local/per-tool hook).
+# Agent-neutral enforcement gate: the `pnpm verify` contract (build, typecheck,
+# test, lint) on every PR into `main`, split into jobs that run side by side.
+# The last job, `build · typecheck · test · lint`, passes only when every other
+# job passed; it is the required status check in the `main` ruleset, so a red
+# suite blocks the merge for everyone, including commits made through the
+# GitHub API (which bypass every local/per-tool hook).
 
 on:
   pull_request:
@@ -23,8 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: build · typecheck · test · lint
+  checks:
+    name: build, typecheck, lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,4 +35,47 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm verify
+      - run: pnpm run build
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+
+  test:
+    name: test (${{ matrix.tests }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The web suite is most of the test time, so it runs as four shards;
+        # the other packages' suites together take about as long as one shard.
+        include:
+          - tests: packages
+            run: pnpm -r --filter='./packages/*' --filter='!@doco/web' test
+          - tests: web 1/4
+            run: pnpm --filter @doco/web exec vitest run --shard=1/4
+          - tests: web 2/4
+            run: pnpm --filter @doco/web exec vitest run --shard=2/4
+          - tests: web 3/4
+            run: pnpm --filter @doco/web exec vitest run --shard=3/4
+          - tests: web 4/4
+            run: pnpm --filter @doco/web exec vitest run --shard=4/4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Tests import the workspace packages from their built output.
+      - run: pnpm run build:packages
+      - run: ${{ matrix.run }}
+
+  verify:
+    # The required status check: keep this name in step with the ruleset.
+    name: build · typecheck · test · lint
+    needs: [checks, test]
+    # Run even when a job it needs failed or was cancelled: a required check
+    # that is skipped counts as passed.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.checks.result }}" = success && test "${{ needs.test.result }}" = success
