@@ -172,6 +172,7 @@ describe("agentInstructions", () => {
     );
     const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", root), "utf8"));
     const hook = "node packages/web/app/hook/doco-hook.mjs";
+    expect(JSON.stringify(settings.hooks.SessionStart)).toContain(hook);
     expect(JSON.stringify(settings.hooks.UserPromptSubmit)).toContain(hook);
     expect(JSON.stringify(settings.hooks.PreToolUse)).toContain(hook);
   });

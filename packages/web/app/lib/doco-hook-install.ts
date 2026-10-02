@@ -22,6 +22,7 @@ export function hookInstallSnippets(baseUrl: string): HookInstallSnippet[] {
       text: JSON.stringify(
         {
           hooks: {
+            SessionStart: [{ hooks: [{ type: "command", command, timeout: 15 }] }],
             UserPromptSubmit: [{ hooks: [{ type: "command", command, timeout: 15 }] }],
             PreToolUse: [
               {
@@ -40,6 +41,7 @@ export function hookInstallSnippets(baseUrl: string): HookInstallSnippet[] {
       text: JSON.stringify(
         {
           hooks: {
+            SessionStart: [{ hooks: [{ type: "command", command, timeout: 15 }] }],
             UserPromptSubmit: [{ hooks: [{ type: "command", command, timeout: 15 }] }],
             PreToolUse: [{ hooks: [{ type: "command", command, timeout: 15 }] }],
           },
@@ -53,6 +55,7 @@ export function hookInstallSnippets(baseUrl: string): HookInstallSnippet[] {
       text: JSON.stringify(
         {
           hooks: {
+            SessionStart: [{ hooks: [{ name: "doco", type: "command", command, timeout: 15000 }] }],
             BeforeAgent: [{ hooks: [{ name: "doco", type: "command", command, timeout: 15000 }] }],
           },
         },

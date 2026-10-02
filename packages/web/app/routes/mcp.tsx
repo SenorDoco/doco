@@ -31,6 +31,7 @@ import { action as policiesAction } from "./$docoHandle.api.policies[.]json";
 import { loader as searchLoader } from "./$docoHandle.search[.]json";
 import { loader as briefLoader } from "./api.v1.brief[.]json";
 import { action as createDocoAction } from "./api.v1.docos[.]json";
+import { loader as standingOrdersLoader } from "./api.v1.standing-orders[.]json";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_NAME = "doco";
@@ -387,12 +388,27 @@ const WHOAMI_TOOL = {
   description: [
     "Identity + reach for the current credential: who you're acting as, the",
     "workspaces this connection reaches (every one you belong to on an 'all",
-    "workspaces' token, or the ones the user picked), their constitutions,",
-    "and which Docos you can touch, with your role in each. Call",
-    "this FIRST to orient — it's how you find a project's Doco handle (the",
-    "<handle> in /<handle>) without guessing. No arguments.",
+    "workspaces' token, or the ones the user picked), which Docos you can",
+    "touch with your role in each, and the standing orders of the project's",
+    "workspace: its constitution, active rules, what each Doco holds and",
+    "expects, and what changed since `since`. Call this FIRST to orient; it is",
+    "how you find a project's Doco handle (the <handle> in /<handle>) without",
+    "guessing.",
   ].join("\n"),
-  inputSchema: { type: "object", properties: {} },
+  inputSchema: {
+    type: "object",
+    properties: {
+      workspace: {
+        type: "string",
+        description:
+          "The project's workspace handle (the `Doco workspace:` line of its AGENTS.md); default: the one workspace this connection reaches, if there is one.",
+      },
+      since: {
+        type: "string",
+        description: "ISO time you last looked: the standing orders list what changed since.",
+      },
+    },
+  },
 };
 
 const LIST_WORKSPACES_TOOL = {
@@ -842,7 +858,7 @@ async function runListWorkspaces(request: Request): Promise<ToolResult> {
   };
 }
 
-async function runDocoWhoami(request: Request): Promise<ToolResult> {
+async function runDocoWhoami(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
   const identity = await loadAgentIdentity(request);
   if (!identity) return toolError("Not authenticated.");
   const grants = identity.grants ?? [];
@@ -859,10 +875,43 @@ async function runDocoWhoami(request: Request): Promise<ToolResult> {
   } else {
     lines.push("", "No Docos reachable yet. Use doco_request_access to ask an owner.");
   }
-  // Each reachable workspace's constitution — the same charter the in-page
-  // Señor Doco and the agent-bootstrap manifest surface — so a connected agent
-  // honors the same top-level intent wherever it writes.
-  const constitutions = await getWorkspaceConstitutionsByIds(workspaces.map((w) => w.id));
+  // The standing orders of the project's workspace (named, or the one this
+  // connection reaches) replace its constitution line: they carry it, with
+  // the rules, the Doco map and what changed. Other workspaces keep their
+  // constitution line, the same charter the in-page Señor Doco and the
+  // agent-bootstrap manifest surface.
+  const named = String(args.workspace ?? "").trim();
+  const project = named
+    ? (workspaces.find((w) => w.label === named || w.id === named) ?? null)
+    : workspaces.length === 1
+      ? workspaces[0]
+      : null;
+  let standingOrders: unknown = null;
+  if (named && !project) {
+    lines.push("", `This connection reaches no workspace named ${named}.`);
+  } else if (project) {
+    const url = new URL("/api/v1/standing-orders.json", new URL(request.url).origin);
+    url.searchParams.set("workspace", project.label);
+    const since = String(args.since ?? "").trim();
+    if (since) url.searchParams.set("since", since);
+    const req = new Request(url, { headers: bearerHeaders(request) });
+    const result = await delegate("read the standing orders of", project.label, () =>
+      standingOrdersLoader({ request: req }),
+    );
+    if (result.isError) lines.push("", ...result.content.map((c) => c.text));
+    else {
+      standingOrders = result.structuredContent;
+      const text = (standingOrders as { text?: unknown })?.text;
+      if (typeof text === "string") lines.push("", text);
+    }
+  } else if (workspaces.length > 1) {
+    lines.push(
+      "",
+      "Call doco_whoami with workspace=<handle> for the standing orders of the project's workspace.",
+    );
+  }
+  const others = workspaces.filter((w) => w !== project);
+  const constitutions = await getWorkspaceConstitutionsByIds(others.map((w) => w.id));
   for (const c of constitutions) {
     lines.push(
       "",
@@ -872,7 +921,12 @@ async function runDocoWhoami(request: Request): Promise<ToolResult> {
   }
   return {
     content: [{ type: "text", text: lines.join("\n") }],
-    structuredContent: { ...identity, grants, workspace_constitutions: constitutions },
+    structuredContent: {
+      ...identity,
+      grants,
+      workspace_constitutions: constitutions,
+      standing_orders: standingOrders,
+    },
   };
 }
 
@@ -962,7 +1016,7 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
       const args = params?.arguments ?? {};
       switch (name) {
         case "doco_whoami":
-          return rpcResult(message.id, await runDocoWhoami(request));
+          return rpcResult(message.id, await runDocoWhoami(request, args));
         case "list_workspaces":
           return rpcResult(message.id, await runListWorkspaces(request));
         case "doco_brief":

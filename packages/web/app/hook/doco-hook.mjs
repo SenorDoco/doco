@@ -3,19 +3,22 @@
 // Code, Codex and Gemini CLI. Served at /agents/doco-hook.mjs; a project
 // keeps it at .doco/hook.mjs and names it in its client's hooks.
 //
+//   SessionStart (every client): the workspace's standing orders, with what
+//     changed since the last session started from this project.
 //   UserPromptSubmit (Claude Code, Codex) and BeforeAgent (Gemini CLI):
 //     the reminder line, then a brief about the prompt.
 //   PreToolUse on Edit, Write or MultiEdit (Claude Code, Codex): a brief on
 //     the file about to change, once per session and file.
 //
-// The brief comes from GET <origin>/api/v1/brief.json with a project token
+// The brief comes from GET <origin>/api/v1/brief.json (the standing orders
+// from /api/v1/standing-orders.json) with a project token
 // (DOCO_TOKEN, or .doco/project-tokens.json keyed by workspace handle) or an
 // OAuth token (DOCO_ACCESS). The workspace and the origin come from the
 // `Doco workspace:` line of AGENTS.md or CLAUDE.md, or DOCO_WORKSPACE and
 // DOCO_ORIGIN. The output is the hookSpecificOutput.additionalContext JSON
 // every client reads. Anything that fails, including the deadline, fails
-// open: the reminder alone on a prompt, nothing on a file; exit 0 either
-// way. No dependencies; Node 18 or later.
+// open: the reminder alone on a prompt, nothing on a file or at session
+// start; exit 0 either way. No dependencies; Node 18 or later.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -34,6 +37,7 @@ const ABOUT_MAX = 2000;
 const DEFAULT_TIMEOUT_MS = 8000;
 /** A file's brief holds for the session this long before it is fetched again. */
 const FILE_BRIEF_TTL_MS = 30 * 60_000;
+const SESSION_EVENTS = new Set(["SessionStart"]);
 const PROMPT_EVENTS = new Set(["UserPromptSubmit", "BeforeAgent"]);
 const FILE_EVENTS = new Set(["PreToolUse"]);
 
@@ -98,18 +102,48 @@ export function resolveConfig(env, cwd) {
   };
 }
 
+/** When a session last started from this project and workspace, as the standing orders' `since`. */
+function lastSeenFile(config) {
+  const key = createHash("sha1")
+    .update(`${config.root}|${config.workspace ?? ""}`)
+    .digest("hex");
+  return join(tmpdir(), "doco-hook", "last-seen", key);
+}
+
+function readLastSeen(config) {
+  try {
+    const seen = readFileSync(lastSeenFile(config), "utf8").trim();
+    return Number.isNaN(Date.parse(seen)) ? null : seen;
+  } catch {
+    return null;
+  }
+}
+
 /** What to fetch for an event, or null when the event calls for no brief. */
 export function requestFor(event, config) {
   const name = String(event.hook_event_name ?? "");
   const params = new URLSearchParams();
   if (config.workspace) params.set("workspace", config.workspace);
   params.set("format", "text");
+  if (SESSION_EVENTS.has(name)) {
+    const since = readLastSeen(config);
+    if (since) params.set("since", since);
+    return {
+      url: `${config.origin}/api/v1/standing-orders.json?${params}`,
+      cacheKey: null,
+      marksSeen: true,
+    };
+  }
   if (PROMPT_EVENTS.has(name)) {
     const prompt = String(event.prompt ?? "").trim();
     if (!prompt || prompt.startsWith("/")) return null;
     params.set("about", prompt.length > ABOUT_MAX ? prompt.slice(0, ABOUT_MAX) : prompt);
     params.set("budget", String(config.budget));
-    return { url: `${config.origin}/api/v1/brief.json?${params}`, cacheKey: null };
+    return {
+      url: `${config.origin}/api/v1/brief.json?${params}`,
+      cacheKey: null,
+      marksSeen: false,
+    };
   }
   if (FILE_EVENTS.has(name)) {
     const input = event.tool_input ?? {};
@@ -122,7 +156,11 @@ export function requestFor(event, config) {
     params.set("touching", path);
     params.set("budget", String(Math.min(FILE_BUDGET, config.budget)));
     params.set("synthesize", "0");
-    return { url: `${config.origin}/api/v1/brief.json?${params}`, cacheKey: `file:${path}` };
+    return {
+      url: `${config.origin}/api/v1/brief.json?${params}`,
+      cacheKey: `file:${path}`,
+      marksSeen: false,
+    };
   }
   return null;
 }
@@ -193,6 +231,15 @@ export async function main(stdinText, env = process.env, cwd = process.cwd()) {
         writeFileSync(cache, brief);
       } catch {
         /* a cache miss next time is fine */
+      }
+    }
+    if (brief && request.marksSeen) {
+      try {
+        const seen = lastSeenFile(config);
+        mkdirSync(dirname(seen), { recursive: true });
+        writeFileSync(seen, new Date().toISOString());
+      } catch {
+        /* the next session gets the default window */
       }
     }
   }

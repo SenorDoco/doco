@@ -19,7 +19,7 @@ export function resolveConfig(env: Record<string, string | undefined>, cwd: stri
 export function requestFor(
   event: Record<string, unknown>,
   config: HookConfig,
-): { url: string; cacheKey: string | null } | null;
+): { url: string; cacheKey: string | null; marksSeen: boolean } | null;
 export function main(
   stdinText: string,
   env?: Record<string, string | undefined>,

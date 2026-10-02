@@ -33,11 +33,12 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
         <section id="hook" className="flex min-w-0 flex-col gap-4">
           <h2 className="text-sm font-semibold">Then install the Doco hook:</h2>
           <p className="text-sm text-muted-foreground">
-            One script briefs the agent before each prompt and each file edit, with the reminder
-            line first. It reads the workspace from the <code>Doco workspace:</code> line and the
-            token from <code>DOCO_TOKEN</code> or <code>.doco/project-tokens.json</code>, which a
-            workspace owner mints under the workspace's settings. When it cannot reach Doco, the
-            agent gets the reminder alone.
+            One script loads the workspace's standing orders at session start (its charter, rules,
+            Docos and what changed since the last session), then briefs the agent before each prompt
+            and each file edit, with the reminder line first. It reads the workspace from the{" "}
+            <code>Doco workspace:</code> line and the token from <code>DOCO_TOKEN</code> or{" "}
+            <code>.doco/project-tokens.json</code>, which a workspace owner mints under the
+            workspace's settings. When it cannot reach Doco, the agent gets the reminder alone.
           </p>
           {loaderData.hook.map((snippet) => (
             <div key={snippet.title} className="flex min-w-0 flex-col gap-2">
