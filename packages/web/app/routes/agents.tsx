@@ -5,8 +5,8 @@ import { agentInstructions } from "~/lib/agent-instructions";
 /**
  * /agents: the instructions to give an agent, with a Copy button. Every
  * pointer for agents leads here (the head's ai-instructions tag, robots.txt,
- * the discovery probes, the OAuth recipe, invite agent.txt), and the copy an
- * agent keeps in AGENTS.md is checked against this page.
+ * the discovery probes, the OAuth recipe, invite agent.txt), and an agent
+ * without Doco's connector checks its AGENTS.md copy against this page.
  */
 export function loader({ request }: { request: Request }) {
   return { instructions: agentInstructions(getPublicBaseUrl(request)) };

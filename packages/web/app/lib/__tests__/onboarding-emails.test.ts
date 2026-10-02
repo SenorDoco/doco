@@ -40,7 +40,7 @@ describe("reminderEmail", () => {
       "1. Connect GitHub (done)\n2. Connect other sources of knowledge\n",
     );
     expect(email.text).toContain("https://doco.test/workspaces/acme");
-    expect(email.text).not.toContain("<!-- doco:begin -->");
+    expect(email.text).not.toContain("doco:begin");
   });
 
   it("hands over the agent's message when asking the agent is the only step left", () => {
@@ -60,7 +60,7 @@ describe("reminderEmail", () => {
     const email = reminderEmail({ ...base, steps: [{ step: "agent", done: false }] });
     expect(email.text).toContain(agentInstructionsForWorkspace("https://doco.test", "acme"));
     // In HTML the message is escaped and keeps its line breaks.
-    expect(email.html).toContain("&lt;!-- doco:begin --&gt;");
+    expect(email.html).toContain("&lt;!-- doco:begin v");
     expect(email.html).toContain("white-space:pre-wrap");
   });
 });

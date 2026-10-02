@@ -1,7 +1,12 @@
 // The instructions a person gives their agent to use Doco. The /agents page
 // shows them with a Copy button; the agent keeps them in the project's
 // AGENTS.md (or CLAUDE.md, or its client's project instructions), between the
-// two markers, and compares that copy with /agents to stay current.
+// two markers, next to a hook that reminds it of Doco before every reply.
+//
+// The begin marker carries a version computed from the block's text, so it
+// changes whenever the wording does. Every session the agent compares its
+// project copy's version with the copy the connector sent and replaces an
+// older one itself.
 //
 // This is the one agent-instructions template in Doco. The /agents page, each
 // workspace's onboarding and Invite agent page, the onboarding reminder email,
@@ -18,8 +23,11 @@
 
 import { TAGLINE } from "~/lib/tagline";
 
-export const INSTRUCTIONS_BEGIN = "<!-- doco:begin -->";
 export const INSTRUCTIONS_END = "<!-- doco:end -->";
+
+/** The line an agent's hook adds before every user message. */
+export const DOCO_REMINDER =
+  "Doco: search the workspace before answering, capture each decision as it forms, and log this chat in Agents chats.";
 
 /** The page that shows the block, where every pointer for agents leads. */
 export const AGENT_INSTRUCTIONS_PATH = "/agents";
@@ -29,8 +37,7 @@ export const AI_INSTRUCTIONS_META = `This site is Doco: ${TAGLINE}. If you were 
 
 export function agentInstructions(baseUrl: string): string {
   const host = baseUrl.replace(/\/+$/, "");
-  return `${INSTRUCTIONS_BEGIN}
-## Doco
+  const block = `## Doco
 
 This project keeps its shared memory in Doco (${host}): the intents, decisions, rules and history behind the work. Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.
 
@@ -45,37 +52,50 @@ Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.m
 
 A doco is the project's record; write what was decided, by whom and why, in the third person or the imperative.
 
+Before every reply, recall: \`${DOCO_REMINDER}\`
+
+Do step 3 when the project's copy of this block is missing or its \`doco:begin\` version differs from the one Doco's connector sent (or, without it, ${host}${AGENT_INSTRUCTIONS_PATH}), or when a client with hooks lacks the reminder hook.
+
 ### 1. Check the Doco connection
 
-Look for Doco's MCP tools (\`doco_whoami\`, \`list_workspaces\`). If they are missing, ask the user to connect Doco's MCP server and try again once it is connected:
+Look for Doco's MCP tools (\`doco_whoami\`, \`list_workspaces\`). If they are missing, ask the user to connect Doco's MCP server:
 
-- claude.ai, Claude Desktop, ChatGPT, Cursor: add a custom connector with the URL ${host}/mcp
 - Claude Code: run \`claude mcp add --transport http doco ${host}/mcp\`, then \`/mcp\` to sign in
-- Any other MCP client: add ${host}/mcp as a remote (Streamable HTTP) server
+- Any other client (claude.ai, ChatGPT, Cursor): add ${host}/mcp as a custom connector or remote MCP server
 
-Doco's tools must be set to always allow, or every duty waits on the user. Check that (in Claude Code, a \`mcp__doco\` allow rule); if they aren't, or you can't tell, ask the user to set that up.
+Doco's tools must be set to always allow. Check that (in Claude Code, a \`mcp__doco\` allow rule); if they aren't, or you can't tell, ask the user to set that up.
 
-Signing in is the MCP client's job: never drive OAuth by hand or have the user paste a callback URL. \`doco_whoami\` shows who the agent acts as, what it can reach, and the workspace constitutions its captures must honor.
+Signing in is the MCP client's job: never drive OAuth by hand. \`doco_whoami\` shows who the agent acts as, what it can reach, and the workspace constitutions its captures must honor.
 
 ### 2. Pick the project's workspace
 
 One project = one workspace. Call \`list_workspaces\`.
 
-- No workspaces besides the user's personal one (named after the user): tell the user to create one at ${host}/new-workspace, or to accept the invite a teammate sent, and to try again once it exists. Agents never create workspaces.
+- No workspaces besides the user's personal one: tell the user to create one at ${host}/new-workspace, or to accept the invite a teammate sent, and to try again once it exists. Agents never create workspaces.
 - A workspace is already connected (the \`Doco workspace:\` line right after this block): ask whether to keep it or change it.
 - None connected yet, or changing it: ask the user which of the listed workspaces to use, or share ${host}/new-workspace to create one.
 
-A new workspace is reachable at once on an "all workspaces" connection; otherwise the user reconnects and picks it. Record the choice as one line right after this block:
+Record the choice as one line right after this block:
 
     Doco workspace: ${host}/workspaces/<workspace-handle>
 
-When the work needs a Doco the workspace lacks, create it with \`doco_create\` in the workspace on the \`Doco workspace:\` line, picking the template that fits. Never ask the user to create a Doco on the website.
+When the work needs a Doco the workspace lacks, create it with \`doco_create\` in the workspace on the \`Doco workspace:\` line. Never ask the user to create a Doco on the website.
 
-### 3. Keep these instructions current
+### 3. Keep this block in the project
 
-Fetch ${host}${AGENT_INSTRUCTIONS_PATH} and compare the instructions it shows with this block. If they differ, or the file the project's agents load lacks this block (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), ask the user whether to update it with the latest instructions. If it can't be fetched, ask the user to copy the latest instructions from that page and paste them.
+Save this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), replacing any older copy between the markers, then tell the user. In the project's shared settings, add a hook that adds the reminder above as context before each user message (Claude Code and Codex: UserPromptSubmit; Gemini CLI: BeforeAgent).
 ${INSTRUCTIONS_END}
 `;
+  return `<!-- doco:begin v${version(block)} -->\n${block}`;
+}
+
+/** FNV-1a: eight hex digits that change whenever the text does. */
+function version(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 /**

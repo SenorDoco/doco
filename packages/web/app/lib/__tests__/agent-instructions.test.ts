@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  INSTRUCTIONS_BEGIN,
+  DOCO_REMINDER,
   INSTRUCTIONS_END,
   agentInstructions,
   agentInstructionsForWorkspace,
@@ -10,6 +10,8 @@ import { firstPersonLines } from "./first-person";
 
 const text = agentInstructions("https://doco.test");
 
+const BEGIN = /^<!-- doco:begin v([0-9a-f]{8}) -->\n/;
+
 function position(needle: string): number {
   const at = text.indexOf(needle);
   expect(at, needle).toBeGreaterThan(-1);
@@ -17,11 +19,20 @@ function position(needle: string): number {
 }
 
 describe("agentInstructions", () => {
-  // The agent keeps this block in AGENTS.md and compares it with the home
-  // page, so it must be delimited and carry nothing that varies per project.
+  // The agent keeps this block in AGENTS.md and compares it with the
+  // connector's copy, so it must be delimited and carry nothing that varies
+  // per project.
   it("is one delimited block the agent can keep in AGENTS.md", () => {
-    expect(text.startsWith(INSTRUCTIONS_BEGIN)).toBe(true);
+    expect(text).toMatch(BEGIN);
     expect(text.trimEnd().endsWith(INSTRUCTIONS_END)).toBe(true);
+  });
+
+  // Alexander, 2026-10-02: agents tell an old project copy from the version on
+  // its begin marker, which follows the text with no bump to remember.
+  it("versions itself from its own text", () => {
+    const version = (block: string) => block.match(BEGIN)?.[1];
+    expect(version(agentInstructions("https://doco.test"))).toBe(version(text));
+    expect(version(agentInstructions("https://doco.example"))).not.toBe(version(text));
   });
 
   it("asks the user to connect the MCP server when its tools are missing", () => {
@@ -69,13 +80,35 @@ describe("agentInstructions", () => {
     expect(text).toContain("Never ask the user to create a Doco");
   });
 
-  it("then checks the AGENTS.md copy against /agents and asks before updating it", () => {
-    const pick = position("### 2. Pick the project's workspace");
-    const current = position("### 3. Keep these instructions current");
-    expect(current).toBeGreaterThan(pick);
-    expect(text).toContain("Fetch https://doco.test/agents and compare");
-    expect(text).toContain("ask the user whether to update it with the latest instructions");
-    expect(text).toContain("ask the user to copy the latest instructions");
+  // Alexander, 2026-10-02: every session, an agent whose project lacks the
+  // block or holds an older one saves the latest itself, then tells the user.
+  it("keeps the latest block in the project every session, then tells the user", () => {
+    const keep = position("### 3. Keep this block in the project");
+    expect(keep).toBeGreaterThan(position("### 2. Pick the project's workspace"));
+    expect(position("Do step 3 when the project's copy of this block is missing")).toBeLessThan(
+      position("### 1. Check the Doco connection"),
+    );
+    expect(text).toContain(
+      "version differs from the one Doco's connector sent (or, without it, https://doco.test/agents)",
+    );
+    expect(text.slice(keep)).toContain(
+      "replacing any older copy between the markers, then tell the user",
+    );
+  });
+
+  // Alexander, 2026-10-02: agents drift from instructions read once a
+  // session, so a hook adds a one-line reminder before every reply, and
+  // clients without hooks recall it themselves.
+  it("reminds the agent of Doco before every reply, through a hook where the client has one", () => {
+    expect(position(`Before every reply, recall: \`${DOCO_REMINDER}\``)).toBeLessThan(
+      position("### 1. Check the Doco connection"),
+    );
+    const step3 = text.slice(position("### 3. Keep this block in the project"));
+    expect(step3).toContain(
+      "add a hook that adds the reminder above as context before each user message",
+    );
+    expect(step3).toContain("Claude Code and Codex: UserPromptSubmit; Gemini CLI: BeforeAgent");
+    expect(text).toContain("or when a client with hooks lacks the reminder hook");
   });
 
   it("carries the four baseline duties", () => {
@@ -148,7 +181,7 @@ describe("agentInstructions", () => {
 
 describe("agentInstructionsForWorkspace", () => {
   const forAcme = agentInstructionsForWorkspace("https://doco.test/", "acme");
-  const [request, block] = forAcme.split(`\n\n${INSTRUCTIONS_BEGIN}`);
+  const [request, block] = forAcme.split("\n\n<!-- doco:begin");
 
   // Alexander, 2026-10-01: inviting an agent from a workspace names the
   // workspace, and asks the agent to note in Agents chats that it got the
@@ -167,7 +200,7 @@ describe("agentInstructionsForWorkspace", () => {
   // The request and the workspace line sit outside the block, so the block is
   // the one on /agents, byte for byte, and stays under the MCP length cap.
   it("then hands over the /agents block and the line that connects the workspace", () => {
-    expect(`${INSTRUCTIONS_BEGIN}${block}`).toBe(
+    expect(`<!-- doco:begin${block}`).toBe(
       `${text}Doco workspace: https://doco.test/workspaces/acme\n`,
     );
   });
