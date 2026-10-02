@@ -44,8 +44,8 @@ export function HowDocoWorks() {
   }
 
   return (
-    <section className="hdw flex flex-col gap-2 text-center">
-      <h2 className="text-2xl font-bold leading-tight md:text-3xl">How Doco works:</h2>
+    <section className="hdw flex flex-col gap-4 text-center">
+      <h2 className="text-lg font-bold leading-tight md:text-xl">How Doco works:</h2>
       <ol className="hdw-steps">
         {STEPS.map((step, i) => (
           <li key={step.verb} className={`hdw-s${i + 1}`}>
