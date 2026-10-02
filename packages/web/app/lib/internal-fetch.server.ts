@@ -60,6 +60,11 @@ const ROUTES: RouteEntry[] = [
     pattern: "/api/v1/agent-bootstrap.json",
     load: () => import("~/routes/api.v1.agent-bootstrap[.]json"),
   },
+  { pattern: "/api/v1/brief.json", load: () => import("~/routes/api.v1.brief[.]json") },
+  {
+    pattern: "/api/v1/standing-orders.json",
+    load: () => import("~/routes/api.v1.standing-orders[.]json"),
+  },
   { pattern: "/api/v1/docos.json", load: () => import("~/routes/api.v1.docos[.]json") },
   { pattern: "/api/v1/workspaces.json", load: () => import("~/routes/api.v1.workspaces[.]json") },
   {

@@ -1,8 +1,9 @@
 // Real-DB exercise of the two workspace pages that enumerate a workspace's
-// Docos: the workspace home (/workspaces/:handle) and workspace search
-// (/workspaces/:handle/search). Both used to list EVERY Doco in the workspace,
-// so anyone who knew a workspace handle — signed out included — could read a
-// private Doco's handle, its activity feed, and (via search) its node prose.
+// Docos: the workspace home (/workspaces/:handle) and the workspace brief
+// (/workspaces/:handle/brief, "What applies to…?"). Both used to list EVERY
+// Doco in the workspace, so anyone who knew a workspace handle — signed out
+// included — could read a private Doco's handle, its activity feed, and (via
+// search, now the brief) its node prose.
 // A workspace page may only surface what the caller could open directly:
 // public Docos, plus Docos the caller holds a grant on. Workspace-level content
 // (the constitution) is for workspace members.
@@ -66,7 +67,7 @@ vi.mock("~/lib/embedding-provider.server", () => ({
 
 const { vectorLiteral } = await import("@doco/db");
 const home = await import("../workspaces.$workspaceHandle._index");
-const search = await import("../workspaces.$workspaceHandle.search");
+const brief = await import("../workspaces.$workspaceHandle.brief");
 
 async function seed(): Promise<void> {
   const db = await freshDb();
@@ -122,12 +123,13 @@ function as(userId: string | null): void {
   dbm.me = userId ? { id: userId } : null;
 }
 
-async function searchHits(handle: string): Promise<string[]> {
-  const data = await search.loader({
-    request: new Request(`https://doco.test/workspaces/${handle}/search?q=plans`),
+/** The Doco items of the brief for "plans" (the workspace's charter aside). */
+async function briefItems(handle: string): Promise<string[]> {
+  const data = await brief.loader({
+    request: new Request(`https://doco.test/workspaces/${handle}/brief?about=plans&rerank=0`),
     params: { workspaceHandle: handle },
   });
-  return data.hits.map((h: { id: string }) => h.id);
+  return (data.brief?.items ?? []).filter((i) => i.doco).map((i) => i.id);
 }
 
 async function homeData(handle: string) {
@@ -141,30 +143,30 @@ beforeEach(async () => {
   await seed();
 });
 
-describe("workspace search only ranks Docos the caller can read", () => {
+describe("the workspace brief only draws from Docos the caller can read", () => {
   it("hides private Docos from a signed-out caller", async () => {
     as(null);
-    expect(await searchHits("acme")).toEqual(["decision_public"]);
+    expect(await briefItems("acme")).toEqual(["decision_public"]);
   });
 
   it("hides private Docos from a signed-in non-member", async () => {
     as("user_outsider");
-    expect(await searchHits("acme")).toEqual(["decision_public"]);
+    expect(await briefItems("acme")).toEqual(["decision_public"]);
   });
 
   it("includes private Docos for a workspace member", async () => {
     as("user_member");
-    expect((await searchHits("acme")).sort()).toEqual(["decision_private", "decision_public"]);
+    expect((await briefItems("acme")).sort()).toEqual(["decision_private", "decision_public"]);
   });
 
   it("includes a private Doco for someone granted that Doco directly", async () => {
     as("user_invited");
-    expect((await searchHits("acme")).sort()).toEqual(["decision_private", "decision_public"]);
+    expect((await briefItems("acme")).sort()).toEqual(["decision_private", "decision_public"]);
   });
 
   it("never scores vectors from a different embedding model", async () => {
     as("user_member");
-    expect(await searchHits("acme")).not.toContain("decision_other_model");
+    expect(await briefItems("acme")).not.toContain("decision_other_model");
   });
 });
 
@@ -208,9 +210,9 @@ describe("workspace queries", () => {
     );
   }
 
-  it("records a search across the workspace as one query on the website", async () => {
+  it("records a brief across the workspace as one query on the website, with what it served", async () => {
     as("user_member");
-    await searchHits("acme");
+    await briefItems("acme");
     await Promise.all(dbm.pending);
     const rows = (
       await dbm.db.query("SELECT actor, workspace_id, doco_id, source, metadata FROM query_events")
@@ -221,7 +223,14 @@ describe("workspace queries", () => {
         workspace_id: "workspace_acme",
         doco_id: null,
         source: "ui",
-        metadata: { surface: "website" },
+        metadata: expect.objectContaining({
+          surface: "website",
+          brief_id: expect.stringMatching(/^brief_/),
+          served: expect.arrayContaining([
+            { id: "decision_private", tier: "decided" },
+            { id: "decision_public", tier: "decided" },
+          ]),
+        }),
       },
     ]);
   });

@@ -13,6 +13,8 @@ describe("internalFetch route registry", () => {
 
   it("covers agent-reachable JSON endpoints that would otherwise fall back to HTTP", () => {
     const expectedPaths = [
+      "/api/v1/brief.json",
+      "/api/v1/standing-orders.json",
       "/api/v1/me/preferences.json",
       "/api/v1/feedback-reports.json",
       "/api/v1/users/invite.json",

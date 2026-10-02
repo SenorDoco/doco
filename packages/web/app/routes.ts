@@ -170,8 +170,8 @@ export default [
     "routes/workspaces.$workspaceHandle.integrations.tsx",
   ),
   route("workspaces/:workspaceHandle", "routes/workspaces.$workspaceHandle._index.tsx"),
-  // Cross-Doco semantic search across every Doco the workspace owns.
-  route("workspaces/:workspaceHandle/search", "routes/workspaces.$workspaceHandle.search.tsx"),
+  // "What applies to…?": the brief across every Doco of the workspace the caller can read.
+  route("workspaces/:workspaceHandle/brief", "routes/workspaces.$workspaceHandle.brief.tsx"),
   route("users", "routes/users.tsx"),
   route("integrations", "routes/integrations.tsx"),
   route("integrations/github", "routes/integrations.github.tsx"),
