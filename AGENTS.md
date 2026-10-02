@@ -357,7 +357,7 @@ merge trigger — no local rerun, no idle watching.
 
 ---
 
-<!-- doco:begin v6c492827 -->
+<!-- doco:begin vf27e4e1c -->
 ## Doco
 
 This project keeps its shared memory in Doco (https://doco.to): the intents, decisions, rules and history behind the work. Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.
@@ -386,7 +386,7 @@ Look for Doco's MCP tools (`doco_whoami`, `list_workspaces`). If they are missin
 
 Doco's tools must be set to always allow. Check that (in Claude Code, a `mcp__doco` allow rule); if they aren't, or you can't tell, ask the user to set that up.
 
-Signing in is the MCP client's job: never drive OAuth by hand. `doco_whoami` shows who the agent acts as, what it can reach, and the workspace constitutions its captures must honor.
+Signing in is the MCP client's job: never drive OAuth by hand. `doco_whoami` shows who the agent acts as, what it can reach, and the standing orders of the project's workspace: its charter, rules, Docos and what changed.
 
 ### 2. Pick the project's workspace
 

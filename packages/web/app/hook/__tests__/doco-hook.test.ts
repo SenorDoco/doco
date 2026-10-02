@@ -131,6 +131,36 @@ describe("the Doco hook", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
+  it("loads the standing orders at session start, with what changed since the last start here", async () => {
+    const cwd = project();
+    const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_pt_env", DOCO_WORKSPACE: "acme" };
+    const orders = "Standing orders for Acme (acme)\n\n## Constitution\nShip small.";
+    respond = () => ({ status: 200, body: orders });
+    const event = {
+      hook_event_name: "SessionStart",
+      session_id: session(),
+      cwd,
+      source: "startup",
+    };
+    const first = await runHook(event, env, cwd);
+    expect(JSON.parse(first.stdout).hookSpecificOutput).toEqual({
+      hookEventName: "SessionStart",
+      additionalContext: orders,
+    });
+    expect(requests.map((r) => r.url)).toEqual([
+      "/api/v1/standing-orders.json?workspace=acme&format=text",
+    ]);
+    const second = await runHook({ ...event, session_id: session() }, env, cwd);
+    expect(JSON.parse(second.stdout).hookSpecificOutput.additionalContext).toBe(orders);
+    const since = new URL(requests[1].url, "http://x").searchParams.get("since");
+    expect(Math.abs(Date.now() - Date.parse(since ?? ""))).toBeLessThan(60_000);
+    respond = () => ({
+      status: 200,
+      body: "Doco brief brief_1 · about: x\n\n## Must obey\n- rule_1",
+    });
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
   it("reads the workspace, the origin and the token from the project's files", async () => {
     const cwd = project();
     writeFileSync(
@@ -170,7 +200,7 @@ describe("the Doco hook", () => {
     expect(
       requestFor({ hook_event_name: "UserPromptSubmit", prompt: "/clear" }, config),
     ).toBeNull();
-    expect(requestFor({ hook_event_name: "SessionStart", source: "startup" }, config)).toBeNull();
+    expect(requestFor({ hook_event_name: "AfterTool" }, config)).toBeNull();
     expect(
       requestFor({ hook_event_name: "PreToolUse", tool_input: { command: "ls" } }, config),
     ).toBeNull();

@@ -84,7 +84,7 @@ Look for Doco's MCP tools (\`doco_whoami\`, \`list_workspaces\`). If they are mi
 
 Doco's tools must be set to always allow. Check that (in Claude Code, a \`mcp__doco\` allow rule); if they aren't, or you can't tell, ask the user to set that up.
 
-Signing in is the MCP client's job: never drive OAuth by hand. \`doco_whoami\` shows who the agent acts as, what it can reach, and the workspace constitutions its captures must honor.
+Signing in is the MCP client's job: never drive OAuth by hand. \`doco_whoami\` shows who the agent acts as, what it can reach, and the standing orders of the project's workspace: its charter, rules, Docos and what changed.
 
 ### 2. Pick the project's workspace
 

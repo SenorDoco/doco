@@ -242,6 +242,9 @@ export default [
   // The Doco brief: what an agent must know before it acts, across every Doco
   // it can read (lib/brief). The MCP tool doco_brief delegates here.
   route("api/v1/brief.json", "routes/api.v1.brief[.]json.tsx"),
+  // Standing orders: what always applies in one workspace, read at session
+  // start by the Doco hook and doco_whoami.
+  route("api/v1/standing-orders.json", "routes/api.v1.standing-orders[.]json.tsx"),
   route("api/v1/feedback-reports.json", "routes/api.v1.feedback-reports[.]json.tsx"),
   // Inbound GitHub App webhook (pull_request events → Reference upserts).
   route("api/github/webhook", "routes/api.github.webhook.tsx"),

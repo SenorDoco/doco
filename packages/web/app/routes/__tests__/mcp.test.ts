@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   gateUserMcp: vi.fn(),
   searchLoader: vi.fn(),
   briefLoader: vi.fn(),
+  standingOrdersLoader: vi.fn(),
   captureAction: vi.fn(),
   edgesAction: vi.fn(),
   changesetsAction: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAge
 vi.mock("~/lib/agent-debug.server", () => ({ gatherAgentDebug: mocks.gatherAgentDebug }));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../api.v1.brief[.]json", () => ({ loader: mocks.briefLoader }));
+vi.mock("../api.v1.standing-orders[.]json", () => ({ loader: mocks.standingOrdersLoader }));
 vi.mock("../$docoHandle.api.$type[.]json", () => ({ action: mocks.captureAction }));
 vi.mock("../$docoHandle.api.edges[.]json", () => ({ action: mocks.edgesAction }));
 vi.mock("../$docoHandle.api.changesets[.]json", () => ({ action: mocks.changesetsAction }));
@@ -73,6 +75,9 @@ describe("POST /mcp (hosted remote MCP)", () => {
       handle: handleOrId,
     }));
     mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([]);
+    mocks.standingOrdersLoader.mockResolvedValue(
+      Response.json({ error: "Name the workspace (workspace=<handle>)." }, { status: 400 }),
+    );
     vi.stubGlobal("fetch", mocks.fetchMock);
   });
 
@@ -341,6 +346,109 @@ describe("POST /mcp (hosted remote MCP)", () => {
         constitution: "Ship behind flags. Write the decision down.",
       },
     ]);
+  });
+
+  // Since the Doco Brief (decision_01M3YYQ1JRBS04Z99KEP869F26): the standing
+  // orders of the project's workspace come with the identity, so one call
+  // orients the agent and loads what always applies there.
+  it("doco_whoami carries the standing orders of the named workspace, replaying the bearer", async () => {
+    mocks.loadAgentIdentity.mockResolvedValue({
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants: [
+        { scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" },
+        { scope: "workspace", id: "workspace_beta", label: "beta", role: "writer" },
+      ],
+    });
+    mocks.getWorkspaceConstitutionsByIds.mockResolvedValue([
+      { workspace_id: "workspace_beta", workspace_handle: "beta", constitution: "Beta's charter." },
+    ]);
+    mocks.standingOrdersLoader.mockResolvedValue(
+      Response.json({
+        workspace: { id: WORKSPACE, handle: "acme" },
+        rules: [{ id: "rule_1" }],
+        text: "Standing orders for Acme (acme)\n\n## Rules\n- rule_1 (rules) — Ship small.",
+      }),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 33,
+        method: "tools/call",
+        params: { name: "doco_whoami", arguments: { workspace: "acme", since: "2026-10-01" } },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    const req: Request = mocks.standingOrdersLoader.mock.calls[0][0].request;
+    expect(req.url).toBe(
+      "https://doco.to/api/v1/standing-orders.json?workspace=acme&since=2026-10-01",
+    );
+    expect(req.headers.get("authorization")).toBe("Bearer doco_at_test");
+    const text: string = body.result.content[0].text;
+    expect(text).toContain("Standing orders for Acme (acme)");
+    expect(text).toContain("- rule_1 (rules) — Ship small.");
+    // The orders carry acme's constitution; beta keeps its line.
+    expect(mocks.getWorkspaceConstitutionsByIds).toHaveBeenCalledWith(["workspace_beta"]);
+    expect(text).toContain("Workspace constitution for beta");
+    expect(body.result.structuredContent.standing_orders.rules).toEqual([{ id: "rule_1" }]);
+  });
+
+  it("doco_whoami takes the one reachable workspace as the project's, and asks for a handle among several", async () => {
+    const identity = {
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants: [{ scope: "workspace", id: WORKSPACE, label: "acme", role: "owner" }],
+    };
+    mocks.loadAgentIdentity.mockResolvedValue(identity);
+    mocks.standingOrdersLoader.mockResolvedValue(
+      Response.json({
+        workspace: { id: WORKSPACE, handle: "acme" },
+        text: "Standing orders for Acme",
+      }),
+    );
+    const one = await call(
+      { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "doco_whoami" } },
+      BEARER,
+    );
+    expect((await one.json()).result.content[0].text).toContain("Standing orders for Acme");
+    expect(mocks.standingOrdersLoader.mock.calls[0][0].request.url).toBe(
+      "https://doco.to/api/v1/standing-orders.json?workspace=acme",
+    );
+
+    mocks.loadAgentIdentity.mockResolvedValue({
+      ...identity,
+      grants: [
+        ...identity.grants,
+        { scope: "workspace", id: "workspace_beta", label: "beta", role: "writer" },
+      ],
+    });
+    const several = await call(
+      { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "doco_whoami" } },
+      BEARER,
+    );
+    const text: string = (await several.json()).result.content[0].text;
+    expect(text).toContain("Call doco_whoami with workspace=<handle>");
+    expect(mocks.standingOrdersLoader).toHaveBeenCalledTimes(1);
+
+    const unknown = await call(
+      {
+        jsonrpc: "2.0",
+        id: 36,
+        method: "tools/call",
+        params: { name: "doco_whoami", arguments: { workspace: "gamma" } },
+      },
+      BEARER,
+    );
+    expect((await unknown.json()).result.content[0].text).toContain(
+      "This connection reaches no workspace named gamma.",
+    );
   });
 
   it("doco_whoami omits the constitution section when no workspace has one", async () => {
