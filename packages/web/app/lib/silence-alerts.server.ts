@@ -19,11 +19,10 @@
 // later is a new alert with its own email.
 
 import { generateUlid } from "@doco/shared";
+import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
 import { agentName } from "./authoring-provenance";
-import { COPIED_ITEMS_SQL } from "./doco-stats.server";
 import { emailHtml } from "./email-html";
 import { type Email, type EmailResult, emailConfigured, sendEmail } from "./email.server";
-import { GITHUB_ITEMS_SQL } from "./integration-status.server";
 import { type SourceIntegration, sourceIntegrationFor } from "./integrations-catalog";
 
 type QueryClient = {
@@ -112,7 +111,7 @@ async function quietIntegrations(c: QueryClient, now: Date): Promise<Silence[]> 
   const quiet = await quietKeys(
     c,
     `SELECT ARRAY[r.doco_id] AS key, r.at, 1 AS n
-       FROM (${COPIED_ITEMS_SQL} UNION ALL ${GITHUB_ITEMS_SQL}) r
+       FROM (${IMPORTED_ITEMS_SQL}) r
       WHERE r.at IS NOT NULL AND r.doco_id IN (${CONNECTED_DOCOS_SQL})`,
     now,
   );

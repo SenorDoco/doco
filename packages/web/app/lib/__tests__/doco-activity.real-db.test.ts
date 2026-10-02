@@ -1,6 +1,7 @@
-// A Doco's activity, as its home's side column shows it: its writes (with what
-// it copied from its source) and queries each day, the latest recorded writes,
-// and who wrote and queried it most. PGlite runs the real schema.
+// A Doco's activity, as its home's side column shows it: its writes, queries
+// and imports each day, the latest recorded writes, and who wrote to it, who
+// queried it and what imported into it most in the last 7 days. PGlite runs
+// the real schema.
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
@@ -59,22 +60,23 @@ beforeEach(async () => {
 });
 
 describe("loadDocoActivity", () => {
-  it("counts each day's writes and queries, and lists the latest writes and who made them", async () => {
+  it("counts each day's writes, queries and imports, and lists the latest writes and the last week's tops", async () => {
     const activity = await loadDocoActivity(db as never, "doco_notion");
-    // Writes: the recorded change, plus the pages copied from Notion.
     expect(activity.byDay).toEqual({
-      writes: { [day(daysAgo(3))]: 3, [day(daysAgo(10))]: 1 },
+      writes: { [day(daysAgo(3))]: 1 },
       queries: { [day(daysAgo(1))]: 1 },
+      imports: { [day(daysAgo(3))]: 2, [day(daysAgo(10))]: 1 },
     });
     // Policy writes are the Doco's settings, not its activity.
     expect(activity.items.map((it) => [it.id, it.summary, it.op])).toEqual([
       ["decision_1", "Keep the handbook in Notion", "entity.create"],
     ]);
-    expect(activity.topContributors.map((a) => [a.username, a.via, a.count])).toEqual([
+    const week = activity.lastWeek;
+    expect(week.topContributors.map((a) => [a.username, a.via, a.count])).toEqual([
       ["ana", "Claude Code", 1],
     ]);
-    expect(activity.topQueryers.map((a) => [a.username, a.via, a.count])).toEqual([
-      ["ana", null, 1],
-    ]);
+    expect(week.topQueryers.map((a) => [a.username, a.via, a.count])).toEqual([["ana", null, 1]]);
+    // The page edited 10 days ago is older than the last 7 days.
+    expect(week.topIntegrations.map((i) => [i.name, i.count])).toEqual([["Notion", 2]]);
   });
 });

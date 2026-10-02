@@ -1,15 +1,16 @@
-// The cards of a Doco's activity column: the Activity chart, who wrote to and
-// queried it most, and the latest recorded writes. Every Doco home shows them,
-// and the reader (codebase, Notion) shows them beside whatever is open.
+// The cards of a Doco's activity column: the Activity calendars, the last 7
+// days' top contributors, queryers and integrations, and the latest recorded
+// writes. Every Doco home shows them, and the reader (codebase, Notion) shows
+// them beside whatever is open.
 
 import { ActivityFeedLine, type ActivityFeedLineItem } from "~/components/activity-feed-line";
 import { ActivityHeatmap } from "~/components/activity-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { TopActorsList } from "~/components/top-actors-list";
-import type { DailyActivity, TopActor } from "~/lib/activity-log.server";
+import { TopListsSections } from "~/components/top-list";
+import type { DailyActivity } from "~/lib/activity-log.server";
 import type { DocoActivity, DocoFeedItem } from "~/lib/doco-activity.server";
 
-/** Writes and queries each day. */
+/** Writes, queries and imports each day. */
 export function ActivityCard({ byDay }: { byDay: DailyActivity }) {
   return (
     <Card>
@@ -20,28 +21,6 @@ export function ActivityCard({ byDay }: { byDay: DailyActivity }) {
         <ActivityHeatmap byDay={byDay} />
       </CardContent>
     </Card>
-  );
-}
-
-/** Top contributors and Top queryers, one row per person and agent. */
-export function TopActorsSections({
-  contributors,
-  queryers,
-}: {
-  contributors: TopActor[];
-  queryers: TopActor[];
-}) {
-  return (
-    <>
-      <section className="space-y-1">
-        <h2 className="text-xs font-semibold text-foreground">Top contributors</h2>
-        <TopActorsList actors={contributors} empty="No recorded contributions yet." />
-      </section>
-      <section className="space-y-1">
-        <h2 className="text-xs font-semibold text-foreground">Top queryers</h2>
-        <TopActorsList actors={queryers} empty="No recorded queries yet." />
-      </section>
-    </>
   );
 }
 
@@ -91,10 +70,7 @@ export function ActivityColumn({ activity, handle }: { activity: DocoActivity; h
       <ActivityCard byDay={activity.byDay} />
       <Card>
         <CardContent className="space-y-4 p-5">
-          <TopActorsSections
-            contributors={activity.topContributors}
-            queryers={activity.topQueryers}
-          />
+          <TopListsSections summary={activity.lastWeek} />
         </CardContent>
       </Card>
       <LatestActivityCard items={activity.items} handle={handle} />

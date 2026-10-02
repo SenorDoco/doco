@@ -7,12 +7,13 @@
 import type { NodeType } from "@doco/shared";
 
 /** The one thing a kind of Doco holds, as its lists name and count it. What
- *  counts as one: a node of one type, any node, a copy of the Doco's source
- *  (a file, a message, a page), or a process (an Action with child Actions). */
+ *  counts as one: a node of one type, any node, an item imported from the
+ *  Doco's source (a file, a message, a page), or a process (an Action with
+ *  child Actions). */
 export interface DocoItem {
   one: string;
   many: string;
-  counts: NodeType | "node" | "copy" | "process";
+  counts: NodeType | "node" | "import" | "process";
 }
 
 export interface DocoTemplateMeta {
@@ -85,7 +86,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "GitHub codebase",
     description:
       "A copy of your GitHub repositories' code, kept in sync on every push, so it can be browsed and searched alongside your Doco knowledge.",
-    item: { one: "file", many: "files", counts: "copy" },
+    item: { one: "file", many: "files", counts: "import" },
   },
   {
     handle: "github-pull-requests",
@@ -113,7 +114,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Notion workspace",
     description:
       "A read-only copy of the Notion pages and databases you share, kept in sync, so they can be searched alongside your Doco knowledge.",
-    item: { one: "page", many: "pages", counts: "copy" },
+    item: { one: "page", many: "pages", counts: "import" },
   },
   {
     handle: "org-chart",
@@ -148,7 +149,7 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     label: "Slack workspace",
     description:
       "A read-only copy of a Slack workspace's public channels, kept in sync, so its conversations can be searched alongside your Doco knowledge.",
-    item: { one: "message", many: "messages", counts: "copy" },
+    item: { one: "message", many: "messages", counts: "import" },
   },
   {
     handle: "test-scenarios",

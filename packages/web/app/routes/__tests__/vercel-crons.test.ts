@@ -16,6 +16,7 @@ describe("Vercel cron jobs", () => {
     expect(config.crons?.map((cron) => cron.path).sort()).toEqual([
       "/admin/agent-health-cron",
       "/admin/purge-deleted-docos",
+      "/api/activity-digest",
       "/api/alerts/silence-check",
       "/api/embeddings/sweep",
       "/api/github/backfill-sweep",

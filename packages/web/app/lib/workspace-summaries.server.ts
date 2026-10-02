@@ -6,7 +6,7 @@
 // A person reaches a workspace by membership (every live Doco in it) or by a
 // Doco invite (just the Docos they were invited to; role is null).
 
-import { COPIED_ITEMS_SQL } from "./doco-stats.server";
+import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
 import { type SilenceAlert, loadSilenceAlerts } from "./silence-alerts.server";
 
 type QueryClient = {
@@ -72,11 +72,11 @@ export async function loadWorkspaceSummaries(
     [userId, docoRows.rows.map((d) => d.workspace_id), workspaceFilter],
   );
   const activityRows = await c.query<{ workspace_id: string; at: Date | string }>(
-    // Policy edits aren't project activity; what a Doco copies from its source is.
+    // Policy edits aren't project activity; what a Doco imports from its source is.
     `SELECT d.workspace_id, MAX(e.at) AS at
        FROM (SELECT doco_id, at FROM audit_events WHERE entity_type <> 'policy'
              UNION ALL
-             SELECT doco_id, at FROM (${COPIED_ITEMS_SQL}) copied) e
+             SELECT doco_id, at FROM (${IMPORTED_ITEMS_SQL}) imported) e
        JOIN docos d ON d.id = e.doco_id
       WHERE e.doco_id = ANY($1::text[])
       GROUP BY d.workspace_id`,

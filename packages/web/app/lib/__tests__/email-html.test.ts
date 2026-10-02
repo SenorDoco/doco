@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { digestEmail } from "../activity-digest";
 import { emailHtml } from "../email-html";
 import { reminderEmail, welcomeEmail } from "../onboarding-emails";
 import { alertEmail } from "../silence-alerts.server";
@@ -32,6 +33,25 @@ describe("emailHtml", () => {
     expect(pre).toContain("background-color:#e9e8e4");
     expect(pre).toContain("&lt;!-- doco:begin --&gt;");
   });
+
+  it("sets headings, lists, numbers and small print, escaped", () => {
+    const html = emailHtml([
+      { heading: "Top <queryers>" },
+      { list: ["ana & bo"] },
+      { stats: [{ value: "1,340", label: "queries" }] },
+      {
+        footer: "You get this as a member.",
+        link: "https://doco.to/u?t=a&b",
+        label: "Unsubscribe",
+      },
+    ]);
+    expect(html).toContain('font-weight:700">Top &lt;queryers&gt;</p>');
+    expect(html).toContain("<li>ana &amp; bo</li>");
+    expect(html).toMatch(/font-size:24px[^>]*>1,340<\/div><div style="color:#5c5b56">queries</);
+    expect(html).toContain(
+      'You get this as a member. <a href="https://doco.to/u?t=a&amp;b" style="color:#5c5b56">Unsubscribe</a>',
+    );
+  });
 });
 
 describe("Doco's emails", () => {
@@ -62,6 +82,20 @@ describe("Doco's emails", () => {
       ],
       base,
     ),
+    digest: digestEmail({
+      baseUrl: base,
+      workspaceHandle: "acme",
+      due: { kind: "weekly" },
+      summary: {
+        writes: 0,
+        queries: 0,
+        imports: 0,
+        topContributors: [],
+        topQueryers: [],
+        topIntegrations: [],
+      },
+      unsubscribeUrl: `${base}/digest/unsubscribe?t=tok`,
+    }),
   };
 
   for (const [name, email] of Object.entries(emails)) {

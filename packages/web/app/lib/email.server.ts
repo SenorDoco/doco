@@ -1,5 +1,5 @@
-// The one way Doco sends email: alerts, and the onboarding's welcome and
-// reminder messages. It goes out through Resend's HTTPS API when
+// The one way Doco sends email: alerts, the onboarding's welcome and reminder
+// messages, and the activity digest. It goes out through Resend's HTTPS API when
 // RESEND_API_KEY is set, from DOCO_EMAIL_FROM (default
 // "🔮 Doco <notifications@doco.to>"). Without the key nothing is sent and the
 // caller is told so, which keeps tests and previews from mailing anyone.
@@ -12,6 +12,8 @@ export interface Email {
   subject: string;
   text: string;
   html?: string;
+  /** Extra headers, such as List-Unsubscribe. */
+  headers?: Record<string, string>;
 }
 
 export interface EmailResult {
@@ -43,6 +45,7 @@ export async function sendEmail(email: Email): Promise<EmailResult> {
         subject: email.subject,
         text: email.text,
         ...(email.html ? { html: email.html } : {}),
+        ...(email.headers ? { headers: email.headers } : {}),
       }),
     });
     if (res.ok) return { sent: true };

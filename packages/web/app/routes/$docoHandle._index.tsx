@@ -20,7 +20,7 @@ import { ArrowRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, redirect, useRevalidator, useSearchParams } from "react-router";
 import { parse as parseYaml } from "yaml";
-import { ActivityCard, LatestActivityCard, TopActorsSections } from "~/components/doco-activity";
+import { ActivityCard, LatestActivityCard } from "~/components/doco-activity";
 import { EdgeDialog } from "~/components/edge-dialog";
 import { IntegrationStatusCard } from "~/components/integration-status-card";
 import {
@@ -49,6 +49,7 @@ import { PullRequestsPerspective } from "~/components/perspectives/pull-requests
 import { SlaPerspective } from "~/components/perspectives/sla-perspective";
 import { SlackPerspective } from "~/components/perspectives/slack-perspective";
 import { SilenceAlertList } from "~/components/silence-alerts";
+import { TopListsSections } from "~/components/top-list";
 import { VisibilityIcon } from "~/components/visibility-icon";
 import { CHANGE_POLL_INTERVAL_MS, DOCO_CHANGED_EVENT, hasNewVersion } from "~/lib/change-cursor";
 import { readChangeCursor } from "~/lib/change-cursor.server";
@@ -174,10 +175,7 @@ export async function loader({
     throw new Response("Unknown node type", { status: 404 });
   }
   return withClient(async (c) => {
-    const { items, byDay, topContributors, topQueryers } = await loadDocoActivity(
-      c,
-      ctx.meta.docoId,
-    );
+    const { items, byDay, lastWeek } = await loadDocoActivity(c, ctx.meta.docoId);
     const facets = await computeFilterFacets(c, ctx.meta.docoId);
     const selectedNode = requestedNode
       ? await loadNodeDialogDetail(c, ctx.meta, {
@@ -283,8 +281,7 @@ export async function loader({
       items,
       facets,
       byDay,
-      topContributors,
-      topQueryers,
+      lastWeek,
       handle,
       docoId: ctx.meta.docoId,
       goal: ctx.meta.goal,
@@ -429,8 +426,7 @@ export default function DocoHome({
     items,
     facets,
     byDay,
-    topContributors,
-    topQueryers,
+    lastWeek,
     handle,
     docoId,
     goal,
@@ -1620,7 +1616,7 @@ export default function DocoHome({
                   This Doco has no nodes or edges yet.
                 </p>
               }
-              aside={<TopActorsSections contributors={topContributors} queryers={topQueryers} />}
+              aside={<TopListsSections summary={lastWeek} />}
             />
 
             <LatestActivityCard

@@ -28,7 +28,7 @@ import { ActivityCard } from "~/components/doco-activity";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { OnboardingStepper } from "~/components/onboarding-stepper";
 import { PageHeader } from "~/components/page-header";
-import { TopActorsList } from "~/components/top-actors-list";
+import { TopListsSections } from "~/components/top-list";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import {
   activityRowLifecycle,
@@ -39,13 +39,7 @@ import {
   shouldStrikeActivityTarget,
   verbFromAuditOp,
 } from "~/lib/activity-feed";
-import {
-  type DailyActivity,
-  TOP_ACTORS_LIMIT,
-  type TopActor,
-  countByDay,
-  listTopActors,
-} from "~/lib/activity-log.server";
+import { countByDay, summarizeLastWeek } from "~/lib/activity-log.server";
 import { cn } from "~/lib/cn";
 import { EMPTY_DOCO_STATS, listDocoStats } from "~/lib/doco-stats.server";
 import { lifecycleColor } from "~/lib/node-colors";
@@ -122,21 +116,16 @@ export async function loader({
         return a.handle.localeCompare(b.handle);
       });
 
-    let byDay: DailyActivity = { writes: {}, queries: {} };
-    let topContributors: TopActor[] = [];
-    let topQueryers: TopActor[] = [];
+    // A search across the workspace spans its private Docos too, so only
+    // members see who ran one, and only members count it.
+    const scope = { docoIds, workspaceId: myRole ? workspace.id : undefined };
+    const since = new Date();
+    since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
+    const byDay = await countByDay(c, scope, since.toISOString());
+    const lastWeek = await summarizeLastWeek(c, scope);
     let items: FeedItem[] = [];
 
     if (docoIds.length > 0) {
-      // A search across the workspace spans its private Docos too, so only
-      // members see who ran one, and only members count it.
-      const scope = { docoIds, workspaceId: myRole ? workspace.id : undefined };
-      const since = new Date();
-      since.setDate(since.getDate() - HEATMAP_WEEKS * 7);
-      byDay = await countByDay(c, scope, since.toISOString());
-      topContributors = await listTopActors(c, "writes", scope, TOP_ACTORS_LIMIT);
-      topQueryers = await listTopActors(c, "queries", scope, TOP_ACTORS_LIMIT);
-
       const feedRows = (
         await c.query<{
           event_id: string;
@@ -220,8 +209,7 @@ export async function loader({
       canEditConstitution: canInviteUsers,
       docos,
       byDay,
-      topContributors,
-      topQueryers,
+      lastWeek,
       items,
     };
   });
@@ -272,8 +260,7 @@ export default function WorkspaceHome({
     canEditConstitution,
     docos,
     byDay,
-    topContributors,
-    topQueryers,
+    lastWeek,
     items,
   } = loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
@@ -380,20 +367,8 @@ export default function WorkspaceHome({
           <ActivityCard byDay={byDay} />
 
           <Card>
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="text-sm">Top contributors</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TopActorsList actors={topContributors} empty="No recorded contributions yet." />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="px-4 py-3">
-              <CardTitle className="text-sm">Top queryers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TopActorsList actors={topQueryers} empty="No recorded queries yet." />
+            <CardContent className="space-y-4 p-5">
+              <TopListsSections summary={lastWeek} />
             </CardContent>
           </Card>
         </aside>
