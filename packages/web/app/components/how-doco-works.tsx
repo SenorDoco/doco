@@ -24,10 +24,9 @@ const TURN_MS = 2800;
  * turns from step to step on its own, with the three steps around it. A step
  * can be clicked to turn the dial there, which stops it turning on its own.
  * `turn` only ever grows, so the face always turns clockwise, a whole turn
- * further on each lap. `titleClassName` sizes the band the title sits in,
- * which the home page stretches to the bottom of the first screen.
+ * further on each lap.
  */
-export function HowDocoWorks({ titleClassName }: { titleClassName?: string }) {
+export function HowDocoWorks() {
   const [turn, setTurn] = useState(0);
   const [turning, setTurning] = useState(true);
   const current = turn % 3;
@@ -45,10 +44,8 @@ export function HowDocoWorks({ titleClassName }: { titleClassName?: string }) {
   }
 
   return (
-    <section className="hdw flex flex-col gap-6 text-center">
-      <div className={cn("flex items-center justify-center", titleClassName)}>
-        <h2 className="text-2xl font-bold leading-tight md:text-3xl">How Doco works</h2>
-      </div>
+    <section className="hdw flex flex-col gap-2 text-center">
+      <h2 className="text-2xl font-bold leading-tight md:text-3xl">How Doco works:</h2>
       <ol className="hdw-steps">
         {STEPS.map((step, i) => (
           <li key={step.verb} className={`hdw-s${i + 1}`}>

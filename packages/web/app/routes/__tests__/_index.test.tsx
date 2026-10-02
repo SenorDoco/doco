@@ -23,28 +23,23 @@ beforeEach(() => {
 });
 
 describe("Home", () => {
-  it("gives the logo and the headline most of the first screen", async () => {
+  it("shows the logo and the headline", async () => {
     const html = await render();
     expect(html).toContain(">Doco</h1>");
-    // 80% of what is visible under the 3.5rem header, so only the next
-    // section's title shows below it and the rest is a scroll away.
-    expect(html).toMatch(
-      /<div class="[^"]*min-h-\[calc\(\(100svh-3\.5rem\)\*0\.8\)\][^"]*">.*Shared context for AI and teams<\/p><\/div>/,
-    );
+    expect(html).toContain("Shared context for AI and teams</p>");
   });
 
-  it("then explains how Doco works", async () => {
+  // Alexander, 2026-10-02: a Get started button under the headline, saying
+  // it takes a minute; then How Doco works.
+  it("puts Get started under the headline, then explains how Doco works", async () => {
     const html = await render();
-    expect(html.indexOf("How Doco works")).toBeGreaterThan(
-      html.indexOf("Shared context for AI and teams"),
-    );
-  });
-
-  it("fills the other 20% with How Doco works' title alone, so its steps are a scroll away", async () => {
-    const html = await render();
-    expect(html).toMatch(
-      /<div class="[^"]*min-h-\[calc\(\(100svh-3\.5rem\)\*0\.2\)\][^"]*"><h2[^>]*>How Doco works<\/h2><\/div>/,
-    );
+    const headline = html.indexOf("Shared context for AI and teams");
+    const button = html.search(/<a[^>]*href="\/sign-up"[^>]*>Get started<\/a>/);
+    const minute = html.indexOf("It takes just one minute");
+    const howItWorks = html.indexOf("How Doco works:");
+    expect(button).toBeGreaterThan(headline);
+    expect(minute).toBeGreaterThan(button);
+    expect(howItWorks).toBeGreaterThan(minute);
   });
 
   it("no longer hands over the agent instructions: they live at /agents", async () => {

@@ -67,6 +67,14 @@ describe("one site header", () => {
     expect(html).not.toContain("Señor Doco");
   });
 
+  // Alexander, 2026-10-02: Sign in shouldn't be purple; the home page's Get
+  // started is the one purple call to action.
+  it("draws Sign in as a plain raised button, not a purple one", () => {
+    const signIn = render(null).match(/<a[^>]*href="\/sign-in"[^>]*>/)?.[0] ?? "";
+    expect(signIn).toContain("neu-button");
+    expect(signIn).not.toContain("bg-primary");
+  });
+
   it("draws the same header for a signed-in person, beside Señor Doco", () => {
     const html = render(ana);
     expect(html.match(/<header/g)).toHaveLength(1);

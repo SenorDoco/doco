@@ -71,7 +71,7 @@ export function SiteHeader({ me, feedbackPending, accessRequestsPending }: SiteH
           ) : (
             <NavLink
               to="/sign-in"
-              className="neu-button whitespace-nowrap rounded-md bg-primary px-3 py-1.5 font-semibold text-primary-foreground hover:opacity-90"
+              className="neu-button whitespace-nowrap rounded-md px-3 py-1.5 font-semibold"
             >
               Sign in
             </NavLink>
