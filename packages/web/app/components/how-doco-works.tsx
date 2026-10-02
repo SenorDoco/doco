@@ -1,5 +1,5 @@
 import { Bot, MousePointer2, Sparkles, Terminal, Users } from "lucide-react";
-import { type ComponentType, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ComponentType, useEffect, useRef, useState } from "react";
 import { GitHubIcon, NotionIcon, SlackIcon } from "~/components/brand-icons";
 import { DocoMark } from "~/components/doco-mark";
 
@@ -13,13 +13,7 @@ const STEPS = [
 /** How long the diagram spends on each step. */
 const STEP_MS = 3400;
 
-type Glyph = ComponentType<{
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  className: string;
-}>;
+type Glyph = ComponentType<{ className: string }>;
 interface Chip {
   label: string;
   /** Absent on the "+ more" chip that ends each column. */
@@ -63,23 +57,23 @@ interface Label {
   anchor?: "middle" | "end";
   className: "hdw-hdr" | "hdw-back-label";
 }
+/**
+ * Where everything sits in a diagram, in the SVG's units. The wires, labels
+ * and pulses are drawn in the SVG; the chips and the workspace are HTML laid
+ * over it at the same coordinates (as shares of the diagram, so they scale
+ * with it), which lets them wear the app's shadows. The CSS turns one unit
+ * into pixels as --u.
+ */
 interface Layout {
-  className: "hdw-flow-desktop" | "hdw-flow-phone";
+  className: "hdw-dia-desktop" | "hdw-dia-phone";
   width: number;
   height: number;
-  /** Chip text size; the icon is a little larger and the chip a little taller. */
-  font: number;
-  icon: number;
-  chipH: number;
-  /** Where the icon starts, and where the label starts after it. */
-  pad: number;
-  textX: number;
   sources: Box[];
   agents: Box[];
   srcWire: (chip: Box) => string;
   agentWire: (chip: Box) => string;
   backWire: string;
-  ws: Box & { orb: number };
+  ws: Box;
   labels: Label[];
   pulse: { halo: number; dot: number };
 }
@@ -88,21 +82,14 @@ interface Layout {
 // on the workspace between them. The return wire leaves the bottom of the
 // agents column and comes back up under the workspace.
 const DESKTOP: Layout = (() => {
-  const chipW = 132;
-  const chipH = 36;
   const column = (x: number): Box[] =>
-    [0, 1, 2, 3, 4].map((k) => ({ x, y: 20 + k * 54, w: chipW, h: chipH }));
-  const ws = { x: 270, y: 94, w: 180, h: 104, orb: 44 };
+    [0, 1, 2, 3, 4].map((k) => ({ x, y: 20 + k * 54, w: 132, h: 36 }));
+  const ws = { x: 270, y: 94, w: 180, h: 104 };
   const wsMid = ws.y + ws.h / 2;
   return {
-    className: "hdw-flow-desktop",
+    className: "hdw-dia-desktop",
     width: 720,
     height: 326,
-    font: 12,
-    icon: 14,
-    chipH,
-    pad: 11,
-    textX: 31,
     sources: column(0),
     agents: column(588),
     srcWire: (c) =>
@@ -150,20 +137,15 @@ const PHONE: Layout = (() => {
     }
     return boxes;
   };
-  const ws = { x: 111, y: 140, w: 150, h: 92, orb: 40 };
+  const ws = { x: 111, y: 140, w: 150, h: 92 };
   const wsMid = ws.x + ws.w / 2;
   const sources = row(22, [64, 66, 58, 65, 48]);
   const agents = row(318, [65, 65, 62, 60, 48]);
   const last = agents[agents.length - 1];
   return {
-    className: "hdw-flow-phone",
+    className: "hdw-dia-phone",
     width,
     height: 378,
-    font: 10,
-    icon: 12,
-    chipH,
-    pad: 8,
-    textX: 24,
     sources,
     agents,
     srcWire: (c) =>
@@ -180,6 +162,17 @@ const PHONE: Layout = (() => {
   };
 })();
 
+/** A box's place in its diagram, as shares of it, so it scales with it. */
+function place(box: Box, layout: Layout): CSSProperties {
+  const share = (v: number, of: number) => `${((v / of) * 100).toFixed(2)}%`;
+  return {
+    left: share(box.x, layout.width),
+    top: share(box.y, layout.height),
+    width: share(box.w, layout.width),
+    height: share(box.h, layout.height),
+  };
+}
+
 function ChipNode({
   chip,
   box,
@@ -189,26 +182,10 @@ function ChipNode({
   const { Icon } = chip;
   const className = `hdw-chip${Icon ? "" : " hdw-chip-more"}${on ? " hdw-on" : ""}`;
   return (
-    <g className={className} transform={`translate(${box.x} ${box.y})`}>
-      <rect width={box.w} height={box.h} rx={8} />
-      {Icon ? (
-        <Icon
-          x={layout.pad}
-          y={box.h / 2 - layout.icon / 2}
-          width={layout.icon}
-          height={layout.icon}
-          className="hdw-ic"
-        />
-      ) : null}
-      <text
-        x={Icon ? layout.textX : box.w / 2}
-        y={box.h / 2 + layout.font * 0.35}
-        textAnchor={Icon ? undefined : "middle"}
-        fontSize={layout.font}
-      >
-        {chip.label}
-      </text>
-    </g>
+    <div className={className} style={place(box, layout)}>
+      {Icon ? <Icon className="hdw-ic" /> : null}
+      <span>{chip.label}</span>
+    </div>
   );
 }
 
@@ -233,29 +210,31 @@ function Flow({ layout, step }: { layout: Layout; step: number }) {
       d={d}
     />
   );
-  const { ws } = layout;
+  const size = {
+    aspectRatio: `${layout.width} / ${layout.height}`,
+    "--u": `calc(100cqw / ${layout.width})`,
+  } as CSSProperties;
   return (
-    <svg
-      className={`hdw-flow ${layout.className}`}
-      viewBox={`0 0 ${layout.width} ${layout.height}`}
-      width={layout.width}
-      height={layout.height}
-      aria-hidden="true"
-    >
-      {layout.labels.map((label) => (
-        <text
-          key={label.text}
-          className={label.className}
-          x={label.x}
-          y={label.y}
-          textAnchor={label.anchor}
-        >
-          {label.text}
-        </text>
-      ))}
-      {layout.sources.map((box, k) => wire("src", k, layout.srcWire(box)))}
-      {layout.agents.map((box, k) => wire("agent", k, layout.agentWire(box)))}
-      {wire("back", 0, layout.backWire)}
+    <div className={`hdw-dia ${layout.className}`} style={size} aria-hidden="true">
+      <svg className="hdw-flow" viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
+        {layout.labels.map((label) => (
+          <text
+            key={label.text}
+            className={label.className}
+            x={label.x}
+            y={label.y}
+            textAnchor={label.anchor}
+          >
+            {label.text}
+          </text>
+        ))}
+        {layout.sources.map((box, k) => wire("src", k, layout.srcWire(box)))}
+        {layout.agents.map((box, k) => wire("agent", k, layout.agentWire(box)))}
+        {wire("back", 0, layout.backWire)}
+        {PULSES.map((pulse) => (
+          <Pulse key={pulse.id} s={pulse.s} k={pulse.k} j={pulse.j} layout={layout} />
+        ))}
+      </svg>
       {SOURCES.map((chip, k) => (
         <ChipNode
           key={chip.label}
@@ -274,19 +253,11 @@ function Flow({ layout, step }: { layout: Layout; step: number }) {
           on={step > 0}
         />
       ))}
-      <g className="hdw-ws" transform={`translate(${ws.x} ${ws.y})`}>
-        <rect width={ws.w} height={ws.h} rx={12} />
-        <g transform={`translate(${ws.w / 2 - ws.orb / 2} ${ws.orb === 44 ? 14 : 12})`}>
-          <DocoMark variant="mark" height={ws.orb} decorative />
-        </g>
-        <text x={ws.w / 2} y={ws.h - 18} textAnchor="middle" fontSize={layout.font}>
-          Your workspace
-        </text>
-      </g>
-      {PULSES.map((pulse) => (
-        <Pulse key={pulse.id} s={pulse.s} k={pulse.k} j={pulse.j} layout={layout} />
-      ))}
-    </svg>
+      <div className="hdw-ws" style={place(layout.ws, layout)}>
+        <DocoMark variant="mark" height={44} decorative className="hdw-orb" />
+        <span>Your workspace</span>
+      </div>
+    </div>
   );
 }
 
@@ -303,13 +274,13 @@ function ease(u: number): number {
 
 /**
  * How Doco works, on the home page and under the invite card: a wiring
- * diagram of what Doco is. Sources on the left feed the workspace, agents on
- * the right read it, and a return wire carries what they write back. The
- * three steps sit under it; the diagram moves from step to step on its own,
- * lighting that step's wires and filling its bar, and holds a step that is
- * clicked. The wires, chips and current step are React's; the pulses on the
- * wires and the bars' fill are drawn by a frame loop that writes straight
- * to the DOM, since they move every frame.
+ * diagram of what Doco is, on one raised plate. Sources on the left feed the
+ * workspace, agents on the right read it, and a return wire carries what
+ * they write back. The three steps sit under it; the diagram moves from
+ * step to step on its own, lighting that step's wires and filling its bar,
+ * and holds a step that is clicked. The wires, chips and current step are
+ * React's; the pulses on the wires and the bars' fill are drawn by a frame
+ * loop that writes straight to the DOM, since they move every frame.
  */
 export function HowDocoWorks() {
   const [step, setStep] = useState(0);
@@ -333,11 +304,11 @@ export function HowDocoWorks() {
     const root = rootRef.current;
     if (!root || reducedMotion() || typeof requestAnimationFrame !== "function") return;
     const bars = [...root.querySelectorAll<HTMLElement>(".hdw-step")];
-    const flows = [...root.querySelectorAll<SVGSVGElement>(".hdw-flow")].map((svg) => ({
-      ws: svg.querySelector<SVGGElement>(".hdw-ws"),
-      pulses: [...svg.querySelectorAll<SVGGElement>(".hdw-pulse")].map((g) => {
+    const diagrams = [...root.querySelectorAll<HTMLElement>(".hdw-dia")].map((dia) => ({
+      ws: dia.querySelector<HTMLElement>(".hdw-ws"),
+      pulses: [...dia.querySelectorAll<SVGGElement>(".hdw-pulse")].map((g) => {
         const s = Number(g.getAttribute("data-s"));
-        const wire = svg.querySelector<SVGPathElement>(
+        const wire = dia.querySelector<SVGPathElement>(
           `.hdw-wire[data-s="${s}"][data-k="${g.getAttribute("data-k")}"]`,
         );
         return {
@@ -355,9 +326,9 @@ export function HowDocoWorks() {
       const i = stepRef.current;
       const p = ((((now - startRef.current) % STEP_MS) + STEP_MS) % STEP_MS) / STEP_MS;
       bars.forEach((bar, k) => bar.style.setProperty("--p", String(k < i ? 1 : k === i ? p : 0)));
-      for (const flow of flows) {
+      for (const diagram of diagrams) {
         let arrived = false;
-        for (const pulse of flow.pulses) {
+        for (const pulse of diagram.pulses) {
           // Each pulse sets off a little after the one before and takes half
           // the step to arrive.
           const u = pulse.s === i ? (p - (0.06 + pulse.j * 0.1)) / 0.5 : -1;
@@ -372,7 +343,7 @@ export function HowDocoWorks() {
           pulse.halo?.setAttribute("r", (7 + 4 * Math.sin(u * Math.PI)).toFixed(1));
         }
         // The workspace lights up as knowledge and decisions reach it.
-        flow.ws?.setAttribute("data-lit", String(i !== 1 && arrived));
+        diagram.ws?.setAttribute("data-lit", String(i !== 1 && arrived));
       }
       frame = requestAnimationFrame(draw);
     };
@@ -392,8 +363,10 @@ export function HowDocoWorks() {
         Sources such as people, GitHub, Slack and Notion feed one workspace. Agents such as Claude,
         Cursor, Codex and Qwen read it as they work, and write decisions back.
       </p>
-      <Flow layout={DESKTOP} step={step} />
-      <Flow layout={PHONE} step={step} />
+      <div className="hdw-plate">
+        <Flow layout={DESKTOP} step={step} />
+        <Flow layout={PHONE} step={step} />
+      </div>
       <ol className="hdw-steps">
         {STEPS.map((s, i) => (
           <li key={s.verb}>
