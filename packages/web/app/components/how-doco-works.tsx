@@ -1,85 +1,416 @@
-import { useEffect, useState } from "react";
+import { Bot, MousePointer2, Sparkles, Terminal, Users } from "lucide-react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
+import { GitHubIcon, NotionIcon, SlackIcon } from "~/components/brand-icons";
 import { DocoMark } from "~/components/doco-mark";
-import { cn } from "~/lib/cn";
 
-// Alexander's three steps (2026-10-01). The dial stops at 12, 4 and 8
-// o'clock, one step at each, and the step it points at lifts.
+// Alexander's three steps (2026-10-01), in his words.
 const STEPS = [
   { verb: "Collect", line: "One workspace brings your team's knowledge together." },
   { verb: "Connect", line: "Your agents read that context as they work." },
   { verb: "Capture", line: "Agents record important decisions." },
 ] as const;
 
-// Where each step's number sits on the 176px dial, at 12, 4 and 8 o'clock.
-const TICKS = [
-  { left: 88, top: 19 },
-  { left: 147.8, top: 122.5 },
-  { left: 28.2, top: 122.5 },
+/** How long the diagram spends on each step. */
+const STEP_MS = 3400;
+
+type Glyph = ComponentType<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  className: string;
+}>;
+interface Chip {
+  label: string;
+  /** Absent on the "+ more" chip that ends each column. */
+  Icon?: Glyph;
+}
+
+// Alexander, 2026-10-02: people first among the sources; Claude (not Claude
+// Code) and Qwen among the agents; and each column says there are more.
+const SOURCES: Chip[] = [
+  { label: "People", Icon: Users },
+  { label: "GitHub", Icon: GitHubIcon },
+  { label: "Slack", Icon: SlackIcon },
+  { label: "Notion", Icon: NotionIcon },
+  { label: "+ more" },
+];
+const AGENTS: Chip[] = [
+  { label: "Claude", Icon: Sparkles },
+  { label: "Cursor", Icon: MousePointer2 },
+  { label: "Codex", Icon: Terminal },
+  { label: "Qwen", Icon: Bot },
+  { label: "+ more" },
 ];
 
-const TURN_MS = 2800;
+/** The wires lit in each step: sources in, agents out, and agents back. */
+const LIT = ["src", "agent", "back"] as const;
+/** The pulses that travel each step's wires: one per wire, three back. */
+const PULSES = [SOURCES.length, AGENTS.length, 3].flatMap((count, s) =>
+  Array.from({ length: count }, (_, j) => ({ id: `${s}-${j}`, s, k: s === 2 ? 0 : j, j })),
+);
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+interface Label {
+  text: string;
+  x: number;
+  y: number;
+  anchor?: "middle" | "end";
+  className: "hdw-hdr" | "hdw-back-label";
+}
+interface Layout {
+  className: "hdw-flow-desktop" | "hdw-flow-phone";
+  width: number;
+  height: number;
+  /** Chip text size; the icon is a little larger and the chip a little taller. */
+  font: number;
+  icon: number;
+  chipH: number;
+  /** Where the icon starts, and where the label starts after it. */
+  pad: number;
+  textX: number;
+  sources: Box[];
+  agents: Box[];
+  srcWire: (chip: Box) => string;
+  agentWire: (chip: Box) => string;
+  backWire: string;
+  ws: Box & { orb: number };
+  labels: Label[];
+  pulse: { halo: number; dot: number };
+}
+
+// Sources in a column on the left, agents in one on the right, both centred
+// on the workspace between them. The return wire leaves the bottom of the
+// agents column and comes back up under the workspace.
+const DESKTOP: Layout = (() => {
+  const chipW = 132;
+  const chipH = 36;
+  const column = (x: number): Box[] =>
+    [0, 1, 2, 3, 4].map((k) => ({ x, y: 20 + k * 54, w: chipW, h: chipH }));
+  const ws = { x: 270, y: 94, w: 180, h: 104, orb: 44 };
+  const wsMid = ws.y + ws.h / 2;
+  return {
+    className: "hdw-flow-desktop",
+    width: 720,
+    height: 326,
+    font: 12,
+    icon: 14,
+    chipH,
+    pad: 11,
+    textX: 31,
+    sources: column(0),
+    agents: column(588),
+    srcWire: (c) =>
+      `M${c.x + c.w} ${c.y + c.h / 2} C 200 ${c.y + c.h / 2}, 200 ${wsMid}, ${ws.x} ${wsMid}`,
+    agentWire: (c) =>
+      `M${ws.x + ws.w} ${wsMid} C 520 ${wsMid}, 520 ${c.y + c.h / 2}, ${c.x} ${c.y + c.h / 2}`,
+    backWire: `M654 276 C 654 338, 360 338, 360 ${ws.y + ws.h}`,
+    ws,
+    labels: [
+      { text: "Sources", x: 0, y: 9, className: "hdw-hdr" },
+      {
+        text: "Workspace",
+        x: ws.x + ws.w / 2,
+        y: ws.y - 10,
+        anchor: "middle",
+        className: "hdw-hdr",
+      },
+      { text: "Agents", x: 720, y: 9, anchor: "end", className: "hdw-hdr" },
+      {
+        text: "decisions, rules, logs",
+        x: 507,
+        y: 301,
+        anchor: "middle",
+        className: "hdw-back-label",
+      },
+    ],
+    pulse: { halo: 9, dot: 4 },
+  };
+})();
+
+// Upright: a row of sources on top, the workspace below, a row of agents at
+// the bottom, and the return wire climbing the right-hand side. Chips are as
+// wide as their label needs so that five fit in a row.
+const PHONE: Layout = (() => {
+  const chipH = 32;
+  const width = 372;
+  const gap = 5;
+  /** A row of chips of the given widths, centred across the diagram. */
+  const row = (y: number, widths: number[]): Box[] => {
+    const boxes: Box[] = [];
+    let x = (width - widths.reduce((sum, w) => sum + w + gap, -gap)) / 2;
+    for (const w of widths) {
+      boxes.push({ x, y, w, h: chipH });
+      x += w + gap;
+    }
+    return boxes;
+  };
+  const ws = { x: 111, y: 140, w: 150, h: 92, orb: 40 };
+  const wsMid = ws.x + ws.w / 2;
+  const sources = row(22, [64, 66, 58, 65, 48]);
+  const agents = row(318, [65, 65, 62, 60, 48]);
+  const last = agents[agents.length - 1];
+  return {
+    className: "hdw-flow-phone",
+    width,
+    height: 378,
+    font: 10,
+    icon: 12,
+    chipH,
+    pad: 8,
+    textX: 24,
+    sources,
+    agents,
+    srcWire: (c) =>
+      `M${c.x + c.w / 2} ${c.y + c.h} C ${c.x + c.w / 2} 100, ${wsMid} 96, ${wsMid} ${ws.y}`,
+    agentWire: (c) =>
+      `M${wsMid} ${ws.y + ws.h} C ${wsMid} 285, ${c.x + c.w / 2} 275, ${c.x + c.w / 2} ${c.y}`,
+    backWire: `M${last.x + last.w} ${last.y + last.h / 2} C 366 ${last.y + last.h / 2}, 366 186, ${ws.x + ws.w} 186`,
+    ws,
+    labels: [
+      { text: "Sources", x: sources[0].x, y: 11, className: "hdw-hdr" },
+      { text: "Agents", x: agents[0].x, y: 370, className: "hdw-hdr" },
+    ],
+    pulse: { halo: 8, dot: 3.5 },
+  };
+})();
+
+function ChipNode({
+  chip,
+  box,
+  layout,
+  on,
+}: { chip: Chip; box: Box; layout: Layout; on: boolean }) {
+  const { Icon } = chip;
+  const className = `hdw-chip${Icon ? "" : " hdw-chip-more"}${on ? " hdw-on" : ""}`;
+  return (
+    <g className={className} transform={`translate(${box.x} ${box.y})`}>
+      <rect width={box.w} height={box.h} rx={8} />
+      {Icon ? (
+        <Icon
+          x={layout.pad}
+          y={box.h / 2 - layout.icon / 2}
+          width={layout.icon}
+          height={layout.icon}
+          className="hdw-ic"
+        />
+      ) : null}
+      <text
+        x={Icon ? layout.textX : box.w / 2}
+        y={box.h / 2 + layout.font * 0.35}
+        textAnchor={Icon ? undefined : "middle"}
+        fontSize={layout.font}
+      >
+        {chip.label}
+      </text>
+    </g>
+  );
+}
+
+/** One pulse that the frame loop moves along a wire; hidden until it does. */
+function Pulse({ s, k, j, layout }: { s: number; k: number; j: number; layout: Layout }) {
+  return (
+    <g className="hdw-pulse" data-s={s} data-k={k} data-j={j} style={{ display: "none" }}>
+      <circle className="hdw-pulse-halo" r={layout.pulse.halo} />
+      <circle className="hdw-pulse-dot" r={layout.pulse.dot} />
+    </g>
+  );
+}
+
+function Flow({ layout, step }: { layout: Layout; step: number }) {
+  const lit = LIT[step];
+  const wire = (kind: (typeof LIT)[number], k: number, d: string) => (
+    <path
+      key={`${kind}${k}`}
+      className={`hdw-wire hdw-wire-${kind}${lit === kind ? " hdw-on" : ""}`}
+      data-s={LIT.indexOf(kind)}
+      data-k={k}
+      d={d}
+    />
+  );
+  const { ws } = layout;
+  return (
+    <svg
+      className={`hdw-flow ${layout.className}`}
+      viewBox={`0 0 ${layout.width} ${layout.height}`}
+      width={layout.width}
+      height={layout.height}
+      aria-hidden="true"
+    >
+      {layout.labels.map((label) => (
+        <text
+          key={label.text}
+          className={label.className}
+          x={label.x}
+          y={label.y}
+          textAnchor={label.anchor}
+        >
+          {label.text}
+        </text>
+      ))}
+      {layout.sources.map((box, k) => wire("src", k, layout.srcWire(box)))}
+      {layout.agents.map((box, k) => wire("agent", k, layout.agentWire(box)))}
+      {wire("back", 0, layout.backWire)}
+      {SOURCES.map((chip, k) => (
+        <ChipNode
+          key={chip.label}
+          chip={chip}
+          box={layout.sources[k]}
+          layout={layout}
+          on={step === 0}
+        />
+      ))}
+      {AGENTS.map((chip, k) => (
+        <ChipNode
+          key={chip.label}
+          chip={chip}
+          box={layout.agents[k]}
+          layout={layout}
+          on={step > 0}
+        />
+      ))}
+      <g className="hdw-ws" transform={`translate(${ws.x} ${ws.y})`}>
+        <rect width={ws.w} height={ws.h} rx={12} />
+        <g transform={`translate(${ws.w / 2 - ws.orb / 2} ${ws.orb === 44 ? 14 : 12})`}>
+          <DocoMark variant="mark" height={ws.orb} decorative />
+        </g>
+        <text x={ws.w / 2} y={ws.h - 18} textAnchor="middle" fontSize={layout.font}>
+          Your workspace
+        </text>
+      </g>
+      {PULSES.map((pulse) => (
+        <Pulse key={pulse.id} s={pulse.s} k={pulse.k} j={pulse.j} layout={layout} />
+      ))}
+    </svg>
+  );
+}
+
+function reducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+/** Ease in and out, so a pulse leaves and arrives gently. */
+function ease(u: number): number {
+  return u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2;
+}
 
 /**
- * How Doco works, on the home page and under the invite card: a dial that
- * turns from step to step on its own, with the three steps around it. A step
- * can be clicked to turn the dial there, which stops it turning on its own.
- * `turn` only ever grows, so the face always turns clockwise, a whole turn
- * further on each lap.
+ * How Doco works, on the home page and under the invite card: a wiring
+ * diagram of what Doco is. Sources on the left feed the workspace, agents on
+ * the right read it, and a return wire carries what they write back. The
+ * three steps sit under it; the diagram moves from step to step on its own,
+ * lighting that step's wires and filling its bar, and holds a step that is
+ * clicked. The wires, chips and current step are React's; the pulses on the
+ * wires and the bars' fill are drawn by a frame loop that writes straight
+ * to the DOM, since they move every frame.
  */
 export function HowDocoWorks() {
-  const [turn, setTurn] = useState(0);
-  const [turning, setTurning] = useState(true);
-  const current = turn % 3;
+  const [step, setStep] = useState(0);
+  const [held, setHeld] = useState(false);
+  const rootRef = useRef<HTMLElement>(null);
+  const stepRef = useRef(0);
+  const startRef = useRef(0);
 
   useEffect(() => {
-    if (!turning) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = setInterval(() => setTurn((t) => t + 1), TURN_MS);
-    return () => clearInterval(timer);
-  }, [turning]);
+    stepRef.current = step;
+    startRef.current = performance.now();
+  }, [step]);
 
-  function turnTo(step: number) {
-    setTurning(false);
-    setTurn((t) => t + ((step - (t % 3) + 3) % 3));
+  useEffect(() => {
+    if (held || reducedMotion()) return;
+    const timer = setInterval(() => setStep((s) => (s + 1) % STEPS.length), STEP_MS);
+    return () => clearInterval(timer);
+  }, [held]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || reducedMotion() || typeof requestAnimationFrame !== "function") return;
+    const bars = [...root.querySelectorAll<HTMLElement>(".hdw-step")];
+    const flows = [...root.querySelectorAll<SVGSVGElement>(".hdw-flow")].map((svg) => ({
+      ws: svg.querySelector<SVGGElement>(".hdw-ws"),
+      pulses: [...svg.querySelectorAll<SVGGElement>(".hdw-pulse")].map((g) => {
+        const s = Number(g.getAttribute("data-s"));
+        const wire = svg.querySelector<SVGPathElement>(
+          `.hdw-wire[data-s="${s}"][data-k="${g.getAttribute("data-k")}"]`,
+        );
+        return {
+          g,
+          s,
+          j: Number(g.getAttribute("data-j")),
+          halo: g.querySelector<SVGCircleElement>(".hdw-pulse-halo"),
+          // Only a browser can measure a path; without that, the pulses stay hidden.
+          wire: typeof wire?.getTotalLength === "function" ? wire : null,
+        };
+      }),
+    }));
+    let frame = 0;
+    const draw = (now: number) => {
+      const i = stepRef.current;
+      const p = ((((now - startRef.current) % STEP_MS) + STEP_MS) % STEP_MS) / STEP_MS;
+      bars.forEach((bar, k) => bar.style.setProperty("--p", String(k < i ? 1 : k === i ? p : 0)));
+      for (const flow of flows) {
+        let arrived = false;
+        for (const pulse of flow.pulses) {
+          // Each pulse sets off a little after the one before and takes half
+          // the step to arrive.
+          const u = pulse.s === i ? (p - (0.06 + pulse.j * 0.1)) / 0.5 : -1;
+          if (u >= 1) arrived = true;
+          if (u <= 0 || u >= 1 || !pulse.wire) {
+            pulse.g.style.display = "none";
+            continue;
+          }
+          const at = pulse.wire.getPointAtLength(pulse.wire.getTotalLength() * ease(u));
+          pulse.g.style.display = "";
+          pulse.g.setAttribute("transform", `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)})`);
+          pulse.halo?.setAttribute("r", (7 + 4 * Math.sin(u * Math.PI)).toFixed(1));
+        }
+        // The workspace lights up as knowledge and decisions reach it.
+        flow.ws?.setAttribute("data-lit", String(i !== 1 && arrived));
+      }
+      frame = requestAnimationFrame(draw);
+    };
+    frame = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  function hold(i: number) {
+    setHeld(true);
+    setStep(i);
   }
 
-  // Alexander, 2026-10-02: twice the air between the title and the first
-  // step's box, about 44px from the bottom of the title's text.
   return (
-    <section className="hdw flex flex-col gap-9.5 text-center">
+    <section ref={rootRef} className="hdw">
       <h2 className="text-lg font-bold leading-tight md:text-xl">How Doco works:</h2>
+      <p className="sr-only">
+        Sources such as people, GitHub, Slack and Notion feed one workspace. Agents such as Claude,
+        Cursor, Codex and Qwen read it as they work, and write decisions back.
+      </p>
+      <Flow layout={DESKTOP} step={step} />
+      <Flow layout={PHONE} step={step} />
       <ol className="hdw-steps">
-        {STEPS.map((step, i) => (
-          <li key={step.verb} className={`hdw-s${i + 1}`}>
+        {STEPS.map((s, i) => (
+          <li key={s.verb}>
             <button
               type="button"
               className="hdw-step"
-              aria-current={i === current ? "step" : undefined}
-              onClick={() => turnTo(i)}
+              data-step={i}
+              aria-current={i === step ? "step" : undefined}
+              onClick={() => hold(i)}
             >
               <span className="hdw-verb">
-                <span className="hdw-num">{i + 1}</span> {step.verb}
+                <span className="hdw-num">{i + 1}</span> {s.verb}
               </span>{" "}
-              <span className="hdw-line">{step.line}</span>
+              <span className="hdw-line">{s.line}</span>
             </button>
           </li>
         ))}
-        <li className="hdw-dial" aria-hidden="true">
-          <span className="hdw-bezel" />
-          <span className="hdw-face" style={{ transform: `rotate(${turn * 120}deg)` }} />
-          <span className="hdw-cap">
-            <DocoMark variant="mark" height={40} decorative />
-          </span>
-          {TICKS.map((tick, i) => (
-            <span
-              key={tick.left}
-              className={cn("hdw-tick", i === current && "hdw-tick-on")}
-              style={{ left: tick.left, top: tick.top }}
-            >
-              {i + 1}
-            </span>
-          ))}
-        </li>
       </ol>
     </section>
   );

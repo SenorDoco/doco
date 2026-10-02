@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 //
-// The dial turns on its own and when a step is clicked: render on the
-// "server", hydrate in a DOM, then drive the timer and a click.
+// The diagram moves on to the next step on its own and holds a step that is
+// clicked: render on the "server", hydrate in a DOM, then drive the timer
+// and a click.
 import { act, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -13,8 +14,10 @@ import { HowDocoWorks } from "../how-doco-works";
 function current(container: HTMLElement): string | undefined {
   return container.querySelector('[aria-current="step"]')?.textContent ?? undefined;
 }
-function faceTransform(container: HTMLElement): string {
-  return container.querySelector<HTMLElement>(".hdw-face")?.style.transform ?? "";
+function litWires(container: HTMLElement): string[] {
+  return [...container.querySelectorAll(".hdw-flow-desktop .hdw-wire.hdw-on")].map(
+    (wire) => wire.getAttribute("class")?.replace("hdw-wire ", "").replace(" hdw-on", "") ?? "",
+  );
 }
 
 beforeEach(() => {
@@ -35,27 +38,29 @@ async function mount(): Promise<HTMLElement> {
   return container;
 }
 
-describe("How Doco works dial", () => {
-  it("turns to the next step on its own, always clockwise", async () => {
+describe("How Doco works flow", () => {
+  it("moves on to the next step on its own and lights that step's wires", async () => {
     const container = await mount();
     expect(current(container)).toContain("Collect");
+    expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-src"]));
     await act(async () => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(3500);
     });
     expect(current(container)).toContain("Connect");
-    expect(faceTransform(container)).toBe("rotate(120deg)");
+    expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-agent"]));
     await act(async () => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(3500);
     });
+    expect(current(container)).toContain("Capture");
+    expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-back"]));
     await act(async () => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(3500);
     });
-    // Back at Collect after a full lap, a whole turn further on.
+    // Back at Collect after the three steps.
     expect(current(container)).toContain("Collect");
-    expect(faceTransform(container)).toBe("rotate(360deg)");
   });
 
-  it("turns to a step when it is clicked, and stops turning on its own", async () => {
+  it("holds a step when it is clicked, and stops moving on by itself", async () => {
     const container = await mount();
     const capture = [...container.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Capture"),
@@ -64,10 +69,10 @@ describe("How Doco works dial", () => {
       capture?.click();
     });
     expect(current(container)).toContain("Capture");
-    expect(faceTransform(container)).toBe("rotate(240deg)");
-    // The person took over, so the dial stays where they turned it.
+    expect(new Set(litWires(container))).toEqual(new Set(["hdw-wire-back"]));
+    // The person took over, so the diagram stays on the step they chose.
     await act(async () => {
-      vi.advanceTimersByTime(6000);
+      vi.advanceTimersByTime(7000);
     });
     expect(current(container)).toContain("Capture");
   });
