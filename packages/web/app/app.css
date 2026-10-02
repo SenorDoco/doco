@@ -789,13 +789,17 @@ button[class*="bg-primary"]:active {
    write back. The wires, labels and pulses are an SVG; the chips and the
    workspace are HTML laid over it at the same coordinates, so they can wear
    the app's shadows: chips etched into the plate, the workspace pressed into
-   it, a purple ring on the ones in play. The component sets --u, one SVG
+   it, a purplish fill on the ones in play. The component sets --u, one SVG
    unit in pixels, on each diagram. The three steps sit under the plate, each
    with a key-cap number and a groove that fills while its wires are lit.
    Below 480px the diagram stands upright on a plate a little wider than the
-   text, and the steps stack. */
+   text, and the steps stack. Whatever turns purple or back to gray fades
+   over --hdw-fade (Alexander, 2026-10-02: smoother). */
 .hdw {
+  --hdw-fade: 700ms;
   --hdw-ring: color-mix(in srgb, var(--color-primary) 55%, transparent);
+  /* Mixed in sRGB: in oklch the paper's hue would win and the tint go tan. */
+  --hdw-tint: color-mix(in srgb, var(--color-primary) 12%, var(--color-background));
   container-type: inline-size;
   display: flex;
   flex-direction: column;
@@ -854,20 +858,22 @@ button[class*="bg-primary"]:active {
   fill: var(--color-muted-foreground);
 }
 
-/* Wires are engraved in the plate; the ones in play glow purple, and the
-   pulses on them are LEDs. */
+/* Wires are engraved in the plate; the ones in play glow purple, their
+   dashes growing shut into a solid line (both dash lists have two entries,
+   so they interpolate), and the pulses on them are LEDs. */
 .hdw-wire {
   fill: none;
   stroke: var(--color-border);
   stroke-width: 1.2;
   stroke-dasharray: 3 4;
   filter: drop-shadow(1px 1px 0 var(--neu-highlight));
-  transition: stroke 300ms ease;
+  transition: stroke var(--hdw-fade) ease-in-out, stroke-width var(--hdw-fade) ease-in-out,
+    stroke-dasharray var(--hdw-fade) ease-in-out, filter var(--hdw-fade) ease-in-out;
 }
 .hdw-wire.hdw-on {
   stroke: var(--color-primary);
   stroke-width: 1.5;
-  stroke-dasharray: none;
+  stroke-dasharray: 9 0;
   filter: drop-shadow(0 0 3px var(--hdw-ring));
 }
 .hdw-pulse-dot {
@@ -880,7 +886,7 @@ button[class*="bg-primary"]:active {
 }
 
 /* Chips are etched into the plate and the workspace is pressed into it; the
-   ones in play get a purple ring and darker text. */
+   ones in play keep those edges and take a purplish fill and darker text. */
 .hdw-chip,
 .hdw-ws {
   position: absolute;
@@ -892,7 +898,7 @@ button[class*="bg-primary"]:active {
   font-weight: 700;
   line-height: 1;
   color: var(--color-muted-foreground);
-  transition: box-shadow 300ms ease, color 300ms ease;
+  transition: background-color var(--hdw-fade) ease-in-out, color var(--hdw-fade) ease-in-out;
 }
 .hdw-chip {
   gap: var(--hdw-gap);
@@ -907,7 +913,7 @@ button[class*="bg-primary"]:active {
 }
 .hdw-chip.hdw-on {
   color: var(--color-foreground);
-  box-shadow: var(--neu-etched), inset 0 0 0 1px var(--hdw-ring);
+  background: var(--hdw-tint);
 }
 .hdw-chip-more.hdw-on {
   color: var(--color-primary);
@@ -917,7 +923,7 @@ button[class*="bg-primary"]:active {
   width: var(--hdw-icon);
   height: var(--hdw-icon);
   color: var(--color-muted-foreground);
-  transition: color 300ms ease;
+  transition: color var(--hdw-fade) ease-in-out;
 }
 .hdw-chip.hdw-on .hdw-ic {
   color: var(--color-primary);
@@ -931,7 +937,7 @@ button[class*="bg-primary"]:active {
   box-shadow: var(--neu-inset);
 }
 .hdw-ws[data-lit="true"] {
-  box-shadow: var(--neu-inset), inset 0 0 0 1px var(--hdw-ring);
+  background: var(--hdw-tint);
 }
 .hdw-orb {
   width: var(--hdw-orb);
@@ -978,7 +984,7 @@ button[class*="bg-primary"]:active {
 .hdw-verb {
   font-weight: 700;
   color: var(--color-muted-foreground);
-  transition: color 300ms ease;
+  transition: color var(--hdw-fade) ease-in-out;
 }
 .hdw-step[aria-current="step"] .hdw-verb {
   color: var(--color-foreground);
