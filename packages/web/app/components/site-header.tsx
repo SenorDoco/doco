@@ -32,7 +32,7 @@ interface SiteHeaderProps {
 // other nav items pixel-for-pixel. `text-left` keeps a bare <button> (Sign out)
 // from inheriting the UA-default centered text in the stacked mobile menu.
 const navButtonClass =
-  "neu-button whitespace-nowrap rounded-md border border-border px-3 py-1.5 text-left font-semibold";
+  "neu-button whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-left font-semibold";
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
 
@@ -59,9 +59,10 @@ export function SiteHeader({ me, feedbackPending, accessRequestsPending }: SiteH
           {me ? (
             <>
               {/* xl+: nav rendered inline. An owner's nav (Feedback, Access
-                  requests, the feedback flags) needs ~1250px beside the logo
-                  and version strip; any narrower and it would run over them. */}
-              <nav className="hidden items-center gap-3 xl:flex">
+                  requests, the feedback flags) fills a 1280px row beside the
+                  logo and version strip; any narrower and it would run over
+                  them. The tight gap-2 keeps the tagline whole at 1280px. */}
+              <nav className="hidden items-center gap-2 xl:flex">
                 <NavButtons me={me} accessRequestsPending={accessRequestsPending} />
               </nav>
               {/* < xl: collapsed into a hamburger popover so the

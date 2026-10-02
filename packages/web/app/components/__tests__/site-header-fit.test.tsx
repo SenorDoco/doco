@@ -78,4 +78,22 @@ describe("SiteHeader fits its row", () => {
     expect(tagline).toMatch(/(?:^|\s)text-balance(?:\s|$)/);
     expect(tagline).not.toMatch(/whitespace-nowrap/);
   });
+
+  // Set in Merriweather, an owner's full nav (Access requests, Feedback and the
+  // flags) at 1280px clipped the tagline's second line with gap-3 and px-3
+  // buttons; gap-2 and px-2.5 leave both tagline lines and the version line
+  // whole (measured in Chromium).
+  it("spaces the inline nav tightly enough for an owner's nav at 1280px", () => {
+    const markup = render(
+      createElement(SiteHeader, {
+        me: { id: "user_alice", username: "alice", type: "person", isHuman: true },
+      }),
+    );
+
+    const inlineNav = classOf(markup, /<nav class="([^"]*)"/);
+    expect(inlineNav).toMatch(/(?:^|\s)gap-2(?:\s|$)/);
+
+    const workspaces = classOf(markup, /<nav class="[^"]*"><a[^>]*class="([^"]*)"/);
+    expect(workspaces).toMatch(/(?:^|\s)px-2\.5(?:\s|$)/);
+  });
 });
