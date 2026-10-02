@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   DOCO_REMINDER,
@@ -143,6 +144,19 @@ describe("agentInstructions", () => {
       (line, i) => i > 0 && line !== "" && lines[i - 1] !== "" && !/^(#|- |\d+\. |<!--)/.test(line),
     );
     expect(continued).toEqual([]);
+  });
+
+  // Doco's own repo follows the block: AGENTS.md, which CLAUDE.md imports,
+  // holds the current copy, so a change to the template updates it in the same
+  // PR, and the project's Claude Code settings add the reminder hook.
+  it("is kept current in Doco's own repo, with its reminder hook", () => {
+    const root = new URL("../../../../../", import.meta.url);
+    expect(readFileSync(new URL("CLAUDE.md", root), "utf8")).toContain("@./AGENTS.md");
+    expect(readFileSync(new URL("AGENTS.md", root), "utf8")).toContain(
+      `${agentInstructions("https://doco.to")}Doco workspace: https://doco.to/workspaces/meta-doco\n`,
+    );
+    const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", root), "utf8"));
+    expect(JSON.stringify(settings.hooks.UserPromptSubmit)).toContain(DOCO_REMINDER);
   });
 
   // Claude Code keeps only the first 4096 characters of an MCP server's
