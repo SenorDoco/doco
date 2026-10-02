@@ -258,9 +258,10 @@ export function ActionNotice({ data }: { data: { error: string } | { message: st
 
 /**
  * The standalone screen right after repositories are connected (a PRG
- * redirect from the connect action): one clear message, a way back to the
- * workspace (where its setup goes on), and a way into each Doco the import
- * fills. Only an organization picked whole brings its later repositories.
+ * redirect from the connect action): one clear message naming (and linking)
+ * each Doco the import fills, and one Continue to the workspace, where its
+ * setup takes the next step. Only an organization picked whole brings its
+ * later repositories.
  */
 export function GitHubImportStarted({
   workspaceHandle,
@@ -287,7 +288,10 @@ export function GitHubImportStarted({
           {docos.map((d, i) => (
             <Fragment key={d.handle}>
               {i > 0 ? (i === docos.length - 1 ? " and " : ", ") : null}
-              {d.items} into <span className="font-mono font-semibold">{d.handle}</span>
+              {d.items} into{" "}
+              <Link to={`/${d.handle}`} className="font-mono font-semibold hover:text-primary">
+                {d.handle}
+              </Link>
             </Fragment>
           ))}
           {count > 0 ? (
@@ -302,16 +306,9 @@ export function GitHubImportStarted({
             ? ` Repositories added to ${list.format(orgs)} later come in too.`
             : null}
         </p>
-        <div className="mt-2 flex flex-wrap justify-center gap-2">
-          <Link to={`/workspaces/${workspaceHandle}`} className={PRIMARY_BTN}>
-            Back to {workspaceHandle}
-          </Link>
-          {docos.map((d) => (
-            <Link key={d.handle} to={`/${d.handle}`} className={NEUTRAL_BTN}>
-              Open {d.handle}
-            </Link>
-          ))}
-        </div>
+        <Link to={`/workspaces/${workspaceHandle}`} className={`${PRIMARY_BTN} mt-2`}>
+          Continue
+        </Link>
       </div>
     </main>
   );

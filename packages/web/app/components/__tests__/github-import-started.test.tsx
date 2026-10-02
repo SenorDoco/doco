@@ -18,10 +18,13 @@ const DOCOS = [
 ];
 
 describe("GitHubImportStarted", () => {
-  it("leads back to the workspace, whose setup goes on from there", () => {
+  it("goes on with one Continue to the workspace, whose setup takes the next step", () => {
     const html = render({ workspaceHandle: "acme", count: 3, orgs: [], docos: DOCOS });
-    expect(html).toContain('href="/workspaces/acme"');
-    expect(html).toContain("Back to acme");
+    const buttons = html.match(/<a [^>]*neu-button[^>]*>[^<]*<\/a>/g) ?? [];
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toContain('href="/workspaces/acme"');
+    expect(buttons[0]).toContain(">Continue<");
+    // Each Doco the import fills is still a link, in the sentence naming it.
     expect(html).toContain('href="/acme-pull-requests"');
     expect(html).toContain('href="/acme-codebase"');
   });

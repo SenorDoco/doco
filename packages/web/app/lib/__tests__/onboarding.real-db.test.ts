@@ -47,11 +47,26 @@ async function steps(who: { workspaceId: string; userId: string }) {
   return progress?.steps.map((s) => [s.step, s.done]);
 }
 
+// What a request records about how it came in (authoring-source.server).
+const CONTEXT: Record<string, object> = {
+  api: { auth: "oauth", token_name: "Claude Code" },
+  mcp: { surface: "mcp" },
+  ui: { surface: "website" },
+};
+
 async function agentWrites(docoId: string, userId: string, source: string) {
-  await db.query("INSERT INTO changesets (doco_id, actor, source) VALUES ($1, $2, $3)", [
+  await db.query(
+    "INSERT INTO changesets (doco_id, actor, source, metadata) VALUES ($1, $2, $3, $4)",
+    [docoId, userId, source, JSON.stringify(CONTEXT[source])],
+  );
+}
+
+/** The GitHub import writes on no request: an API write with no credential,
+ *  attributed to the pull request's author. */
+async function githubImports(docoId: string, authorId: string) {
+  await db.query("INSERT INTO changesets (doco_id, actor, source) VALUES ($1, $2, 'api')", [
     docoId,
-    userId,
-    source,
+    authorId,
   ]);
 }
 
@@ -159,12 +174,25 @@ describe("onboarding steps", () => {
   });
 
   it("counts the other sources as done once an agent reads the workspace", async () => {
-    await db.query("INSERT INTO query_events (workspace_id, actor, source) VALUES ($1, $2, $3)", [
-      "workspace_acme",
-      "user_bo",
-      "api",
-    ]);
+    await db.query(
+      "INSERT INTO query_events (workspace_id, actor, source, metadata) VALUES ($1, $2, $3, $4)",
+      ["workspace_acme", "user_bo", "api", JSON.stringify(CONTEXT.api)],
+    );
     expect((await steps(ana))?.[1]).toEqual(["sources", true]);
+  });
+
+  it("never counts Doco's own GitHub import as an agent", async () => {
+    await startOnboarding(c, { ...ana, joinedAs: "creator" });
+    await db.exec(`
+      UPDATE docos SET data = data || '{"github_integration": {"connections":
+        [{"repo": "acme/app", "installation_id": 7}]}}'::jsonb WHERE id = 'doco_prs';
+    `);
+    await githubImports("doco_prs", "user_ana");
+    expect(await steps(ana)).toEqual([
+      ["github", true],
+      ["sources", false],
+      ["agent", false],
+    ]);
   });
 
   it("finishes the agent step once the person's agent writes into Agents chats", async () => {
