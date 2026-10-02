@@ -23,14 +23,15 @@ import {
   DEFAULT_BRIEF_BUDGET,
   IN_MOTION_DAYS,
   STANDING_RULES_MAX,
+  SYNTHESIS_ITEMS,
   type Signal,
   type Touch,
   becauseOf,
   expandedText,
   fillBudget,
   parseTouching,
-  renderItem,
   summaryOf,
+  synthesisPrompt,
   tierOf,
   tokensOf,
 } from "./brief";
@@ -430,6 +431,15 @@ export async function composeBrief(
     for (const row of rows) nodes.set(row.id, row);
   });
 
+  // Standing orders bind where the agent works: the target Doco's workspace
+  // and the workspaces its matches come from; when nothing matched, every
+  // workspace it reads. A rule standing in another workspace is left out.
+  const workspaceOf = new Map(docos.map((d) => [d.id, d.workspace_id]));
+  const target = request.target
+    ? docos.find((d) => d.id === request.target || d.handle === request.target)
+    : undefined;
+  const working = new Set<string>();
+  if (target) working.add(target.workspace_id);
   for (const [id, candidate] of candidates) {
     const row = nodes.get(id);
     if (!row) {
@@ -442,6 +452,14 @@ export async function composeBrief(
     candidate.text = row.prose;
     candidate.updated_at = new Date(row.updated_at).toISOString();
     candidate.url = row.locator && /^https?:\/\//.test(row.locator) ? row.locator : nodeUrl(row);
+    if (candidate.signals.some((s) => s.kind !== "standing"))
+      working.add(workspaceOf.get(row.doco_id) as string);
+  }
+  if (working.size === 0) for (const d of docos) working.add(d.workspace_id);
+  for (const [id, candidate] of candidates) {
+    const workspace = workspaceOf.get(nodes.get(id)?.doco_id ?? "") as string;
+    if (candidate.signals.every((s) => s.kind === "standing") && !working.has(workspace))
+      candidates.delete(id);
   }
 
   // ── Rank ────────────────────────────────────────────────────────────────
@@ -497,7 +515,7 @@ export async function composeBrief(
 
   // Standing orders lead the first tier: the constitution, the target Doco's
   // goal and policies, then the rules, then the decisions that bind.
-  const workspaces = await loadConstitutions(c, docoIds);
+  const workspaces = await loadConstitutions(c, [...working]);
   for (const w of workspaces) {
     if (!w.constitution.trim()) {
       gaps.push(`Workspace ${w.name} has no constitution.`);
@@ -517,7 +535,6 @@ export async function composeBrief(
     });
   }
   if (request.target) {
-    const target = docos.find((d) => d.id === request.target || d.handle === request.target);
     if (!target) gaps.push(`Target Doco ${request.target} is not one you can read.`);
     else {
       if (target.goal.trim()) {
@@ -610,7 +627,7 @@ export async function composeBrief(
       brief.synthesis = await timed("synthesize", () =>
         synthesize({
           about,
-          items: all.filter((it) => it.tier !== "background").slice(0, 20),
+          items: all.filter((it) => it.tier !== "background").slice(0, SYNTHESIS_ITEMS),
         }),
       );
       if (brief.synthesis === null) warnings.push("No model is configured for the synthesis.");
@@ -645,17 +662,11 @@ export async function composeBrief(
 /** The paragraph a model writes over the first three tiers. */
 export async function synthesizeWithModel(input: SynthesisInput): Promise<string | null> {
   if (!getSenorDocoAnthropicApiKey()) return null;
-  const body = input.items.map((it) => renderItem(it, "expanded")).join("\n");
   const message = await createSenorDocoMessage({
     model: BRIEF_SYNTHESIS_MODEL,
-    max_tokens: 300,
+    max_tokens: 240,
     system: SYNTHESIS_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `The agent is about to: ${input.about || "(not said)"}\n\nItems:\n${body}`,
-      },
-    ],
+    messages: [{ role: "user", content: synthesisPrompt(input.about, input.items) }],
   });
   const text = message.content
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
@@ -689,14 +700,13 @@ async function loadNodes(c: BriefClient, ids: string[], docoIds: string[]): Prom
 
 async function loadConstitutions(
   c: BriefClient,
-  docoIds: string[],
+  workspaceIds: string[],
 ): Promise<{ id: string; handle: string; name: string; constitution: string }[]> {
   return (
     await c.query<{ id: string; handle: string; name: string; constitution: string }>(
       `SELECT w.id, w.handle, w.name, w.constitution FROM workspaces w
-        WHERE w.id IN (SELECT workspace_id FROM docos WHERE id = ANY($1::text[]))
-        ORDER BY w.handle`,
-      [docoIds],
+        WHERE w.id = ANY($1::text[]) ORDER BY w.handle`,
+      [workspaceIds],
     )
   ).rows;
 }

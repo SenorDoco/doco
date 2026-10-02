@@ -26,6 +26,10 @@ import { isProjectToken, validateProjectToken } from "~/lib/project-tokens.serve
 import { recordQuery } from "~/lib/query-log.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
+// Embedding, reranking and the synthesis each call a model: past the
+// platform's default seconds.
+export const config = { maxDuration: 60 };
+
 export interface BriefParams extends BriefRequest {
   touching: string[];
   budget: number;
