@@ -56,6 +56,9 @@ export interface BriefRequest {
   target?: string | null;
   rerank?: boolean;
   synthesize?: boolean;
+  /** Node ids left out of the brief and its hops: the evaluation hides the
+   *  record a query is drawn from, so it cannot answer itself. */
+  exclude?: string[];
 }
 
 export interface SynthesisInput {
@@ -353,6 +356,10 @@ export async function composeBrief(
       })(),
     ]);
   });
+  for (const id of request.exclude ?? []) {
+    candidates.delete(id);
+    nodeIds.delete(id);
+  }
   touchIds.push(...touchHits.keys());
   touchIds.sort(
     (a, b) => (touchHits.get(b)?.size ?? 0) - (touchHits.get(a)?.size ?? 0) || a.localeCompare(b),
@@ -362,7 +369,9 @@ export async function composeBrief(
   const hopIds: string[] = [];
   const nodes = new Map<string, NodeRow>();
   await timed("expand", async () => {
-    const seedOrder = fuseRankings([vectorIds, ftsIds, touchIds]);
+    const seedOrder = fuseRankings([vectorIds, ftsIds, touchIds]).filter((id) =>
+      candidates.has(id),
+    );
     const hopFrom = seedOrder.slice(0, HOP_SEEDS);
     let rows = await loadNodes(c, [...nodeIds], docoIds);
     for (const row of rows) nodes.set(row.id, row);
