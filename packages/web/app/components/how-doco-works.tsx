@@ -365,10 +365,8 @@ export function HowDocoWorks() {
         Sources such as people, GitHub, Slack and Notion feed one workspace. Agents such as Claude,
         Cursor, Codex and Qwen read it as they work, and write decisions back.
       </p>
-      <div className="hdw-plate">
-        <Flow layout={DESKTOP} step={step} />
-        <Flow layout={PHONE} step={step} />
-      </div>
+      <Flow layout={DESKTOP} step={step} />
+      <Flow layout={PHONE} step={step} />
       <ol className="hdw-steps">
         {STEPS.map((s, i) => (
           <li key={s.verb}>
