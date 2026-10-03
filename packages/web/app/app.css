@@ -431,11 +431,11 @@ a:focus-visible {
   }
 }
 
-/* The home page's logo, neumorphic (Alexander, 2026-10-03): purple pressed
-   out of the same clay as the keys, so it casts a key's shadow down and to
-   the right and catches a key's highlight up and to the left (the numbers
-   are `--neu-key`'s; a filter cannot read a box-shadow list). DocoMark's
-   relief filter rounds the purple's own edge. */
+/* The home page's logo, neumorphic (Alexander, 2026-10-03): solid purple
+   standing out of the page like a key, so it casts a key's shadow down and
+   to the right and catches a key's highlight up and to the left (the numbers
+   are `--neu-key`'s; a filter cannot read a box-shadow list). Nothing is
+   drawn on the purple itself ("the purple/letter should be solid"). */
 .doco-mark-raised {
   filter: drop-shadow(5px 5px 12px var(--neu-shadow))
     drop-shadow(-5px -5px 12px var(--neu-highlight));

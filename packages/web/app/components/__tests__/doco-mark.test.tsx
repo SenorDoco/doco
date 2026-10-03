@@ -5,9 +5,10 @@ import { describe, expect, it } from "vitest";
 import { DocoMark } from "../doco-mark";
 
 // Alexander, 2026-10-03: "Add biomorphic [neumorphic] design to the logo of
-// Doco in the home page." The raised logo stands out of the page like the How
-// Doco works plate, lit from the top left: a highlight above it, a shadow
-// below it, and a soft bevel on the purple itself, so it reads as molded.
+// Doco in the home page", then, once the site was one clay, "The purple/letter
+// should be solid." The raised logo is solid purple standing out of the page
+// like a key: a highlight above it, a shadow below it, and nothing drawn on
+// the purple itself.
 const appCss = readFileSync(new URL("../../app.css", import.meta.url), "utf8");
 
 function render(props: Parameters<typeof DocoMark>[0]): string {
@@ -15,18 +16,15 @@ function render(props: Parameters<typeof DocoMark>[0]): string {
 }
 
 describe("DocoMark", () => {
-  it("bevels the orb and the wordmark together when raised", () => {
+  it("keeps the purple solid when raised", () => {
     const html = render({ height: 72, raised: true });
     expect(html).toMatch(/<svg[^>]*class="[^"]*\bdoco-mark-raised\b/);
-    const filterId = html.match(/<filter id="([^"]+)"/)?.[1];
-    expect(filterId).toBeTruthy();
-    // One filtered group holds the orb and the wordmark, so both share the
-    // same light; the working-state mist stays outside it.
-    const group = html.indexOf(`filter="url(#${filterId})"`);
-    expect(group).toBeGreaterThan(0);
-    expect(html.indexOf("doco-mark-glyph-motion")).toBeGreaterThan(group);
-    expect(html.indexOf("M23.600-56.500")).toBeGreaterThan(group);
-    expect(html.indexOf("doco-mark-mist")).toBeGreaterThan(html.indexOf("M23.600-56.500"));
+    // No bevel, gradient or filter on the orb or the wordmark: the relief is
+    // only the shadow and highlight the page gives it (`.doco-mark-raised`).
+    expect(html).not.toContain("<filter");
+    expect(html).not.toMatch(/<g[^>]* filter=/);
+    expect(html).not.toContain("Gradient");
+    expect(html.match(/fill="#9945A1"/g)).toHaveLength(2);
   });
 
   it("stays flat everywhere else", () => {
