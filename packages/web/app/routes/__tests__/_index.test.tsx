@@ -29,6 +29,13 @@ describe("Home", () => {
     expect(html).toContain("Shared context for AI and teams</p>");
   });
 
+  // Alexander, 2026-10-03: the home page's logo is neumorphic, raised out of
+  // the page like the How Doco works plate.
+  it("raises the logo out of the page", async () => {
+    const html = await render();
+    expect(html).toMatch(/<svg[^>]*class="[^"]*\bdoco-mark-raised\b/);
+  });
+
   // Alexander, 2026-10-02: a Get started button under the headline, saying
   // it takes a minute; then How Doco works.
   it("puts Get started under the headline, then explains how Doco works", async () => {

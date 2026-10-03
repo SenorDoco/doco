@@ -554,6 +554,14 @@ button[class*="bg-primary"]:active {
   }
 }
 
+/* The home page's logo, neumorphic (Alexander, 2026-10-03): it stands out of
+   the page like the How Doco works plate, lit from the top left, so it casts
+   a shadow down and to the right and catches a highlight up and to the left.
+   DocoMark's relief filter bevels the purple itself. */
+.doco-mark-raised {
+  filter: drop-shadow(4px 4px 6px var(--neu-shadow)) drop-shadow(-4px -4px 6px var(--neu-highlight));
+}
+
 /* One-shot focus pulse for list-style perspectives (glossary, list,
    pull requests). When a node is opened from a dialog edge — or
    straight from its URL — the matching row scrolls into view and pulses
