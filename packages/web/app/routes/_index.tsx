@@ -34,7 +34,7 @@ export default function Home() {
           box below its text, and the caption's below "minute". */}
       <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
         <h1 className="sr-only">Doco</h1>
-        <DocoMark height={72} className="mt-23" />
+        <DocoMark height={72} raised className="mt-23" />
         <p className="mt-3 text-2xl font-bold leading-tight md:text-3xl">{TAGLINE}</p>
         <Link
           to="/sign-up"
