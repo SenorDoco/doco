@@ -6,7 +6,8 @@
 // key, preformatted text a well, and nothing has an outline. Apple Mail, iOS
 // Mail and Gmail honour the shadows; Outlook drops them and shows the same
 // email flat on the page. Most clients (Gmail, Outlook) won't load the web
-// font and fall back to Georgia; Apple Mail loads it. Pure.
+// fonts and fall back to Georgia and their own monospace; Apple Mail loads
+// them. Pure.
 
 const BACKGROUND = "#f3f2ee"; // --color-background
 const FOREGROUND = "#171612"; // --color-foreground
@@ -21,7 +22,11 @@ const WELL = "inset 4px 4px 9px rgba(23,22,18,0.13),inset -4px -4px 9px #ffffff"
 const SERIF = "Merriweather,Georgia,'Times New Roman',serif";
 const MONO = "'Ubuntu Mono',ui-monospace,Menlo,Consolas,monospace";
 const FONTS =
-  "https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&family=Ubuntu+Mono&display=swap";
+  "https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,400;0,700;1,400&display=swap";
+// The site's own Ubuntu Mono, drawn 120% so it stands as tall as Merriweather
+// (the @font-face rules in app.css say why).
+const MONO_FACE =
+  "@font-face{font-family:'Ubuntu Mono';src:url(https://doco.to/fonts/ubuntu-mono-400.woff2) format('woff2');size-adjust:120%}";
 
 export type EmailBlock =
   /** A paragraph. */
@@ -87,7 +92,7 @@ export function emailHtml(blocks: EmailBlock[]): string {
   return [
     "<!doctype html>",
     '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
-    `<link href="${FONTS}" rel="stylesheet"></head>`,
+    `<link href="${FONTS}" rel="stylesheet"><style>${MONO_FACE}</style></head>`,
     `<body style="margin:0;padding:0;background-color:${BACKGROUND}">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BACKGROUND}" style="background-color:${BACKGROUND}"><tr><td style="padding:40px 16px">`,
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:600px;margin:0 auto;border-radius:12px;box-shadow:${SLAB}"><tr><td style="padding:32px 28px;font-family:${SERIF};font-size:15px;line-height:1.6;color:${FOREGROUND}">`,

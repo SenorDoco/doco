@@ -454,7 +454,7 @@ function Inline({ inline, resolve }: { inline: NotionInline; resolve: Resolve })
         </u>
       );
     case "code":
-      return <code className="rounded bg-input px-1 py-0.5 text-xs">{inline.text}</code>;
+      return <code className="rounded bg-input px-1 py-0.5">{inline.text}</code>;
     case "link":
       return (
         <Anchor href={inline.href} resolve={resolve}>

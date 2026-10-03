@@ -34,6 +34,16 @@ describe("emailHtml", () => {
     expect(pre).toContain("&lt;!-- doco:begin --&gt;");
   });
 
+  // The site's own Ubuntu Mono, drawn 120% so it stands as tall as
+  // Merriweather (typography.test.ts). Clients that load web fonts (Apple
+  // Mail) take it; the rest fall back to their own monospace.
+  it("loads the site's Ubuntu Mono, drawn at Merriweather's size", () => {
+    expect(html).toContain(
+      "@font-face{font-family:'Ubuntu Mono';src:url(https://doco.to/fonts/ubuntu-mono-400.woff2) format('woff2');size-adjust:120%}",
+    );
+    expect(html).not.toContain("Ubuntu+Mono");
+  });
+
   it("sets headings, lists, numbers and small print, escaped", () => {
     const html = emailHtml([
       { heading: "Top <queryers>" },
