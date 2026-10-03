@@ -49,8 +49,25 @@ describe("emailHtml", () => {
     expect(html).toContain("<li>ana &amp; bo</li>");
     expect(html).toMatch(/font-size:24px[^>]*>1,340<\/div><div style="color:#5c5b56">queries</);
     expect(html).toContain(
-      'You get this as a member. <a href="https://doco.to/u?t=a&amp;b" style="color:#5c5b56">Unsubscribe</a>',
+      'You get this as a member. <a href="https://doco.to/u?t=a&amp;b" style="color:#9c44a5">Unsubscribe</a>',
     );
+  });
+
+  // The site's one clay (Alexander, 2026-10-03), as far as mail clients allow:
+  // the column is a slab, the button a purple key, preformatted text a well,
+  // nothing has an outline, and every link is purple. Apple Mail, iOS Mail and
+  // Gmail honour the inline box-shadows; Outlook drops them and shows the same
+  // email flat on the page, which still reads.
+  it("stands the email on a slab, with a purple key for a button and a well for code", () => {
+    const html = emailHtml(["Hi", { link: "https://doco.to/x", label: "Open x" }, { pre: "x" }]);
+    expect(html).toContain("box-shadow:7px 7px 16px rgba(23,22,18,0.09),-7px -7px 16px #ffffff");
+    expect(html).toMatch(
+      /<a href="https:\/\/doco.to\/x" style="[^"]*background-color:#9c44a5;color:#ffffff[^"]*box-shadow:5px 5px 12px rgba\(23,22,18,0.11\),-5px -5px 12px #ffffff/,
+    );
+    expect(html).toMatch(
+      /<pre style="[^"]*box-shadow:inset 4px 4px 9px rgba\(23,22,18,0.13\),inset -4px -4px 9px #ffffff/,
+    );
+    expect(html).not.toContain("border:");
   });
 });
 
