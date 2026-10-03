@@ -1,5 +1,45 @@
-@import url("https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300..900;1,300..900&family=Ubuntu+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300..900;1,300..900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap");
 @import "tailwindcss";
+
+/* Ubuntu Mono, served by Doco (public/fonts, under the Ubuntu Font Licence)
+   so it can be drawn 120% of its natural size: its lowercase and capitals
+   stand 0.464 and 0.619 of its em high, Merriweather's 0.555 and 0.743, so
+   at the same font size the mono read 20% smaller than the words around it.
+   Scaled, any font size names the same visible size in either face. Emails
+   load the same file (app/lib/email-html.ts). Vercel caches /fonts for a
+   year (vercel.json), so a changed file takes a new name. */
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/ubuntu-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 120%;
+}
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/ubuntu-mono-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 120%;
+}
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/ubuntu-mono-400-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+  size-adjust: 120%;
+}
+@font-face {
+  font-family: "Ubuntu Mono";
+  src: url("/fonts/ubuntu-mono-700-italic.woff2") format("woff2");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+  size-adjust: 120%;
+}
 
 /* shadcn-style theme tokens — light neumorphic theme, set in Merriweather */
 @theme {
@@ -427,34 +467,6 @@ a:focus-visible {
     box-shadow: 0 0 0 2px var(--color-primary);
     border-radius: 6px;
   }
-}
-
-.body-md p {
-  margin: 0.5em 0;
-}
-.body-md code {
-  background-color: var(--color-input);
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--neu-inset);
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-}
-.body-md pre {
-  background-color: var(--color-input);
-  border-radius: var(--radius);
-  padding: 12px;
-  box-shadow: var(--neu-inset);
-  overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1.45;
-}
-.body-md h1,
-.body-md h2,
-.body-md h3 {
-  margin: 1em 0 0.5em;
-  font-weight: 700;
 }
 
 /* Golden glow for nodes that just arrived from a live refresh.

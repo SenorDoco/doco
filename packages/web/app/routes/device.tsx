@@ -211,7 +211,7 @@ function renderStage(data: LoaderData) {
           <CardTitle>Authorize token access</CardTitle>
           <CardDescription>
             Enter the short code your client showed you. It looks like{" "}
-            <code className="rounded bg-input px-1 py-0.5 text-xs">WXYZ-1234</code>.
+            <code className="rounded bg-input px-1 py-0.5">WXYZ-1234</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -246,7 +246,7 @@ function renderStage(data: LoaderData) {
           <CardDescription>
             An agent is requesting access to your docos through <strong>{data.client_name}</strong>.
             Name the token, then pick individual docos or grant access to an entire workspace — code{" "}
-            <code className="rounded bg-input px-1 py-0.5 text-xs">{data.user_code}</code>.
+            <code className="rounded bg-input px-1 py-0.5">{data.user_code}</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
