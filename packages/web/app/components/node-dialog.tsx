@@ -94,15 +94,15 @@ function formatValue(value: unknown): string {
 
 function lifecycleButtonClass(detail: NodeDialogDetail, stage: LifecycleStage, active: boolean) {
   const base =
-    "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-3 text-[11px] font-semibold capitalize";
+    "neu-button inline-flex h-8 min-w-0 items-center justify-center rounded-md px-3 text-[11px] font-semibold capitalize";
   if (active) {
     return `${base} neu-pressed`;
   }
   const option = detail.lifecycle_options.find((candidate) => candidate.value === stage);
   if (option?.disabled) {
-    return `${base} neu-button cursor-not-allowed opacity-55`;
+    return `${base} cursor-not-allowed opacity-55`;
   }
-  return `${base} neu-button`;
+  return base;
 }
 
 function DocoSourceLine({ doco }: { doco: NodeDialogDetail["doco"] | null | undefined }) {
@@ -110,10 +110,7 @@ function DocoSourceLine({ doco }: { doco: NodeDialogDetail["doco"] | null | unde
   return (
     <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
       Doco{" "}
-      <Link
-        to={doco.href}
-        className="font-mono font-semibold text-foreground underline-offset-2 hover:text-primary hover:underline"
-      >
+      <Link to={doco.href} className="font-mono font-semibold underline-offset-2 hover:underline">
         {doco.handle}
       </Link>
     </p>
@@ -149,7 +146,7 @@ export function NodeDialog({
 
   return (
     <aside
-      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-white"
+      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-white"
       aria-label="Node details"
     >
       <header className="px-4 py-3">
@@ -172,7 +169,7 @@ export function NodeDialog({
               <button
                 type="button"
                 onClick={onClose}
-                className="neu-button inline-flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                className="neu-button inline-flex h-8 w-8 shrink-0 items-center justify-center transition-colors"
                 aria-label="Close node details"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
@@ -305,7 +302,7 @@ export function NodeDialog({
                 <button
                   type="button"
                   onClick={() => setShowRetired((prev) => !prev)}
-                  className="neu-button mt-3 inline-flex items-center rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                  className="neu-button mt-3 inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-medium"
                   aria-pressed={showRetired}
                 >
                   {showRetired
@@ -459,7 +456,7 @@ export function EdgeList({
                     onOpenEdge({ id: edge.edge_id, href: edge.edge_href, source, target })
                   }
                   title={`Open edge: ${edge.edge_type}`}
-                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] hover:bg-input/40"
+                  className="neu-button neu-small inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px]"
                 >
                   <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
                   <span

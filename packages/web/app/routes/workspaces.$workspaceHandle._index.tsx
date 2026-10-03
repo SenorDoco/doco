@@ -359,7 +359,7 @@ export default function WorkspaceHome({
               />
               <button
                 type="submit"
-                className="neu-button shrink-0 rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+                className="neu-button shrink-0 rounded-md px-4 py-2.5 text-sm font-semibold"
               >
                 Ask
               </button>
@@ -408,10 +408,7 @@ function WorkspaceFeedLine({ event }: { event: FeedItem }) {
         </Link>
         {detail ? <span className="text-muted-foreground">{detail}</span> : null}
         <span className="text-muted-foreground"> — </span>
-        <Link
-          to={`/${event.handle}`}
-          className="text-muted-foreground hover:text-foreground hover:underline"
-        >
+        <Link to={`/${event.handle}`} className="hover:underline">
           {event.handle}
         </Link>
         {event.byUsername ? (
@@ -491,11 +488,7 @@ function WorkspaceConstitutionCard({
               >
                 {fetcher.state === "idle" ? "Save" : "Saving..."}
               </button>
-              <button
-                type="button"
-                onClick={() => setEditing(false)}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
+              <button type="button" onClick={() => setEditing(false)} className="text-xs">
                 Cancel
               </button>
             </div>
@@ -546,7 +539,7 @@ function WorkspaceConstitutionCard({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="neu-button rounded-md px-4 py-1.5 text-xs font-semibold text-foreground"
+                className="neu-button rounded-md px-4 py-1.5 text-xs font-semibold"
               >
                 Edit
               </button>

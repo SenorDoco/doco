@@ -49,7 +49,7 @@ export function NodesOverviewCard({
                 <Link
                   to={item.href}
                   aria-label={item.ariaLabel}
-                  className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
+                  className="flex min-w-0 items-center gap-2 text-xs"
                 >
                   {item.icon ? (
                     <span aria-hidden className="shrink-0 text-[12px] leading-none">

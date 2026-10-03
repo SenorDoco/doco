@@ -37,11 +37,6 @@ export function useFullscreenSpec(): FullscreenSpec | null {
 interface PerspectiveFrameProps {
   fillHeight?: boolean;
   /**
-   * A tab can attach to the frame's right edge; when it does, the
-   * frame's top-right corner must flatten just like the top-left.
-   */
-  rightTabAttached?: boolean;
-  /**
    * Lifecycle visibility filter. Renders the floating bottom-left
    * panel ("Life cycle: ☑ active ☑ drafting …") inside the frame. The
    * perspective still receives `visibleLifecycles` so it can filter
@@ -60,38 +55,29 @@ interface PerspectiveFrameProps {
 }
 
 /**
- * The bordered canvas frame every perspective renders inside. The
- * frame is owned by the perspective HOST, not the perspectives
- * themselves — perspectives are content INSIDE the frame and must not
- * draw their own border, background, or rounded corners. They also
- * must not render their own lifecycle filter or fullscreen button —
- * those overlays live on the frame at fixed positions so they're
- * identical across Graph, BPMN, Org Tree, List, and any future
- * perspective.
- *
- * The frame keeps the same etched border as other Doco sections. Tabs
- * overlap its top edge: inactive tabs sit underneath the frame border,
- * while the active tab renders above the border to own the selected join.
+ * The canvas frame every perspective renders inside: a well sunk into the
+ * page under the row of perspective tabs. The frame is owned by the
+ * perspective HOST, not the perspectives themselves — perspectives are
+ * content INSIDE the frame and must not draw their own edge, background,
+ * or rounded corners. They also must not render their own lifecycle filter
+ * or fullscreen button — those overlays live on the frame at fixed
+ * positions so they're identical across Graph, BPMN, Org Tree, List, and
+ * any future perspective.
  */
 export function PerspectiveFrame({
   fillHeight = false,
-  rightTabAttached = false,
   lifecycleFilter,
   fullscreen,
   children,
 }: PerspectiveFrameProps) {
-  const sizeClass = fillHeight ? "min-h-0 flex-1" : "h-[calc(65vh+2px)] min-h-[482px]";
-  const frameRadiusClass = rightTabAttached ? "!rounded-tr-none" : "rounded-tr-lg";
-  const frameRadiusStyle = rightTabAttached ? { borderTopRightRadius: 0 } : undefined;
+  const sizeClass = fillHeight ? "min-h-0 flex-1" : "h-[65vh] min-h-[480px]";
   return (
     <FullscreenContext.Provider value={fullscreen ?? null}>
       <div
         className={cn(
-          "relative z-50 -m-px w-[calc(100%+2px)] overflow-hidden rounded-b-lg rounded-tl-none border border-transparent bg-card text-card-foreground",
-          frameRadiusClass,
+          "relative z-50 overflow-hidden rounded-lg bg-card text-card-foreground",
           sizeClass,
         )}
-        style={frameRadiusStyle}
       >
         {/* `contain: layout paint` makes the perspective canvas its own
             rendering/compositing unit, so React Flow's per-frame DOM churn while
@@ -107,26 +93,11 @@ export function PerspectiveFrame({
           {children}
         </div>
         {lifecycleFilter ? <LifecycleFilterPanel spec={lifecycleFilter} /> : null}
+        {/* The well's inset shadow, painted over the canvas: on the frame itself
+            it would sit under the perspective's own background. */}
         <div
           aria-hidden
-          className={cn(
-            "pointer-events-none absolute inset-0 z-[80] overflow-hidden rounded-b-lg rounded-tl-none",
-            frameRadiusClass,
-          )}
-          style={frameRadiusStyle}
-        >
-          <div className="absolute left-0 right-0 top-0 h-0.5 bg-card" />
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-card" />
-          <div className="absolute bottom-0 left-0 top-0 w-0.5 bg-card" />
-          <div className="absolute bottom-0 right-0 top-0 w-0.5 bg-card" />
-        </div>
-        <div
-          aria-hidden
-          className={cn(
-            "neu-surface pointer-events-none absolute inset-0 z-[90] rounded-b-lg rounded-tl-none border border-border",
-            frameRadiusClass,
-          )}
-          style={frameRadiusStyle}
+          className="neu-well pointer-events-none absolute inset-0 z-[90] rounded-lg"
         />
       </div>
     </FullscreenContext.Provider>
@@ -138,7 +109,7 @@ function LifecycleFilterPanel({ spec }: { spec: LifecycleFilterSpec }) {
   if (available.length === 0) return null;
   return (
     <div className="pointer-events-none absolute bottom-3 left-3 z-10">
-      <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs shadow-sm backdrop-blur">
+      <div className="neu-surface neu-small pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-card/90 px-2 py-1 text-xs backdrop-blur">
         <span className="text-muted-foreground">Life cycle:</span>
         {available.map((lifecycle) => {
           const checked = spec.visible.has(lifecycle);

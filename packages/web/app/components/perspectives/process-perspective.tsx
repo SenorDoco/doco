@@ -2730,11 +2730,11 @@ export function NodeDrillButton({
         drill.onClick(node);
       }}
       onPointerDown={(event) => event.stopPropagation()}
-      // `.neu-pill-button` paints the raised → pressed neumorphic shadow so the
+      // A small key (`.neu-button.neu-small`), raised then pressed, so the
       // pill reads as a real button; `nodrag nopan` keeps a click on it from
       // panning the canvas. It sits in the bottom strip the node reserves,
       // lifted clear of the type/lifecycle badge row straddling the edge below.
-      className="nodrag nopan neu-pill-button"
+      className="nodrag nopan neu-button neu-small"
       style={{
         position: "absolute",
         bottom: DRILL_BUTTON_BOTTOM,

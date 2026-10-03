@@ -152,7 +152,7 @@ export function ReaderTree({
                     onClick={() => toggle(item.id)}
                     aria-expanded={isOpen}
                     aria-label={`${isOpen ? "Close" : "Open"} ${item.name}`}
-                    className="flex h-5 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                    className="flex h-5 w-4 shrink-0 items-center justify-center rounded"
                   >
                     {isOpen ? (
                       <ChevronDown aria-hidden className="h-3 w-3" />
@@ -170,7 +170,7 @@ export function ReaderTree({
                   title={item.pending ? "Not copied yet" : undefined}
                   className={cn(
                     "flex min-w-0 flex-1 items-center gap-1.5",
-                    item.pending && "italic text-muted-foreground",
+                    item.pending && "italic text-primary/60",
                   )}
                 >
                   <ItemIcon item={item} open={isOpen} />

@@ -141,10 +141,7 @@ export default function NewWorkspace({
                   Use "{suggested}" instead
                 </button>
               ) : null}
-              <Link
-                to="/workspaces"
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
+              <Link to="/workspaces" className="text-xs">
                 Cancel
               </Link>
             </div>

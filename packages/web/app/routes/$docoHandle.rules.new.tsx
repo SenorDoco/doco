@@ -228,7 +228,7 @@ export default function NewRule({
               >
                 Capture rule
               </button>
-              <a href={`/${handle}`} className="text-xs text-muted-foreground hover:underline">
+              <a href={`/${handle}`} className="text-xs hover:underline">
                 Cancel
               </a>
             </div>

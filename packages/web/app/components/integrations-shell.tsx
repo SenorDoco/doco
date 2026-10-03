@@ -37,13 +37,13 @@ import type { DocoPicker } from "~/lib/integrations-summary.server";
 // "Connect" / "Set up…". Keeping them here means every action button across the
 // three integrations pages is the exact same size, weight, and shape.
 export const CONNECTION_ACTION_SECONDARY =
-  "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:text-primary";
+  "neu-button inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold";
 export const CONNECTION_ACTION_PRIMARY =
   "neu-button inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90";
 // Same pill geometry as the secondary action, in the destructive tint — for a
 // row's "Remove"/"Disconnect" control so it lines up with "Set defaults".
 export const CONNECTION_ACTION_DESTRUCTIVE =
-  "neu-button inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-input";
+  "neu-button inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-destructive";
 
 export interface ConnectionAction {
   label: string;
@@ -92,10 +92,7 @@ export function ConnectionRow({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           {titleHref ? (
-            <Link
-              to={titleHref}
-              className="text-sm font-semibold text-foreground hover:text-primary"
-            >
+            <Link to={titleHref} className="text-sm font-semibold">
               {title}
             </Link>
           ) : (

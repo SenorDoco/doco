@@ -54,7 +54,7 @@ export function ActivityFeedLine({
           ? (event) => handleNodeDialogLinkClick(event, () => onOpenNode(item, url))
           : undefined
       }
-      className="group flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed text-foreground no-underline hover:bg-muted/35"
+      className="group flex items-baseline gap-3 px-5 py-3 font-mono text-xs leading-relaxed no-underline hover:bg-muted/35"
     >
       <div className="min-w-0 flex-1">
         <span>{iconFromAuditOp(item.op)} </span>

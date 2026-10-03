@@ -108,10 +108,7 @@ export default function NewPolicy({
               >
                 Add policy
               </button>
-              <Link
-                to={`/${handle}/policies`}
-                className="text-xs text-muted-foreground hover:underline"
-              >
+              <Link to={`/${handle}/policies`} className="text-xs hover:underline">
                 Cancel
               </Link>
             </div>

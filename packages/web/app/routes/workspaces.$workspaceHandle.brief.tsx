@@ -106,7 +106,7 @@ export default function WorkspaceBrief({
               />
               <button
                 type="submit"
-                className="neu-button shrink-0 rounded-md px-4 py-2.5 text-sm font-semibold text-foreground"
+                className="neu-button shrink-0 rounded-md px-4 py-2.5 text-sm font-semibold"
               >
                 Ask
               </button>
@@ -183,16 +183,10 @@ export default function WorkspaceBrief({
               <CardTitle className="text-sm">Workspace</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <Link
-                to={`/workspaces/${workspace.handle}`}
-                className="block font-semibold text-foreground hover:text-primary"
-              >
+              <Link to={`/workspaces/${workspace.handle}`} className="block font-semibold">
                 {workspace.handle}
               </Link>
-              <Link
-                to={`/workspaces/${workspace.handle}/integrations`}
-                className="block text-xs text-muted-foreground hover:text-foreground"
-              >
+              <Link to={`/workspaces/${workspace.handle}/integrations`} className="block text-xs">
                 App integrations
               </Link>
             </CardContent>
@@ -206,10 +200,7 @@ export default function WorkspaceBrief({
                 An agent gets this answer from <code>doco_brief</code>, or from the Doco hook before
                 each prompt and file edit, across the Docos it can read.
               </p>
-              <Link
-                to={AGENT_INSTRUCTIONS_PATH}
-                className="block text-xs text-muted-foreground hover:text-foreground"
-              >
+              <Link to={AGENT_INSTRUCTIONS_PATH} className="block text-xs">
                 Instructions for agents
               </Link>
             </CardContent>
@@ -254,7 +245,7 @@ function BriefItemRow({ item }: { item: BriefItem }) {
         <NodeTypeBadge nodeType={item.type}>{nodeTypePlural(item.type)}</NodeTypeBadge>
         {item.lifecycle ? <LifecycleBadge lifecycle={item.lifecycle} /> : null}
         {item.doco ? (
-          <Link to={`/${item.doco}`} className="hover:text-foreground hover:underline">
+          <Link to={`/${item.doco}`} className="hover:underline">
             {item.doco}
           </Link>
         ) : null}

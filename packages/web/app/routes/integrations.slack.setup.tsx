@@ -221,10 +221,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
               const state = workspaceState[group.key] ?? initialWorkspaceState(group);
               const allWorkspaceAvailable = Boolean(group.workspaceOption);
               return (
-                <section
-                  key={group.key}
-                  className="rounded-md border border-border bg-background p-4"
-                >
+                <section key={group.key} className="neu-surface rounded-md bg-background p-4">
                   {/* The workspace is fixed (chosen at install); not a choice here. */}
                   <input type="hidden" name="workspace_key" value={group.key} />
                   <div className="text-sm font-semibold text-foreground">
@@ -295,7 +292,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
                           {group.docos.map((doco) => (
                             <label
                               key={doco.id}
-                              className="grid gap-2 rounded-md border border-border p-3 text-sm md:grid-cols-[minmax(0,1fr)_180px] md:items-center"
+                              className="neu-well grid gap-2 rounded-md p-3 text-sm md:grid-cols-[minmax(0,1fr)_180px] md:items-center"
                             >
                               <span className="min-w-0 font-semibold text-foreground">
                                 {doco.label}

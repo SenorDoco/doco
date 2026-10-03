@@ -160,7 +160,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
       </PageHeader>
 
       {notice ? (
-        <div className="rounded-md border border-border bg-background p-3 text-sm text-foreground">
+        <div className="neu-well rounded-md bg-background p-3 text-sm text-foreground">
           {notice}
         </div>
       ) : null}
@@ -221,10 +221,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                             {docosWithIntegrations.map((d) => (
                               <li key={d.docoId} className="flex items-center gap-2">
                                 <span className="text-muted-foreground">↳</span>
-                                <Link
-                                  to={`/${d.handle}/integrations`}
-                                  className="font-mono hover:text-primary"
-                                >
+                                <Link to={`/${d.handle}/integrations`} className="font-mono">
                                   {d.handle}
                                 </Link>
                                 <span className="text-muted-foreground">
@@ -238,7 +235,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
                                 <span className="text-muted-foreground">↳</span>
                                 <Link
                                   to={`/workspaces/${o.handle}/integrations`}
-                                  className="font-mono hover:text-primary"
+                                  className="font-mono"
                                 >
                                   {team.workspaceName}
                                 </Link>

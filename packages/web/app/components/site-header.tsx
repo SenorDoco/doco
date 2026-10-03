@@ -32,9 +32,9 @@ interface SiteHeaderProps {
 // other nav items pixel-for-pixel. `text-left` keeps a bare <button> (Sign out)
 // from inheriting the UA-default centered text in the stacked mobile menu.
 const navButtonClass =
-  "neu-button whitespace-nowrap rounded-md border border-border px-2.5 py-1.5 text-left font-semibold";
+  "neu-button whitespace-nowrap rounded-md px-2.5 py-1.5 text-left font-semibold";
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  cn(navButtonClass, isActive ? "text-primary" : "text-foreground hover:text-primary");
+  cn(navButtonClass, isActive && "neu-pressed");
 
 /**
  * The one header every page carries, signed in or out. The root layout draws
@@ -146,11 +146,7 @@ export function AccessRequestsNavItem({
       title={summary}
       aria-label={`Access requests: ${summary}`}
       className={({ isActive }: { isActive: boolean }) =>
-        cn(
-          navButtonClass,
-          "inline-flex items-center gap-1.5",
-          isActive ? "text-primary" : "text-foreground hover:text-primary",
-        )
+        cn(navButtonClass, "inline-flex items-center gap-1.5", isActive && "neu-pressed")
       }
       onClick={onNavigate}
     >
@@ -194,15 +190,11 @@ function NavButtons({
           Feedback
         </NavLink>
       ) : null}
-      <NavLink
-        to={`/users/${me.username}`}
-        className={cn(navButtonClass, "text-foreground hover:text-primary")}
-        onClick={onNavigate}
-      >
+      <NavLink to={`/users/${me.username}`} className={navButtonClass} onClick={onNavigate}>
         @{me.username}
       </NavLink>
       <Form method="post" action="/sign-out" className="contents">
-        <button type="submit" className={cn(navButtonClass, "text-foreground hover:text-primary")}>
+        <button type="submit" className={navButtonClass}>
           Sign out
         </button>
       </Form>
@@ -243,7 +235,7 @@ function MobileNavMenu({
         aria-label="Open navigation menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="neu-button inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-foreground hover:text-primary"
+        className="neu-button inline-flex h-9 w-9 items-center justify-center rounded-md"
       >
         <Menu className="h-4 w-4" />
       </button>

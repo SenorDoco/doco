@@ -177,7 +177,7 @@ export function OAuthAccessApprovalForm({
           name="decision"
           value={cancelDecisionValue}
           formNoValidate
-          className="neu-button rounded-md px-4 py-2 text-sm font-semibold text-foreground"
+          className="neu-button rounded-md px-4 py-2 text-sm font-semibold"
         >
           {cancelLabel}
         </button>

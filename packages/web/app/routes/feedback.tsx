@@ -168,7 +168,7 @@ function ClearButton({
       <button
         type="submit"
         disabled={count === 0}
-        className="neu-button inline-flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+        className="neu-button inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
       >
         <Icon className="h-4 w-4" aria-hidden="true" />
         Clear {count} {noun}

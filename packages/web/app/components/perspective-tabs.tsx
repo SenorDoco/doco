@@ -1,10 +1,10 @@
-// Perspective tabs row that sits above the active perspective body.
+// Perspective tabs row that sits above the active perspective body: a row
+// of keys, the active one pressed.
 //
 // The tabs are the ONLY thing in this row — nothing (search box, etc.)
 // is allowed inside, because anything that wraps to a second line would
-// push the canvas down and break the visual "tabs attached to canvas"
-// connection. Page-level chrome (search, action buttons) lives in the
-// title row above the perspective area.
+// push the canvas down. Page-level chrome (search, action buttons) lives
+// in the title row above the perspective area.
 
 import { Pin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -28,32 +28,22 @@ export function PerspectiveTabs({
   canAdmin,
 }: PerspectiveTabsProps) {
   return (
-    <div className="relative flex min-w-0 items-end justify-between gap-3">
+    <div className="relative mb-3 flex min-w-0 items-end justify-between gap-3">
       <nav
         aria-label="Visualization perspectives"
         role="tablist"
         // `self-start` keeps the nav shrink-to-fit horizontally instead
-        // of stretching to fill the aside's width — so `right-0` on the
-        // chevron dropdown anchors to the chevron's right edge, not the
-        // aside's far-right edge.
-        // `relative` so the chevron's dropdown menu can position-absolute
-        // against this nav element. The chevron is a direct child of
-        // the nav, dropping the wrapper that previously caused
-        // sub-pixel vertical misalignment with the Link tabs.
-        className="relative flex min-w-0 flex-wrap items-end self-start"
+        // of stretching to fill the aside's width. `relative` so the
+        // chevron's dropdown menu can position-absolute against this nav
+        // element; the chevron is a direct child of the nav.
+        className="relative flex min-w-0 flex-wrap items-center gap-2 self-start"
       >
-        {perspectives.map((p, i) => (
+        {perspectives.map((p) => (
           <PerspectiveTab
             key={p.id}
             handle={handle}
             perspective={p}
             active={p.slug === activeSlug}
-            isFirst={i === 0}
-            // Last perspective tab only rounds its top-right when the
-            // settings chevron-tab ISN'T rendered after it. When canAdmin
-            // is true, the settings tab is the visually-last cell and
-            // owns the rounded outer corner.
-            isLast={i === perspectives.length - 1 && !canAdmin}
           />
         ))}
         {canAdmin ? (
@@ -73,30 +63,13 @@ interface PerspectiveTabProps {
   handle: string;
   perspective: AttachedPerspective;
   active: boolean;
-  isFirst: boolean;
-  isLast: boolean;
 }
 
-function PerspectiveTab({ handle, perspective, active, isFirst, isLast }: PerspectiveTabProps) {
+function PerspectiveTab({ handle, perspective, active }: PerspectiveTabProps) {
   const href = `/${handle}?perspective=${encodeURIComponent(perspective.slug)}`;
-  // Real tab-strip styling:
-  //   * Tabs sit edge-to-edge. `-ml-px first:ml-0` lets each tab's left
-  //     border overlap the previous tab's right border so adjacent tabs
-  //     share one 1px line instead of stacking two.
-  //   * Only the OUTER corners are rounded (first tab top-left, last
-  //     tab top-right). Inner corners stay square so adjacent tabs
-  //     don't create visible dips where their rounded tops curve away
-  //     from each other.
-  //   * Every tab gets the same open-bottom etched surface. Inactive
-  //     tabs remain under the raised frame border, while the active tab
-  //     rises above it to own the join.
   const tabClass = cn(
-    "neu-surface-open-bottom relative top-0.5 inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium",
-    active ? "z-[60]" : "z-40",
-    "-ml-px first:ml-0 border-border text-foreground",
-    isFirst && "rounded-tl-md",
-    isLast && "rounded-tr-md",
-    active ? "bg-card" : "bg-input hover:bg-muted",
+    "neu-button inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium",
+    active && "neu-pressed",
   );
   const title = perspective.ownerHandle
     ? `${perspective.name} — by ${perspective.ownerHandle}`
@@ -184,15 +157,10 @@ function PerspectiveSettingsMenu({
           e.preventDefault();
           setOpen((v) => !v);
         }}
-        // `self-stretch` makes this tab take the full row height
-        // (set by the tallest perspective tab) regardless of how the
-        // browser computes our intrinsic content height. This is the
-        // ONLY alignment knob that doesn't depend on line-box math —
-        // it ties the chevron tab's height directly to the
-        // perspective tabs' height, so Safari can't render us shorter
-        // than them. Without this, `items-end` on the nav was
-        // bottom-aligning a naturally-shorter chevron tab.
-        className="neu-surface-open-bottom relative top-0.5 z-40 -ml-px inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-tr-md border border-border bg-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+        // `self-stretch` ties this tab's height to the perspective tabs'
+        // height, the one alignment knob that doesn't depend on line-box
+        // math, so Safari can't render it shorter than them.
+        className="neu-button inline-flex cursor-pointer items-center justify-center self-stretch gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium"
       >
         <span aria-hidden className="text-sm leading-none">
           ⌵
@@ -230,10 +198,7 @@ function PerspectiveSettingsMenu({
                     title={
                       p.isDefault ? "Pinned (default perspective)" : "Pin as default perspective"
                     }
-                    className={cn(
-                      "inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-primary",
-                      p.isDefault && "text-primary",
-                    )}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded"
                     disabled={isPosting || p.isDefault}
                   >
                     <Pin className={cn("h-3.5 w-3.5", p.isDefault && "fill-current")} />
@@ -264,7 +229,7 @@ function PerspectiveSettingsMenu({
                     <input type="hidden" name="perspective_id" value={p.id} />
                     <button
                       type="submit"
-                      className="neu-button rounded px-2 py-0.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+                      className="neu-button rounded px-2 py-0.5 text-[11px] font-semibold"
                       disabled={isPosting}
                     >
                       Remove
@@ -302,7 +267,7 @@ function PerspectiveSettingsMenu({
                     <input type="hidden" name="perspective_id" value={p.id} />
                     <button
                       type="submit"
-                      className="neu-button rounded px-2 py-0.5 text-[11px] font-semibold text-primary"
+                      className="neu-button rounded px-2 py-0.5 text-[11px] font-semibold"
                       disabled={isPosting}
                     >
                       Add

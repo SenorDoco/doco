@@ -342,7 +342,7 @@ function FacetGroup({
           <div key={o.value} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
             <Link
               to={hrefForToggle(searchParams, name, o.value, options, selected, wildcardActive)}
-              className="flex min-w-0 items-center gap-2 text-xs hover:text-primary"
+              className="flex min-w-0 items-center gap-2 text-xs"
             >
               <span
                 aria-hidden="true"

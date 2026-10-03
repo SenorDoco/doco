@@ -716,7 +716,7 @@ function AddUserAccessForm({
     <fetcher.Form
       method="post"
       onSubmit={handleSubmit}
-      className="mt-2 space-y-3 rounded-md border border-border p-3"
+      className="neu-well mt-2 space-y-3 rounded-md p-3"
       data-testid={`add-user-access-form-${principalId}`}
     >
       <input type="hidden" name="intent" value="add_grants" />

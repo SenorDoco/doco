@@ -68,7 +68,7 @@ function Body({ view }: { view: DigestSubscriptionView }) {
     <>
       <p>You'll get {ws}'s activity digest again.</p>
       <p className="flex items-center gap-4">
-        <Link to={`/digest/unsubscribe?${t}`} className="text-muted-foreground hover:underline">
+        <Link to={`/digest/unsubscribe?${t}`} className="hover:underline">
           Unsubscribe
         </Link>
         {open}

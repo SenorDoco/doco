@@ -353,7 +353,7 @@ export default function NewDocoStep1({
                     aria-label={`Remove ${chosenTemplate.label}`}
                     title={`Remove ${chosenTemplate.label}`}
                     onClick={() => handleTemplateChange("")}
-                    className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                    className="rounded-md p-1"
                   >
                     <X className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -532,10 +532,7 @@ export default function NewDocoStep1({
                   Use "{actionData.suggestedHandle}" instead
                 </button>
               ) : null}
-              <Link
-                to="/workspaces"
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
+              <Link to="/workspaces" className="text-xs">
                 Cancel
               </Link>
             </div>

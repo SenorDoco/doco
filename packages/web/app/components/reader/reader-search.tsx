@@ -135,7 +135,7 @@ export function ReaderSearch({
         aria-label={
           reader === "code" ? "Find a file or search the code" : "Find a page or search every page"
         }
-        className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-8 text-sm"
+        className="w-full rounded-md bg-background py-1.5 pl-8 pr-8 text-sm"
       />
       <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-b-2 border-border px-1 text-[10px] leading-4 text-muted-foreground sm:block">
         /
@@ -146,7 +146,7 @@ export function ReaderSearch({
           aria-label={reader === "code" ? "Files" : "Pages"}
           // Keeps the box focused while a row is clicked.
           onMouseDown={(event) => event.preventDefault()}
-          className="absolute inset-x-0 top-full z-30 mt-1 max-h-80 overflow-auto rounded-md border border-border bg-card py-1 shadow-lg"
+          className="neu-floating absolute inset-x-0 top-full z-30 mt-1 max-h-80 overflow-auto rounded-md bg-card py-1"
         >
           {rows.map((row, i) => (
             <li key={row.id}>

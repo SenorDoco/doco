@@ -50,7 +50,7 @@ export interface ReaderShell {
 }
 
 const OUTLINE_BTN =
-  "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input";
+  "neu-button inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold";
 
 const count = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
@@ -159,12 +159,10 @@ export function ReaderLayout({
         title={
           <span className="inline-flex flex-wrap items-center gap-2">
             <DocoTypeIcon template={shell.template} className="h-5 w-5" />
-            <Link to={readerHref(handle, reader)} className="hover:text-primary">
-              {handle}
-            </Link>
+            <Link to={readerHref(handle, reader)}>{handle}</Link>
             <VisibilityIcon visibility={shell.visibility} />
             {kind ? (
-              <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold tracking-normal text-muted-foreground">
+              <span className="rounded-full bg-input px-2 py-0.5 text-[11px] font-semibold tracking-normal text-muted-foreground">
                 {kind}
               </span>
             ) : null}
@@ -247,7 +245,7 @@ export function ReaderLayout({
                       type="button"
                       onClick={() => setDrawer(false)}
                       aria-label="Hide the files"
-                      className="rounded p-1 text-muted-foreground hover:text-foreground"
+                      className="rounded p-1"
                     >
                       <X aria-hidden className="h-4 w-4" />
                     </button>

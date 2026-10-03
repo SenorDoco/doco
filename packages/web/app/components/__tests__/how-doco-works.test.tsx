@@ -97,7 +97,7 @@ describe("How Doco works", () => {
   // Nothing frames the diagrams (Alexander, 2026-10-03: "remove the border
   // around it"): both sit directly on the page, above the steps. The wires are
   // an SVG; the chips and the workspace are HTML laid over it, so they can wear
-  // the app's shadows (--neu-etched, --neu-inset), which SVG shapes cannot.
+  // the app's shadows (--neu-key-small, --neu-inset), which SVG shapes cannot.
   it("sets both diagrams directly on the page, the chips and workspace laid over the wires", () => {
     const html = render();
     expect(html).not.toMatch(/hdw-plate/);

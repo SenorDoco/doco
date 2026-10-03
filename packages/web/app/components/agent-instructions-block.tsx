@@ -19,7 +19,7 @@ export function AgentInstructionsBlock({
       </div>
       <pre
         id="instructions"
-        className="neu-surface min-w-0 whitespace-pre-wrap rounded-lg [overflow-wrap:anywhere] border border-border bg-card p-5 text-left font-mono text-xs leading-relaxed"
+        className="neu-well min-w-0 whitespace-pre-wrap rounded-lg [overflow-wrap:anywhere] bg-input p-5 text-left font-mono text-xs leading-relaxed"
       >
         {instructions}
       </pre>

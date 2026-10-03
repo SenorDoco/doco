@@ -148,11 +148,10 @@ describe("SenorDocoExplainer", () => {
     expect(anchor).toContain('href="/tokens"');
   });
 
-  it("separates from the header with a neumorphic-eligible divider, not a hard line", () => {
-    // app.css auto-rewrites `border-b border-border` into a soft etched
-    // highlight, but its `[class~="border-border"]` selector only matches the
-    // exact token — an opacity modifier like `border-border/70` slips past and
-    // renders as a raw 1px stroke, which is off-style for the neumorphic rail.
+  it("separates from the header with the one faint divider line, not a hard stroke", () => {
+    // `border-b border-border` is the one line the neumorphic style keeps, at
+    // the faint `--color-border` alpha. An opacity modifier like
+    // `border-border/70` is a different token and a different line.
     const className = markup().match(/<div class="([^"]*border-b[^"]*)"/)?.[1] ?? "";
     expect(className).toContain("border-b");
     expect(className).toContain("border-border");
