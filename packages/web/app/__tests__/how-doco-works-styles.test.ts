@@ -19,6 +19,12 @@ function rule(selector: string): string {
 }
 
 describe("How Doco works styles", () => {
+  it("frames the diagrams with nothing", () => {
+    // Alexander, 2026-10-03: "From the 'How it works' animation, remove the
+    // border around it." The diagram sits directly on the page: no plate.
+    expect(hdw).not.toMatch(/hdw-plate/);
+  });
+
   it("fills the boxes in play with a purplish tint and keeps their edges", () => {
     // Mixed in sRGB: in oklch the paper's hue wins and the tint goes tan.
     expect(rule(".hdw")).toMatch(

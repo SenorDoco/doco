@@ -94,18 +94,19 @@ describe("How Doco works", () => {
     }
   });
 
-  // The plate: both diagrams sit on it, above the steps. The wires are an
-  // SVG; the chips and the workspace are HTML laid over it, so they can wear
+  // Nothing frames the diagrams (Alexander, 2026-10-03: "remove the border
+  // around it"): both sit directly on the page, above the steps. The wires are
+  // an SVG; the chips and the workspace are HTML laid over it, so they can wear
   // the app's shadows (--neu-etched, --neu-inset), which SVG shapes cannot.
-  it("sets both diagrams on one raised plate, the chips and workspace laid over the wires", () => {
+  it("sets both diagrams directly on the page, the chips and workspace laid over the wires", () => {
     const html = render();
-    expect(html.match(/class="hdw-plate"/g)).toHaveLength(1);
-    const plate = html.indexOf('class="hdw-plate"');
+    expect(html).not.toMatch(/hdw-plate/);
+    const description = html.indexOf("</p>") + "</p>".length;
+    expect(html.startsWith('<div class="hdw-dia ', description)).toBe(true);
     const steps = html.indexOf('class="hdw-steps"');
-    expect(plate).toBeGreaterThan(-1);
     for (const diagram of diagrams(html)) {
       const at = html.indexOf(diagram);
-      expect(at).toBeGreaterThan(plate);
+      expect(at).toBeGreaterThanOrEqual(description);
       expect(at).toBeLessThan(steps);
       const wires = diagram.indexOf("</svg>");
       expect(diagram.slice(0, wires)).not.toMatch(/<rect/);

@@ -783,16 +783,17 @@ button[class*="bg-primary"]:active {
   color: oklch(0.48 0.14 262);
 }
 
-/* How Doco works (components/how-doco-works.tsx): a wiring diagram on one
-   raised plate. Sources on the left feed the workspace in the middle, agents
-   on the right read it, and a return wire under them carries what agents
-   write back. The wires, labels and pulses are an SVG; the chips and the
-   workspace are HTML laid over it at the same coordinates, so they can wear
-   the app's shadows: chips etched into the plate, the workspace pressed into
-   it, a purplish fill on the ones in play. The component sets --u, one SVG
-   unit in pixels, on each diagram. The three steps sit under the plate, each
-   with a key-cap number and a groove that fills while its wires are lit.
-   Below 480px the diagram stands upright on a plate a little wider than the
+/* How Doco works (components/how-doco-works.tsx): a wiring diagram set
+   directly on the page, nothing framing it (Alexander, 2026-10-03: "remove
+   the border around it"). Sources on the left feed the workspace in the
+   middle, agents on the right read it, and a return wire under them carries
+   what agents write back. The wires, labels and pulses are an SVG; the chips
+   and the workspace are HTML laid over it at the same coordinates, so they
+   can wear the app's shadows: chips etched into the page, the workspace
+   pressed into it, a purplish fill on the ones in play. The component sets
+   --u, one SVG unit in pixels, on each diagram. The three steps sit under the
+   diagram, each with a key-cap number and a groove that fills while its wires
+   are lit. Below 480px the diagram stands upright, a little wider than the
    text, and the steps stack. Whatever turns purple or back to gray fades
    over --hdw-fade (Alexander, 2026-10-02: smoother). */
 .hdw {
@@ -806,13 +807,6 @@ button[class*="bg-primary"]:active {
   align-items: center;
   gap: 24px;
   text-align: center;
-}
-.hdw-plate {
-  width: 100%;
-  max-width: 768px;
-  padding: 24px;
-  border-radius: 24px;
-  box-shadow: var(--neu-raised);
 }
 .hdw-dia {
   --hdw-font: calc(12 * var(--u));
@@ -1011,18 +1005,14 @@ button[class*="bg-primary"]:active {
   color: var(--color-muted-foreground);
 }
 @container (max-width: 479px) {
-  .hdw-plate {
-    width: calc(100% + 32px);
-    max-width: none;
-    margin-inline: -16px;
-    padding: 18px 8px 10px;
-    border-radius: 20px;
-  }
   .hdw-dia-desktop {
     display: none;
   }
   .hdw-dia-phone {
     display: block;
+    width: calc(100% + 32px);
+    max-width: none;
+    margin-inline: -16px;
   }
   .hdw-steps {
     grid-template-columns: 1fr;
