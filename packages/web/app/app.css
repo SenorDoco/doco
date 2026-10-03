@@ -431,14 +431,16 @@ a:focus-visible {
   }
 }
 
-/* The home page's logo, neumorphic (Alexander, 2026-10-03): solid purple
-   standing out of the page like a key, so it casts a key's shadow down and
-   to the right and catches a key's highlight up and to the left (the numbers
-   are `--neu-key`'s; a filter cannot read a box-shadow list). Nothing is
-   drawn on the purple itself ("the purple/letter should be solid"). */
+/* The home page's logo, neumorphic (Alexander, 2026-10-03, "D grounded
+   key"): solid purple lifted off the page like a key, so it casts the lifted
+   key's shadow down and to the right and catches its highlight up and to the
+   left (the numbers are `--neu-key-hover`'s; a filter cannot read a
+   box-shadow list), and it stands on a thin contact shadow so it sits on the
+   page instead of floating over it. Nothing is drawn on the purple itself
+   ("the purple/letter should be solid"). */
 .doco-mark-raised {
-  filter: drop-shadow(5px 5px 12px var(--neu-shadow))
-    drop-shadow(-5px -5px 12px var(--neu-highlight));
+  filter: drop-shadow(1px 2px 1px color-mix(in oklch, var(--color-foreground) 24%, transparent))
+    drop-shadow(7px 7px 16px var(--neu-shadow)) drop-shadow(-7px -7px 16px var(--neu-highlight));
 }
 
 /* One-shot focus pulse for list-style perspectives (glossary, list,
