@@ -1354,23 +1354,21 @@ export default function DocoHome({
         title={
           <span className="inline-flex items-center gap-2">
             <VisibilityIcon visibility={visibility} />
-            <Link to={allSearchHref} className="hover:text-primary">
-              {handle}
-            </Link>
+            <Link to={allSearchHref}>{handle}</Link>
           </span>
         }
         actions={
           <>
             <Link
               to={`/${handle}/policies`}
-              className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+              className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
             >
               Policies ({policyCount})
             </Link>
             {canInviteUsers ? (
               <Link
                 to={`/${handle}/settings`}
-                className="neu-button shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-input"
+                className="neu-button shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold"
               >
                 Settings
               </Link>
@@ -1407,11 +1405,11 @@ export default function DocoHome({
               <button
                 type="button"
                 onClick={refreshNow}
-                className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-1 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-accent"
+                className="neu-button absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-card/95 px-3 py-1 text-xs backdrop-blur-sm"
               >
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                <span className="text-muted-foreground">There is a new version:</span>
-                <span className="font-semibold text-foreground">Refresh</span>
+                <span>There is a new version:</span>
+                <span className="font-semibold">Refresh</span>
               </button>
             ) : null}
             <PerspectiveFrame

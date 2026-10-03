@@ -51,7 +51,7 @@ export function WorkspaceSummaryCard({
                 <Link
                   to={`/${doco.handle}`}
                   title={doco.handle}
-                  className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:border-primary hover:text-foreground"
+                  className="neu-button neu-small flex h-7 w-7 items-center justify-center rounded-md"
                 >
                   <DocoTypeIcon template={doco.template} />
                   <span className="sr-only">{doco.handle}</span>

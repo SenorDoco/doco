@@ -126,7 +126,7 @@ export default function AccessRequestsPage() {
                       <input type="hidden" name="id" value={r.id} />
                       <button
                         type="submit"
-                        className="neu-button rounded-md px-3 py-1.5 text-xs font-semibold text-foreground"
+                        className="neu-button rounded-md px-3 py-1.5 text-xs font-semibold"
                       >
                         Deny
                       </button>

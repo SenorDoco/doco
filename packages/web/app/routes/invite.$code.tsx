@@ -297,9 +297,9 @@ export default function InviteLanding({
               <div className="grid gap-2 sm:grid-cols-2">
                 <Link
                   to={`/auth/github?return=${encodeURIComponent(`/invite/${loaderData.code}`)}`}
-                  className="neu-surface-interactive rounded-md bg-card p-3 hover:border-primary"
+                  className="neu-button rounded-md bg-card p-3"
                 >
-                  <span className="block text-sm font-semibold text-foreground">Human</span>
+                  <span className="block text-sm font-semibold">Human</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
                     Sign in first, then accept the invite here.
                   </span>
@@ -307,9 +307,9 @@ export default function InviteLanding({
                 <Link
                   to={`/invite/${loaderData.code}/agent.txt`}
                   reloadDocument
-                  className="neu-surface-interactive rounded-md bg-card p-3 hover:border-primary"
+                  className="neu-button rounded-md bg-card p-3"
                 >
-                  <span className="block text-sm font-semibold text-foreground">Agent</span>
+                  <span className="block text-sm font-semibold">Agent</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
                     Open the plain-text redeem instructions.
                   </span>

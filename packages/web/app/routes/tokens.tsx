@@ -263,8 +263,8 @@ function TokensTabs({
   minted: MintedApiKey | null;
 }) {
   // Three sections behind one row of tabs, styled like the perspective
-  // tab strip (etched, open-bottom tabs attached to the panel below) but
-  // with larger titles:
+  // tab strip (keys in a row, the active one pressed) but with larger
+  // titles:
   //   - "Add MCP":         the hosted MCP connector setup — the path most
   //                        agents should use (all MCP clients).
   //   - "Generate tokens": pick scope + role and mint a Bearer token —
@@ -280,23 +280,18 @@ function TokensTabs({
 
   return (
     <div>
-      <nav role="tablist" aria-label="Tokens and MCP" className="flex flex-wrap items-end">
-        {TOKENS_TABS.map((t, i) => (
+      <nav role="tablist" aria-label="Tokens and MCP" className="flex flex-wrap items-center gap-2">
+        {TOKENS_TABS.map((t) => (
           <TokensTabButton
             key={t.id}
             label={t.label}
             testid={t.testid}
             active={tab === t.id}
-            isFirst={i === 0}
-            isLast={i === TOKENS_TABS.length - 1}
             onSelect={() => setTab(t.id)}
           />
         ))}
       </nav>
-      <div
-        role="tabpanel"
-        className="neu-surface relative z-50 rounded-b-lg rounded-tl-none rounded-tr-lg border border-border bg-card p-6"
-      >
+      <div role="tabpanel" className="neu-surface relative z-50 mt-3 rounded-lg bg-card p-6">
         {tab === "add-mcp" ? (
           <ManualMcpPanel host={host} />
         ) : tab === "generate" ? (
@@ -321,23 +316,14 @@ function TokensTabButton({
   label,
   testid,
   active,
-  isFirst,
-  isLast,
   onSelect,
 }: {
   label: string;
   testid: string;
   active: boolean;
-  isFirst: boolean;
-  isLast: boolean;
   onSelect: () => void;
 }) {
-  // Mirrors the perspective tab strip: adjacent tabs share one 1px line
-  // (`-ml-px first:ml-0`), only the outer corners round, and the
-  // open-bottom etched surface plus a `top-0.5` overlap lets the active
-  // tab read as the top lip of the panel below. Inactive tabs sit under
-  // the panel border (z-40); the active one rises above it (z-[60]) on a
-  // matching `bg-card` so the seam disappears.
+  // Mirrors the perspective tab strip: a key, pressed while its panel shows.
   return (
     <button
       type="button"
@@ -346,10 +332,8 @@ function TokensTabButton({
       data-testid={testid}
       onClick={onSelect}
       className={cn(
-        "neu-surface-open-bottom relative top-0.5 -ml-px inline-flex items-center border border-border px-4 py-2 text-base font-semibold text-foreground first:ml-0",
-        isFirst && "rounded-tl-lg",
-        isLast && "rounded-tr-lg",
-        active ? "z-[60] bg-card" : "z-40 bg-input hover:bg-muted",
+        "neu-button inline-flex items-center rounded-md px-4 py-2 text-base font-semibold",
+        active && "neu-pressed",
       )}
     >
       {label}

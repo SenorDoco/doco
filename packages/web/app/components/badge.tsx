@@ -5,11 +5,11 @@ import { cn } from "~/lib/cn";
 import { lifecycleColor } from "~/lib/node-colors";
 
 const badgeVariants = cva(
-  "neu-surface inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-mono",
+  "inline-flex items-center rounded-md bg-input px-2 py-0.5 text-[11px] font-mono",
   {
     variants: {
       variant: {
-        default: "bg-card text-muted-foreground",
+        default: "text-muted-foreground",
         accent: "text-accent",
         success: "text-success",
         warning: "text-warning",
@@ -42,7 +42,7 @@ export function NodeTypeBadge({
 }: NodeTypeBadgeProps) {
   return (
     <Badge
-      className={cn("gap-1.5 bg-card", className)}
+      className={cn("gap-1.5", className)}
       style={{
         ...style,
       }}
@@ -68,9 +68,8 @@ export function LifecycleBadge({
   const color = lifecycleColor(lifecycle);
   return (
     <Badge
-      className={cn("bg-card text-[10px] uppercase", className)}
+      className={cn("text-[10px] uppercase", className)}
       style={{
-        borderColor: color,
         backgroundColor: `color-mix(in oklch, ${color} 9%, white)`,
         color,
         ...style,

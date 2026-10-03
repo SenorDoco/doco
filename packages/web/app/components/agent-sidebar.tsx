@@ -205,7 +205,7 @@ export function SenorDocoExplainer() {
     <div className="shrink-0 border-b border-border px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
       Señor Doco uses Sonnet and can only handle simple requests. Want to collaborate with your own
       agent?{" "}
-      <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
+      <Link to="/tokens" className="font-semibold">
         Connect the MCP
       </Link>
       .
@@ -284,13 +284,13 @@ export function DocoChatRef({
     <span className={base} title={label}>
       {ws ? (
         <>
-          <Link to={`/workspaces/${ws}`} className="hover:text-primary hover:underline">
+          <Link to={`/workspaces/${ws}`} className="hover:underline">
             {ws}
           </Link>
           {" / "}
         </>
       ) : null}
-      <Link to={`/${docoHandle}`} className="hover:text-primary hover:underline">
+      <Link to={`/${docoHandle}`} className="hover:underline">
         {docoHandle}
       </Link>
     </span>
@@ -2052,10 +2052,8 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                     className={cn(
                       // Hidden below the 640px overlay breakpoint: the narrow
                       // drawer has no room for the wide thinking column.
-                      "hidden rounded-md border border-border px-2 py-0.5 text-[11px] sm:inline-flex",
-                      showThinking
-                        ? "neu-pressed bg-input text-foreground"
-                        : "neu-button text-muted-foreground hover:bg-input hover:text-foreground",
+                      "neu-button neu-small hidden rounded-md px-2 py-0.5 text-[11px] sm:inline-flex",
+                      showThinking && "neu-pressed",
                     )}
                   >
                     {showThinking ? "Hide thinking" : "Show thinking"}
@@ -2066,7 +2064,7 @@ export function AgentSidebar({ me }: { me: CurrentPrincipal }) {
                   onClick={() => setCollapsedPersistent(true)}
                   aria-label="Collapse Señor Doco"
                   title="Collapse"
-                  className="neu-button inline-flex h-6 w-6 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-input hover:text-foreground"
+                  className="neu-button neu-small inline-flex h-6 w-6 items-center justify-center rounded-md"
                 >
                   <PanelToggleIcon side="left" open={false} />
                 </button>
@@ -2295,7 +2293,7 @@ function ThreadListView({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search"
           aria-label="Search chats"
-          className="w-full rounded-md border border-border bg-input/60 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full rounded-md bg-input/60 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -2428,14 +2426,14 @@ function ThreadRow({ conv, isActive, unread, onSelect, onArchive }: ThreadRowPro
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-label="Chat actions"
-          className="rounded-md p-1 text-muted-foreground opacity-0 hover:bg-input hover:text-foreground group-hover:opacity-100 aria-expanded:opacity-100"
+          className="rounded-md p-1 opacity-0 hover:bg-input group-hover:opacity-100 aria-expanded:opacity-100"
         >
           <DotsIcon />
         </button>
         {menuOpen ? (
           <div
             role="menu"
-            className="neu-panel absolute right-0 top-full z-10 mt-1 min-w-[120px] rounded-md border border-border bg-card py-1 text-xs shadow"
+            className="neu-floating absolute right-0 top-full z-10 mt-1 min-w-[120px] rounded-md bg-card py-1 text-xs"
           >
             <button
               type="button"
@@ -2610,7 +2608,7 @@ function MessageBlock({
 
 function ConversationStatusIcon({ status }: { status: ConversationStatus }) {
   const baseClass =
-    "inline-flex h-7 w-7 items-center justify-center rounded-full border border-border bg-card text-[15px] font-semibold leading-none shadow-sm";
+    "neu-surface neu-small inline-flex h-7 w-7 items-center justify-center rounded-full bg-card text-[15px] font-semibold leading-none";
   const symbol =
     status.kind === "question"
       ? "?"
@@ -2709,8 +2707,8 @@ function SavedMessage({
         {isAssistant ? <MessageTime createdAt={message.created_at} /> : null}
         <div
           className={cn(
-            "neu-bubble max-w-[82%] space-y-1.5 rounded-lg px-2.5 py-1.5",
-            isAssistant ? "bg-primary/10" : "neu-surface bg-card",
+            "neu-surface neu-small max-w-[82%] space-y-1.5 rounded-lg px-2.5 py-1.5",
+            isAssistant ? "bg-primary/10" : "bg-card",
           )}
         >
           {visible.map((b) => (
@@ -2750,7 +2748,7 @@ function InFlightMessageView({
     <div className={cn(compactAfter ? "mb-1" : "mb-3", "flex flex-col items-end")}>
       <div className="flex w-full items-end justify-end gap-2">
         <MessageTime createdAt={msg.created_at} />
-        <div className="neu-bubble max-w-[82%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
+        <div className="neu-surface neu-small max-w-[82%] space-y-1.5 rounded-lg bg-primary/10 px-2.5 py-1.5">
           {visible.map((b) => (
             <BlockView key={blockKey(b)} block={b} />
           ))}
@@ -2787,7 +2785,7 @@ export function QueuedMessage({ send }: { send: QueuedSend }) {
   return (
     <div className="mb-3 flex flex-col items-start opacity-60">
       <div className="flex w-full items-end justify-start gap-2">
-        <div className="neu-bubble neu-surface max-w-[82%] space-y-1.5 rounded-lg bg-card px-2.5 py-1.5">
+        <div className="neu-surface neu-small max-w-[82%] space-y-1.5 rounded-lg bg-card px-2.5 py-1.5">
           {text.length > 0 ? <BlockView block={{ type: "text", text }} /> : null}
           {send.staged.map((a) => (
             <div
@@ -2996,19 +2994,13 @@ function renderLinkRun(text: string, nextKey: () => number): ReactNode[] {
     }
     if (toProp) {
       out.push(
-        <Link key={nextKey()} to={toProp} className="underline hover:text-primary">
+        <Link key={nextKey()} to={toProp} className="underline">
           {label}
         </Link>,
       );
     } else {
       out.push(
-        <a
-          key={nextKey()}
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="underline hover:text-primary"
-        >
+        <a key={nextKey()} href={url} target="_blank" rel="noreferrer" className="underline">
           {label}
         </a>,
       );
@@ -3085,7 +3077,7 @@ function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
         href={href}
         target="_blank"
         rel="noreferrer"
-        className="neu-surface block overflow-hidden rounded-md border border-border bg-background"
+        className="neu-surface block overflow-hidden rounded-md bg-background"
       >
         <img
           src={href}
@@ -3104,7 +3096,7 @@ function AttachmentBlockView({ block }: { block: ContentBlockAttachmentRef }) {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="neu-button flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground hover:bg-input/40"
+      className="neu-button flex items-center gap-1.5 rounded-md bg-background px-2 py-1 text-[10px]"
     >
       <span className="font-mono text-muted-foreground">📎</span>
       <span className="truncate">{block.filename}</span>
@@ -3327,7 +3319,7 @@ export function Composer({
                 type="button"
                 aria-label={`Remove ${a.filename}`}
                 onClick={() => onRemoveStaged(a.id)}
-                className="neu-button rounded px-1 text-muted-foreground hover:bg-input/60 hover:text-foreground"
+                className="neu-button rounded px-1"
               >
                 ×
               </button>
@@ -3373,7 +3365,7 @@ export function Composer({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="neu-button rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-input/60 hover:text-foreground disabled:opacity-50"
+            className="neu-button neu-small rounded-md px-2 py-0.5 text-[10px] disabled:opacity-50"
             aria-label="Attach a file"
           >
             {uploading ? "Uploading…" : "📎 Attach"}

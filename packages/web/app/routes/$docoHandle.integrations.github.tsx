@@ -303,8 +303,7 @@ export function skippedReposNote(
   } skipped: ${shown}${more}.${refused}`;
 }
 
-const DESTRUCTIVE_BTN =
-  "neu-button rounded-md border border-border px-2.5 py-1 text-xs font-medium text-destructive hover:bg-input";
+const DESTRUCTIVE_BTN = "neu-button rounded-md px-2.5 py-1 text-xs font-medium text-destructive";
 
 export default function DocoGitHubIntegration() {
   const {
@@ -361,7 +360,7 @@ export default function DocoGitHubIntegration() {
         data={actionData && ("error" in actionData || "message" in actionData) ? actionData : null}
       />
       {actionData && "ok" in actionData && "sync" in actionData ? (
-        <p className="rounded-md border border-border bg-background p-3 text-sm">
+        <p className="neu-well rounded-md bg-background p-3 text-sm">
           <SyncSummaryLine s={actionData.sync} brings={brings} />
         </p>
       ) : null}
@@ -408,7 +407,7 @@ export default function DocoGitHubIntegration() {
               </p>
             ) : null}
             {connections.length > 0 ? (
-              <ul className="divide-y divide-border rounded border border-border">
+              <ul className="neu-surface divide-y divide-border rounded">
                 {connections.map((c) => (
                   <li key={c.repo} className="flex items-center justify-between gap-2 px-3 py-2">
                     <span className="font-mono text-sm">{c.repo}</span>
@@ -438,7 +437,7 @@ export default function DocoGitHubIntegration() {
                 {coveredOrgRepositories.map((repo) => (
                   <li
                     key={repo}
-                    className="min-w-0 truncate rounded border border-border bg-card px-2 py-1 font-mono text-xs"
+                    className="min-w-0 truncate rounded bg-input px-2 py-1 font-mono text-xs"
                     title={repo}
                   >
                     {repo}
@@ -494,10 +493,7 @@ export default function DocoGitHubIntegration() {
               installUrl={docoInstallUrl}
               aside={
                 connected ? null : (
-                  <Link
-                    to={`/${handle}`}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
+                  <Link to={`/${handle}`} className="text-xs">
                     Skip for now
                   </Link>
                 )

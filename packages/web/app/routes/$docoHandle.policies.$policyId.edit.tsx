@@ -193,10 +193,7 @@ export default function EditPolicy({
                   Retire policy
                 </button>
               )}
-              <Link
-                to={`/${handle}/policies`}
-                className="ml-auto text-xs text-muted-foreground hover:underline"
-              >
+              <Link to={`/${handle}/policies`} className="ml-auto text-xs hover:underline">
                 Cancel
               </Link>
             </div>

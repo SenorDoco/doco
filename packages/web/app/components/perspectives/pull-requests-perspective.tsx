@@ -73,7 +73,7 @@ export function PullRequestsPerspective({
               : "No pull requests have been imported yet."}
           </p>
         ) : (
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="neu-surface divide-y divide-border rounded-md">
             {data.items.map((pr) => (
               <PullRequestRow key={pr.id} pr={pr} handle={handle} />
             ))}
@@ -125,7 +125,7 @@ function PullRequestRow({ pr, handle }: { pr: PullRequestItem; handle: string })
         href={pr.url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-card"
+        className="neu-button neu-small inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px]"
         title="View this pull request on GitHub"
       >
         <Github aria-hidden className="h-3 w-3" />

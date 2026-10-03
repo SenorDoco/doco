@@ -80,9 +80,8 @@ export function meta({ params }: { params: { docoHandle: string } }) {
 
 const PRIMARY_BTN =
   "neu-button inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-55";
-const NEUTRAL_BTN =
-  "neu-button rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-input hover:text-foreground";
-const NOTICE = "rounded-md border border-border bg-background p-3 text-sm text-foreground";
+const NEUTRAL_BTN = "neu-button rounded-md px-2.5 py-1 text-xs font-medium";
+const NOTICE = "neu-well rounded-md bg-background p-3 text-sm text-foreground";
 const ERROR_NOTICE =
   "rounded-md border border-destructive bg-destructive/5 p-3 text-sm text-destructive";
 

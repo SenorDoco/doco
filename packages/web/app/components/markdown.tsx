@@ -260,7 +260,7 @@ function Block({
       );
     case "callout":
       return (
-        <div className="flex gap-2 rounded-md border border-border bg-input/50 p-3">
+        <div className="neu-well flex gap-2 rounded-md bg-input/50 p-3">
           {block.icon ? (
             /^https?:\/\//i.test(block.icon) ? (
               embeddableImage(block.icon) ? (
@@ -279,7 +279,7 @@ function Block({
       );
     case "details":
       return (
-        <details className="rounded-md border border-border p-2">
+        <details className="neu-well rounded-md p-2">
           <summary className="cursor-pointer font-semibold">
             <Inlines inlines={block.summary} resolve={resolve} />
           </summary>

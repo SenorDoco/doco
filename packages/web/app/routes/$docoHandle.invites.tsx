@@ -142,9 +142,7 @@ export default function Invites({
         breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })}
         title={
           <>
-            <Link to={`/${handle}`} className="hover:text-primary">
-              {handle}
-            </Link>
+            <Link to={`/${handle}`}>{handle}</Link>
             <span className="text-muted-foreground"> · invites</span>
           </>
         }
@@ -152,7 +150,7 @@ export default function Invites({
         <p className="text-sm text-muted-foreground">
           Share an invite URL with a person to grant them access to this doco. Each invite is
           single-use and expires after the chosen window. For agent access, mint an{" "}
-          <Link to="/tokens" className="font-semibold text-foreground hover:text-primary">
+          <Link to="/tokens" className="font-semibold">
             API key
           </Link>{" "}
           instead.

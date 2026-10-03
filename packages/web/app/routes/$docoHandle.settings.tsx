@@ -508,7 +508,7 @@ export default function DocoSettings({
                   to={`/${handle}/settings`}
                   preventScrollReset
                   state={{ preventScrollReset: true }}
-                  className="text-xs text-muted-foreground hover:text-foreground"
+                  className="text-xs"
                 >
                   Cancel
                 </Link>

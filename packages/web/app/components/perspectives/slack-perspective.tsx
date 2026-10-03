@@ -43,9 +43,7 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
                 to={perspectiveHref({ slack_channel: channel.channelId })}
                 className={cn(
                   "flex items-center gap-1 rounded px-2 py-1 hover:bg-input",
-                  !searching && channel.channelId === data.channelId
-                    ? "bg-input font-semibold text-foreground"
-                    : "text-muted-foreground",
+                  !searching && channel.channelId === data.channelId && "neu-pressed font-semibold",
                 )}
               >
                 <Hash aria-hidden className="h-3.5 w-3.5 shrink-0" />
@@ -63,12 +61,12 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
             defaultValue={data.query}
             placeholder="Search every channel"
             aria-label="Search Slack messages"
-            className="w-full rounded-md border border-border bg-background px-2 py-1 text-sm"
+            className="w-full rounded-md bg-background px-2 py-1 text-sm"
           />
           <button
             type="submit"
             aria-label="Search"
-            className="neu-button rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground"
+            className="neu-button neu-small rounded-md p-1.5"
           >
             <Search aria-hidden className="h-4 w-4" />
           </button>
@@ -81,7 +79,7 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
                 : "No messages copied yet — new ones appear as they are posted, and history fills in over time."}
             </p>
           ) : (
-            <ul className="divide-y divide-border rounded-md border border-border">
+            <ul className="neu-surface divide-y divide-border rounded-md">
               {data.messages.map((message) => (
                 <li key={`${message.channelId}:${message.ts}`} className="p-3">
                   <MessageBody message={message} showChannel={searching} />
@@ -127,7 +125,7 @@ function Thread({ message }: { message: SlackReaderMessage }) {
           href={message.permalink}
           target="_blank"
           rel="noreferrer"
-          className="mt-2 inline-block text-xs text-muted-foreground underline"
+          className="mt-2 inline-block text-xs underline"
         >
           {hidden} more in Slack
         </a>
@@ -169,7 +167,7 @@ function MessageBody({
             target="_blank"
             rel="noreferrer"
             aria-label="Open in Slack"
-            className="text-muted-foreground hover:text-foreground"
+            className="hover:underline"
           >
             <ExternalLink aria-hidden className="h-3 w-3" />
           </a>

@@ -198,7 +198,7 @@ function SourcesStep({ view, action }: { view: OnboardingView; action: string })
           return (
             <li
               key={source.id}
-              className="flex flex-wrap items-center gap-3 rounded-md border border-border p-3 sm:flex-nowrap"
+              className="neu-well flex flex-wrap items-center gap-3 rounded-md p-3 sm:flex-nowrap"
             >
               {Icon ? <Icon className="h-5 w-5 shrink-0" /> : null}
               <div className="min-w-0 flex-1 basis-48">
@@ -208,10 +208,7 @@ function SourcesStep({ view, action }: { view: OnboardingView; action: string })
               {source.connected ? (
                 <span className="shrink-0 text-xs text-muted-foreground">
                   Connected, copying into{" "}
-                  <Link
-                    to={`/${source.docoHandle}`}
-                    className="font-mono text-foreground hover:text-primary"
-                  >
+                  <Link to={`/${source.docoHandle}`} className="font-mono">
                     {source.docoHandle}
                   </Link>
                 </span>
@@ -303,7 +300,7 @@ function DoneSummary({ step, view }: { step: OnboardingStep; view: OnboardingVie
         {view.github.docos.map((d, i) => (
           <span key={d.handle}>
             {i > 0 ? (i === view.github.docos.length - 1 ? " and " : ", ") : null}
-            <Link to={`/${d.handle}`} className="font-mono text-foreground hover:text-primary">
+            <Link to={`/${d.handle}`} className="font-mono">
               {d.handle}
             </Link>
           </span>

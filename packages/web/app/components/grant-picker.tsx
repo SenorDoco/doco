@@ -120,7 +120,7 @@ export function GrantPicker({
                 onChange([]);
               }
             };
-            const boxCls = `neu-button${selected ? " neu-pressed" : ""} rounded-md border border-border px-3 py-2 text-left text-sm`;
+            const boxCls = `neu-button${selected ? " neu-pressed" : ""} rounded-md px-3 py-2 text-left text-sm`;
             const label = (
               <>
                 <div className="font-semibold">{s.title}</div>
@@ -300,7 +300,7 @@ export function GrantWorkspaceChoiceList({
                   onSelect(workspace.id);
                 }
               }}
-              className={`neu-button${selected ? " neu-pressed" : ""} inline-flex w-fit max-w-full min-w-36 items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-left text-sm`}
+              className={`neu-button${selected ? " neu-pressed" : ""} inline-flex w-fit max-w-full min-w-36 items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm`}
             >
               <span className="min-w-0 truncate">{workspace.label}</span>
               {selected ? <X aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}

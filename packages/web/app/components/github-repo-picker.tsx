@@ -9,8 +9,7 @@ import type { GitHubInstallationChoice } from "~/lib/github-connection.server";
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
 export const PRIMARY_BTN =
   "neu-button inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-55";
-export const NEUTRAL_BTN =
-  "neu-button rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-input hover:text-foreground";
+export const NEUTRAL_BTN = "neu-button rounded-md px-2.5 py-1 text-xs font-medium";
 
 export type InstallationPickerChoice = GitHubInstallationChoice & {
   selectableRepositories: string[];
@@ -186,7 +185,7 @@ function RepositoryCheckbox({
   installation?: string;
 }) {
   return (
-    <label className="flex min-w-0 cursor-pointer items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs hover:bg-input">
+    <label className="neu-button flex min-w-0 cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs">
       <input
         type="checkbox"
         name={name}
@@ -236,7 +235,7 @@ export function GitHubSetupNotice({ outcome }: { outcome: string | null }) {
       className={
         notice.error
           ? ERROR_NOTICE
-          : "rounded-md border border-border bg-background p-3 text-sm text-foreground"
+          : "neu-well rounded-md bg-background p-3 text-sm text-foreground"
       }
     >
       {notice.text}
@@ -250,9 +249,7 @@ export function ActionNotice({ data }: { data: { error: string } | { message: st
   return "error" in data ? (
     <p className={ERROR_NOTICE}>{data.error}</p>
   ) : (
-    <p className="rounded-md border border-border bg-background p-3 text-sm text-green-600">
-      {data.message}
-    </p>
+    <p className="neu-well rounded-md bg-background p-3 text-sm text-green-600">{data.message}</p>
   );
 }
 
@@ -289,7 +286,7 @@ export function GitHubImportStarted({
             <Fragment key={d.handle}>
               {i > 0 ? (i === docos.length - 1 ? " and " : ", ") : null}
               {d.items} into{" "}
-              <Link to={`/${d.handle}`} className="font-mono font-semibold hover:text-primary">
+              <Link to={`/${d.handle}`} className="font-mono font-semibold">
                 {d.handle}
               </Link>
             </Fragment>

@@ -75,7 +75,7 @@ export default function SlackInstallPage({ loaderData }: { loaderData: SlackInst
                   <a
                     href={`/integrations/slack/install?workspace_id=${encodeURIComponent(w.id)}`}
                     data-testid={`slack-install-workspace-${w.id}`}
-                    className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-3 text-sm font-semibold hover:border-primary"
+                    className="neu-button flex items-center justify-between rounded-md px-4 py-3 text-sm font-semibold"
                   >
                     <span>{w.label}</span>
                     <span className="text-xs font-normal text-muted-foreground">

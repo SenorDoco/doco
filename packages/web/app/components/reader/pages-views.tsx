@@ -96,7 +96,7 @@ function HomeView({
     <div className="p-4 sm:p-6">
       <section className="space-y-2">
         <h2 className={SECTION_TITLE}>Recently edited</h2>
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+        <ul className="neu-surface divide-y divide-border overflow-hidden rounded-lg">
           {view.recent.map((page) => (
             <li key={page.pageId}>
               <Link
@@ -142,7 +142,7 @@ function RefList({
               title={ref.copied ? undefined : "Not copied yet"}
               className={cn(
                 "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] hover:bg-input",
-                !ref.copied && "italic text-muted-foreground",
+                !ref.copied && "italic text-primary/60",
               )}
             >
               <PageIcon page={ref} />
@@ -178,10 +178,7 @@ function PageView({ handle, page }: { handle: string; page: NotionReaderPage }) 
         >
           {page.path.map((ancestor) => (
             <Fragment key={ancestor.pageId}>
-              <Link
-                to={readerHref(handle, "pages", ancestor.pageId)}
-                className="hover:text-foreground hover:underline"
-              >
+              <Link to={readerHref(handle, "pages", ancestor.pageId)} className="hover:underline">
                 {ancestor.title || "Untitled"}
               </Link>
               <span aria-hidden className="text-muted-foreground/60">
@@ -212,7 +209,7 @@ function PageView({ handle, page }: { handle: string; page: NotionReaderPage }) 
             {page.title || "Untitled"}
           </h2>
           {page.copied ? null : (
-            <p className="rounded-md border border-border bg-input/50 p-3 text-xs text-muted-foreground">
+            <p className="neu-well rounded-md bg-input/50 p-3 text-xs text-muted-foreground">
               This page is not in the copy yet. Doco is copying pages in the background; meanwhile,
               read it{" "}
               <a
@@ -227,7 +224,7 @@ function PageView({ handle, page }: { handle: string; page: NotionReaderPage }) 
             </p>
           )}
           {page.truncated ? (
-            <p className="rounded-md border border-border bg-input/50 p-3 text-xs text-muted-foreground">
+            <p className="neu-well rounded-md bg-input/50 p-3 text-xs text-muted-foreground">
               Notion returned only part of this page, so the copy ends early.
             </p>
           ) : null}
@@ -250,7 +247,7 @@ function PageView({ handle, page }: { handle: string; page: NotionReaderPage }) 
                     <li key={entry.id} style={{ paddingLeft: (entry.level - 1) * 10 }}>
                       <a
                         href={`#${entry.id}`}
-                        className="block truncate rounded px-1.5 py-0.5 text-muted-foreground hover:bg-input hover:text-foreground"
+                        className="block truncate rounded px-1.5 py-0.5 hover:bg-input"
                       >
                         {entry.text}
                       </a>
@@ -284,7 +281,7 @@ function SearchView({
       <p className="text-xs">
         <b>{plural(hits.length, "page", "pages")}</b> match “{query}”
       </p>
-      <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+      <ul className="neu-surface divide-y divide-border overflow-hidden rounded-lg">
         {hits.map((hit) => (
           <SearchHit key={hit.page_id} handle={handle} hit={hit} query={query} />
         ))}

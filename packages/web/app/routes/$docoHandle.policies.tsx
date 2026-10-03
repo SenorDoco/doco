@@ -184,7 +184,7 @@ export function PolicyRow({
         {canEdit ? (
           <Link
             to={`/${handle}/policies/${item.id}/edit`}
-            className="neu-button pointer-events-auto shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground"
+            className="neu-button pointer-events-auto shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold"
           >
             Modify
           </Link>

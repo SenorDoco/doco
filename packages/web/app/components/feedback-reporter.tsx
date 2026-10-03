@@ -216,8 +216,8 @@ function getClientContext(): Record<string, unknown> {
 
 function buttonClass(active: boolean) {
   return [
-    "inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border px-3 text-sm font-semibold",
-    active ? "neu-pressed text-primary" : "neu-button text-foreground hover:text-primary",
+    "neu-button inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold",
+    active ? "neu-pressed" : "",
   ].join(" ");
 }
 
@@ -325,7 +325,7 @@ export function FeedbackReporter() {
           setState("idle");
           setError("");
         }}
-        className="neu-floating fixed bottom-5 right-5 z-[60] inline-flex h-12 w-16 items-center justify-center gap-1.5 rounded-full border border-border bg-card text-foreground hover:text-primary"
+        className="neu-floating fixed bottom-5 right-5 z-[60] inline-flex h-12 w-16 items-center justify-center gap-1.5 rounded-full bg-card"
         aria-label="Report a bug or idea"
         title="No bugs? An idea?"
       >
@@ -341,7 +341,7 @@ export function FeedbackReporter() {
             aria-modal="true"
             aria-labelledby="feedback-dialog-title"
             tabIndex={-1}
-            className="neu-floating flex max-h-[min(760px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-lg border border-border bg-card"
+            className="neu-floating flex max-h-[min(760px,calc(100vh-2rem))] w-full max-w-xl flex-col overflow-hidden rounded-lg bg-card"
           >
             <header className="flex items-start justify-between gap-4 px-5 py-4">
               <div className="min-w-0">

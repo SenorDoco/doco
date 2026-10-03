@@ -262,7 +262,7 @@ function ChooseStep({
             name="workspace"
             value={selected}
             onChange={(event) => setSelected(event.currentTarget.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            className="w-full rounded-md bg-background px-3 py-2 text-sm"
             required
           >
             <option value="">Choose a workspace</option>
@@ -283,7 +283,7 @@ function ChooseStep({
           {GITHUB_IMPORTS.map((choice) => (
             <label
               key={choice.id}
-              className="flex items-start gap-3 rounded-md border border-border p-3 text-sm"
+              className="neu-button flex items-start gap-3 rounded-md p-3 text-sm"
             >
               <input
                 type="checkbox"
@@ -361,7 +361,7 @@ function ReposStep({
                 <DocoTypeIcon template={t.import.template} className="text-muted-foreground" />
                 <span className="font-semibold text-foreground">{t.import.label}</span>
                 <span className="text-muted-foreground">into</span>
-                <Link to={`/${t.doco.handle}`} className="font-mono hover:text-primary">
+                <Link to={`/${t.doco.handle}`} className="font-mono">
                   {t.doco.handle}
                 </Link>
               </li>

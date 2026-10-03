@@ -53,10 +53,7 @@ function Crumbs({ handle, repo, path }: { handle: string; repo: string; path: st
       {parts.length === 0 ? (
         <span className="font-semibold text-foreground">{repo}</span>
       ) : (
-        <Link
-          to={readerHref(handle, "code", repo)}
-          className="text-muted-foreground hover:text-foreground hover:underline"
-        >
+        <Link to={readerHref(handle, "code", repo)} className="hover:underline">
           {repo}
         </Link>
       )}
@@ -70,10 +67,7 @@ function Crumbs({ handle, repo, path }: { handle: string; repo: string; path: st
             {i === parts.length - 1 ? (
               <span className="break-all font-semibold text-foreground">{part}</span>
             ) : (
-              <Link
-                to={readerHref(handle, "code", id)}
-                className="text-muted-foreground hover:text-foreground hover:underline"
-              >
+              <Link to={readerHref(handle, "code", id)} className="hover:underline">
                 {part}
               </Link>
             )}
@@ -138,7 +132,7 @@ function NoCodeYet({ handle, status }: { handle: string; status: IntegrationStat
 /** Folders and files as a compact grid, folders with their file counts. */
 function EntryGrid({ handle, items }: { handle: string; items: ReaderTreeItem[] }) {
   return (
-    <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-0.5 rounded-lg border border-border p-3">
+    <ul className="neu-surface grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-x-4 gap-y-0.5 rounded-lg p-3">
       {items.map((item) => (
         <li key={item.id} className="min-w-0">
           <Link
@@ -172,7 +166,7 @@ function MarkdownCard({
 }) {
   const dir = path.split("/").slice(0, -1).join("/");
   return (
-    <article className="overflow-hidden rounded-lg border border-border">
+    <article className="neu-surface overflow-hidden rounded-lg">
       <header className="flex items-center gap-2 border-b border-border bg-input/50 px-4 py-2 text-xs font-semibold">
         <File aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
         <Link to={readerHref(handle, "code", `${repo}/${path}`)} className="hover:underline">
@@ -248,7 +242,7 @@ function FileView({
         <Crumbs handle={handle} repo={file.repo} path={file.path} />
         <div className={META}>
           {markdown !== null ? (
-            <span className="inline-flex overflow-hidden rounded-md border border-border">
+            <span className="inline-flex gap-1">
               {(["Preview", "Raw"] as const).map((label) => {
                 const on = (label === "Raw") === raw;
                 return (
@@ -258,8 +252,8 @@ function FileView({
                     aria-pressed={on}
                     onClick={() => setRaw(label === "Raw")}
                     className={cn(
-                      "px-2 py-0.5 text-[11px]",
-                      on ? "bg-foreground text-background" : "hover:bg-input",
+                      "neu-button neu-small rounded-md px-2 py-0.5 text-[11px]",
+                      on && "neu-pressed",
                     )}
                   >
                     {label}
@@ -281,7 +275,7 @@ function FileView({
         </div>
       </header>
       {file.omitted ? (
-        <p className="m-4 rounded-md border border-border bg-input/50 p-3 text-xs text-muted-foreground">
+        <p className="neu-well m-4 rounded-md bg-input/50 p-3 text-xs text-muted-foreground">
           {OMITTED[file.omitted]}
         </p>
       ) : preview ? (
@@ -307,8 +301,8 @@ function FileView({
                       href={`#L${n}`}
                       onClick={() => setTarget(n)}
                       className={cn(
-                        "text-muted-foreground/70 hover:text-foreground",
-                        n === target && "font-semibold text-foreground",
+                        "text-primary/60",
+                        n === target && "font-semibold text-primary",
                       )}
                     >
                       {n}
@@ -394,8 +388,8 @@ function SearchView({
       aria-pressed={only === value}
       onClick={() => setOnly(value)}
       className={cn(
-        "rounded-full border border-border px-2.5 py-0.5 text-[11px]",
-        only === value ? "bg-foreground text-background" : "hover:bg-input",
+        "neu-button neu-small rounded-full px-2.5 py-0.5 text-[11px]",
+        only === value && "neu-pressed",
       )}
     >
       {label}
@@ -428,7 +422,7 @@ function SearchHit({ handle, hit, query }: { handle: string; hit: CodeSearchHit;
   const slash = hit.path.lastIndexOf("/");
   const rest = hit.matchCount - hit.matches.length;
   return (
-    <li className="overflow-hidden rounded-lg border border-border">
+    <li className="neu-surface overflow-hidden rounded-lg">
       <div className="flex flex-wrap items-center gap-x-2 border-b border-border bg-input/50 px-3 py-1.5 text-xs">
         <File aria-hidden className="h-3.5 w-3.5 text-muted-foreground" />
         <Link to={href} className="font-semibold hover:underline">

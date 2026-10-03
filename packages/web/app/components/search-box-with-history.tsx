@@ -95,8 +95,8 @@ export function SearchBoxWithHistory({
   const showDropdown = focused && query.trim().length === 0 && recent.length > 0;
 
   const inputClass = compact
-    ? "neu-inset w-full rounded-md bg-background px-3 py-1.5 text-xs text-foreground outline-none"
-    : "neu-inset w-full rounded-md bg-background px-4 py-2.5 text-sm text-foreground outline-none";
+    ? "w-full rounded-md bg-background px-3 py-1.5 text-xs text-foreground outline-none"
+    : "w-full rounded-md bg-background px-4 py-2.5 text-sm text-foreground outline-none";
   const buttonClass = compact
     ? "neu-button rounded-md bg-background px-3 py-1.5 text-xs font-semibold text-foreground"
     : "neu-button rounded-md bg-background px-4 py-2.5 text-sm font-semibold text-foreground";
@@ -151,7 +151,7 @@ export function SearchBoxWithHistory({
                     e.preventDefault();
                     setRecent(removeRecent(handle, r.q));
                   }}
-                  className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-base leading-none text-muted-foreground hover:bg-input hover:text-foreground"
+                  className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-base leading-none hover:bg-input"
                 >
                   <span aria-hidden>×</span>
                 </button>
@@ -165,7 +165,7 @@ export function SearchBoxWithHistory({
                   clearAllRecent(handle);
                   setRecent([]);
                 }}
-                className="block w-full px-4 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="block w-full px-4 py-1.5 text-left text-xs hover:bg-muted"
               >
                 Clear all
               </button>

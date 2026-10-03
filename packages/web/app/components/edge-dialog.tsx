@@ -26,11 +26,11 @@ function lifecycleButtonClass(
   active: boolean,
 ) {
   const base =
-    "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-border px-3 text-[11px] font-semibold capitalize";
+    "neu-button inline-flex h-8 min-w-0 items-center justify-center rounded-md px-3 text-[11px] font-semibold capitalize";
   if (active) return `${base} neu-pressed`;
   const option = detail.lifecycle_options.find((candidate) => candidate.value === stage);
-  if (option?.disabled) return `${base} neu-button cursor-not-allowed opacity-55`;
-  return `${base} neu-button`;
+  if (option?.disabled) return `${base} cursor-not-allowed opacity-55`;
+  return base;
 }
 
 function displayDate(iso: string | null): string {
@@ -90,10 +90,7 @@ function DocoSourceLine({ doco }: { doco: EdgeDialogDetail["doco"] | null | unde
   return (
     <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
       Doco{" "}
-      <Link
-        to={doco.href}
-        className="font-mono font-semibold text-foreground underline-offset-2 hover:text-primary hover:underline"
-      >
+      <Link to={doco.href} className="font-mono font-semibold underline-offset-2 hover:underline">
         {doco.handle}
       </Link>
     </p>
@@ -112,7 +109,7 @@ function EndpointRow({
   return (
     <button
       type="button"
-      className="block w-full rounded-md border border-border bg-card px-3 py-2 text-left hover:bg-input/30"
+      className="neu-button block w-full rounded-md px-3 py-2 text-left"
       onClick={() => onOpenNode(endpoint.node_type, endpoint.id, endpoint.href)}
     >
       <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -154,7 +151,7 @@ export function EdgeDialog({
 
   return (
     <aside
-      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-white"
+      className="neu-floating relative z-30 flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-white"
       aria-label="Edge details"
     >
       <header className="px-4 py-3">
@@ -170,7 +167,7 @@ export function EdgeDialog({
           <button
             type="button"
             onClick={onClose}
-            className="neu-button inline-flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+            className="neu-button inline-flex h-8 w-8 shrink-0 items-center justify-center transition-colors"
             aria-label="Close edge details"
           >
             <X className="h-4 w-4" aria-hidden="true" />

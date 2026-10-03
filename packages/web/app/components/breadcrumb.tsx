@@ -36,7 +36,7 @@ export function Breadcrumb({
                   <Link
                     to={href}
                     aria-current={isLast ? "page" : undefined}
-                    className="hover:text-foreground hover:underline transition-colors"
+                    className="hover:underline transition-colors"
                   >
                     {item.label}
                   </Link>

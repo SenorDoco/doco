@@ -46,7 +46,7 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
                 <h3 className="text-xs font-semibold text-muted-foreground">{snippet.title}</h3>
                 <CopyButton text={snippet.text} />
               </div>
-              <pre className="neu-surface min-w-0 whitespace-pre-wrap rounded-lg [overflow-wrap:anywhere] border border-border bg-card p-4 text-left font-mono text-xs leading-relaxed">
+              <pre className="neu-well min-w-0 whitespace-pre-wrap rounded-lg [overflow-wrap:anywhere] bg-input p-4 text-left font-mono text-xs leading-relaxed">
                 {snippet.text}
               </pre>
             </div>

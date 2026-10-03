@@ -22,11 +22,10 @@
   --color-muted-foreground: oklch(0.47 0.008 95);
   --color-card: oklch(0.961 0.0054 95.1);
   --color-card-foreground: oklch(0.2 0.008 95);
-  /* Same near-foreground tint at 22% alpha that `.neu-surface` paints
-     for its outer ring. Using the same token here means
-     `border-b border-border` / `divide-y divide-border` lines read as
-     a continuation of the etched edge, not as a stronger solid bar. */
-  --color-border: oklch(0.2 0.008 95 / 22%);
+  /* The one line left: the faint rule of `border-b border-border` and
+     `divide-y divide-border` between rows, and the grid of a table. Edges
+     come from the shadows below, never from a border. */
+  --color-border: oklch(0.2 0.008 95 / 12%);
   --color-input: oklch(0.931 0.006 95);
   --color-primary: oklch(0.54 0.17 324);
   --color-primary-foreground: oklch(0.99 0.003 95);
@@ -51,29 +50,27 @@
 }
 
 :root {
+  /* One material, lit from the top left. Every edge on the site is one of
+     these shadows: nothing is drawn with a hairline or an outline. */
   --neu-highlight: color-mix(in oklch, white 88%, var(--color-background));
   --neu-shadow: color-mix(in oklch, var(--color-foreground) 19%, transparent);
   --neu-shadow-soft: color-mix(in oklch, var(--color-foreground) 11%, transparent);
-  --neu-border: color-mix(in oklch, var(--neu-highlight) 72%, var(--color-border));
-  /* The platform's etched-edge treatment: a 1px white inset highlight
-     on the top-left (the lit facet) paired with a 1px dark inset on
-     the bottom-right (the shaded facet). The diagonal pair draws the
-     whole edge without an outer shadow or a visible border line, and
-     reads consistently as "flat etched surface, lit from top-left".
-     Every box-shaped surface in the app pulls from this single token
-     so cards, sidebar tiles, badges, pre blocks, graph containers,
-     etc. all look identical. */
-  --neu-etched: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
-    color-mix(in oklch, var(--color-foreground) 22%, transparent);
-  --neu-raised: 11px 11px 24px var(--neu-shadow), -9px -9px 20px var(--neu-highlight);
-  --neu-raised-strong: 14px 14px 30px color-mix(in oklch, var(--color-foreground) 16%, transparent),
-    -14px -14px 30px var(--neu-highlight);
+  /* A slab stands out of the page (`.neu-surface`). */
+  --neu-slab: 7px 7px 16px color-mix(in oklch, var(--color-foreground) 9%, transparent), -7px -7px
+    16px var(--neu-highlight);
+  /* A key is a slab you can press (`.neu-button`); the small size is for icon
+     tiles, pills and chips (`.neu-small`, on small slabs too). */
+  --neu-key: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
+  --neu-key-hover: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
+  --neu-key-small: 3px 3px 7px var(--neu-shadow-soft), -3px -3px 7px var(--neu-highlight);
+  --neu-key-small-hover: 4px 4px 9px var(--neu-shadow-soft), -4px -4px 9px var(--neu-highlight);
+  /* A well sinks into the page (`.neu-well`, every field, code). */
   --neu-inset: inset 4px 4px 9px color-mix(in oklch, var(--color-foreground) 13%, transparent),
     inset -4px -4px 9px color-mix(in oklch, white 86%, var(--color-background));
+  /* A pressed key (`:active`, `.neu-pressed`). */
   --neu-pressed: inset 2px 2px 5px color-mix(in oklch, var(--color-foreground) 18%, transparent),
     inset -2px -2px 5px var(--neu-highlight);
-  --neu-focus: 0 0 0 2px color-mix(in oklch, var(--color-primary) 18%, transparent),
-    var(--neu-raised);
+  --neu-focus: 0 0 0 2px color-mix(in oklch, var(--color-primary) 18%, transparent), var(--neu-key);
 }
 
 html,
@@ -84,6 +81,16 @@ body {
   font-size: 16px;
   line-height: 1.55;
   accent-color: var(--color-primary);
+}
+
+/* Anything clickable is purple (Alexander, 2026-10-03): links, buttons, and
+   the icons and text inside them. A utility class on the element still wins,
+   so a purple key can keep white text and a delete button red. */
+@layer base {
+  a,
+  button {
+    color: var(--color-primary);
+  }
 }
 
 ::selection {
@@ -107,6 +114,7 @@ select {
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
 select {
+  border-color: transparent;
   box-shadow: var(--neu-inset);
 }
 
@@ -220,242 +228,82 @@ a:focus-visible {
   box-shadow: var(--neu-focus);
 }
 
-/* Auto-raise ONLY primary CTAs (the `bg-primary` pattern). Anchors and
-   buttons styled inline with `border border-border + rounded-*` used to
-   auto-raise here too, but that wrongly lifted clickable cards and
-   content areas. Now: explicit `.neu-button` opts in; everything else
-   without `.neu-button` or `bg-primary` is a flat etched surface. */
-a[class*="bg-primary"],
-button[class*="bg-primary"] {
-  border-color: var(--neu-border);
-  box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
-}
-
-a[class*="bg-primary"]:hover,
-button[class*="bg-primary"]:hover {
-  box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
-  transform: translateY(-1px);
-}
-
-a[class*="bg-primary"]:active,
-button[class*="bg-primary"]:active {
-  box-shadow: var(--neu-pressed);
-  transform: translateY(0);
-}
-
-/* `.neu-pressed` is a state-override class — it has to beat any auto-raise
-   above (those use attribute selectors with specificity 0,2,1 and would
-   otherwise outrank a single class). The `!important` is intentional:
-   when an element opts into `.neu-pressed`, no other rule in the file
-   should be allowed to lift it. The :hover / :active variants pin
-   transform so an auto-CSS hover lift can't briefly un-press the button
-   mid-interaction. */
-.neu-pressed,
-.neu-pressed:hover,
-.neu-pressed:active {
-  box-shadow: var(--neu-pressed) !important;
-  /* Pressed buttons shouldn't carry a visible border — the inset
-     shadow IS the edge. Forces transparent over any `border-border`
-     the element also has. */
-  border-color: transparent !important;
-  transform: none !important;
-}
-
-/* Etched dividers consistent with a top-left light source. Every
-   directional `border-{side} border-border` divider gets a 1px white
-   highlight painted adjacent to the dark line on the LIT side of that
-   edge, matching the top-left light convention on `.neu-surface`.
-     - border-b: dark line at the bottom, highlight 1px below (the
-       next row's top edge is lit).
-     - border-t: dark line at the top, inset highlight just inside
-       the line (the element's own top is lit).
-     - border-r: dark line on the right, highlight 1px to the right
-       (the next column's left edge is lit).
-     - border-l: dark line on the left, inset highlight just inside
-       (the element's own left is lit).
-   Selectors use `[class~="…"]` (whitespace-token match) so `border-b`
-   doesn't accidentally match `border-border` (which contains "border-b"
-   as a substring). Excluded: `.neu-button` / `.neu-pressed` /
-   `bg-primary` — those carry their own shadow treatments. */
-[class~="border-b"][class~="border-border"]:not([class~="neu-button"]):not(
-    [class~="neu-pressed"]
-  ):not([class*="bg-primary"]) {
-  box-shadow: 0 1px 0 color-mix(in oklch, white 75%, transparent);
-}
-[class~="border-t"][class~="border-border"]:not([class~="neu-button"]):not(
-    [class~="neu-pressed"]
-  ):not([class*="bg-primary"]) {
-  box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
-}
-[class~="border-r"][class~="border-border"]:not([class~="neu-button"]):not(
-    [class~="neu-pressed"]
-  ):not([class*="bg-primary"]) {
-  box-shadow: 1px 0 0 color-mix(in oklch, white 75%, transparent);
-}
-[class~="border-l"][class~="border-border"]:not([class~="neu-button"]):not(
-    [class~="neu-pressed"]
-  ):not([class*="bg-primary"]) {
-  box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
-}
-[class~="divide-y"] > * + * {
-  box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
-}
-/* `<tr>` elements ignore `box-shadow` in some browsers (table-row
-   display is special-cased). When a `divide-y` lands on a `<tbody>`,
-   paint the highlight on the child cells instead so the etched
-   divider actually shows up on table rows. */
-[class~="divide-y"] > tr + tr > * {
-  box-shadow: inset 0 1px 0 color-mix(in oklch, white 75%, transparent);
-}
-[class~="divide-x"] > * + * {
-  box-shadow: inset 1px 0 0 color-mix(in oklch, white 75%, transparent);
-}
-/* `border border-border` (1px on all four sides — e.g. the graph
-   canvas container, node-dialog lifecycle buttons, perspective
-   tabs, etc.). The visible `border-border` line at 22% alpha already
-   draws the dark side of the edge on all four sides, so the etched
-   look only needs the top-left HIGHLIGHT on top of it. Painting the
-   full `--neu-etched` token here (both insets) stacks the dark inset
-   on bottom-right against the existing border line, reading as a
-   doubled-up thick edge on the right and bottom — visibly heavier
-   than `.neu-surface` cards where the border is transparent and the
-   inset IS the edge. It also broke the perspective tabs: each tab's
-   bottom-right dark inset painted over the next tab's left border,
-   turning the overlapping pill-stack into a row of separated buttons.
-   Excluded: `.neu-button` and `bg-primary` carry their own raised
-   treatments; `.neu-surface*`, `.neu-surface-open-bottom`, and `.neu-floating` set their own
-   shadow in @layer utilities. */
-[class~="border"][class~="border-border"]:not([class~="neu-button"]):not(
-    [class~="neu-pressed"]
-  ):not([class*="bg-primary"]):not([class~="border-b"]):not([class~="border-t"]):not(
-    [class~="border-l"]
-  ):not([class~="border-r"]):not([class~="neu-surface"]):not([class~="neu-surface-strong"]):not(
-    [class~="neu-surface-interactive"]
-  ):not([class~="neu-surface-open-bottom"]):not([class~="neu-floating"]) {
-  box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent);
-}
-
 @layer utilities {
-  /* Non-button content surfaces (cards, badges, list rows, info
-     panels, table containers, clickable anchor-cards). All pull from
-     the shared `--neu-etched` token so they match every other box on
-     the page (incl. 4-sided `border border-border` containers). The
-     border is forced transparent because the diagonal inset pair
-     already draws the edge — a visible border line on top would
-     double-paint. */
-  .neu-surface,
-  .neu-surface-strong,
-  .neu-surface-interactive {
+  /* One material, three roles. A slab stands out of the page, a well sinks
+     into it, a key is a slab you can press. Each role is one class on the
+     element; nothing here guesses a role from other classes. `.neu-small`
+     scales a slab or a key down to an icon tile, a pill or a chip by
+     redefining its tokens on the element. */
+
+  /* A slab: a card, a panel, a list, a chat bubble. */
+  .neu-surface {
     border-color: transparent;
-    box-shadow: var(--neu-etched);
+    box-shadow: var(--neu-slab);
   }
 
-  /* Clickable variant — same edge at rest. Hover shifts the
-     bottom-right shadow to a primary tint so the affordance is
-     color-only; depth and direction don't change. */
-  .neu-surface-interactive:hover {
-    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
-      color-mix(in oklch, var(--color-primary) 55%, transparent);
+  .neu-surface.neu-small {
+    --neu-slab: var(--neu-key-small);
   }
 
-  /* Same etched content surface as `.neu-surface`, but with the
-     bottom facet intentionally open. The active perspective tab uses
-     this treatment while overlapping the frame's top edge by 1px, so
-     the tab reads as the top lip of the canvas rather than a separate
-     button sitting above it. */
-  .neu-surface-open-bottom {
+  /* A well: a group sunk into the page or into a slab (a canvas, a nested
+     list, a filter group, a code block). Every field is a well too, by the
+     element rule above. */
+  .neu-well {
     border-color: transparent;
-    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px 0 0
-      color-mix(in oklch, var(--color-foreground) 22%, transparent);
-  }
-
-  /* Floating element (dialog / drawer / dropdown / tooltip). These
-     overlays live above page content and need to read as truly
-     elevated — not as a content surface contained within the page.
-     Asymmetric drop shadow (no light highlight, only darker shadow
-     pointing down and slightly to the side) communicates "above" and
-     drops the etched outline that `.neu-surface` paints. Border is
-     forced transparent so existing `border border-border` markup on
-     these wrappers doesn't draw an outline. */
-  .neu-floating {
-    border-color: transparent !important;
-    box-shadow: 0 18px 36px color-mix(in oklch, var(--color-foreground) 16%, transparent), 0 4px
-      10px color-mix(in oklch, var(--color-foreground) 10%, transparent) !important;
-  }
-
-  .neu-inset {
-    border-color: color-mix(in oklch, var(--color-border) 80%, transparent);
     box-shadow: var(--neu-inset);
   }
 
-  /* `.neu-pressed` is hoisted above out of `@layer utilities` so the
-     unlayered auto-neumorphism selectors don't outrank it. */
-
-  /* ====================================================================
-   * `.neu-button` — the platform's raised clickable affordance.
-   * --------------------------------------------------------------------
-   * Render contract (read this before placing a button in a tight row
-   * or grid):
-   *
-   *   - At rest the button casts a `5px 5px 12px` shadow to the
-   *     bottom-right and a `-5px -5px 12px` highlight to the top-left.
-   *     Total reach outside the box = ~17px on each of the four sides.
-   *   - On `:hover` the shadow grows to `7px 7px 16px` (~23px reach).
-   *   - On `:active` it switches to the pressed inset.
-   *
-   * The shadow blurs OUTSIDE the element's border box, so if a button
-   * sits flush against the container's edge — or against a sibling
-   * with a solid background — the bottom-right shadow gets clipped
-   * and the button reads as half-rendered. Avoid this by giving every
-   * `.neu-button` at least ~6-8px of breathing room on its right and
-   * bottom sides (and a smaller margin on the top/left for the
-   * highlight). Typical patterns:
-   *
-   *   - Row of buttons: `gap-1.5` (6px) is the floor; `gap-2` (8px)
-   *     reads cleaner.
-   *   - Last button in a row inside a card: the container's
-   *     `px-5`/`pr-4` is usually enough; for tight rows (table cell
-   *     pushing the button to the cell's right edge) add `pr-2`/`mr-2`
-   *     on the button or the wrapper.
-   *   - Stacked buttons: `gap-2` minimum between rows.
-   *
-   * Exception: PILL-STACK tabs intentionally overlap their edges
-   * (e.g. `-ml-px first:ml-0` on the perspective tabs). Those don't
-   * use `.neu-button` — they style the tab pill themselves and the
-   * etched edge plus -1px overlap is the design. Don't retrofit
-   * `.neu-button` onto them.
-   * ==================================================================== */
+  /* A key: a slab you can press (a button, a link styled as one, a tab, an
+     icon tile). Every key is purple, Alexander's rule for anything clickable;
+     a purple key keeps white text and a destructive one red.
+     The shadow blurs outside the box (about 17px at rest, 23px on hover), so
+     a key flush against a container edge or a sibling reads as cut off: give
+     keys in a row `gap-2` and the last key in a card some right padding. */
   .neu-button {
-    border-color: var(--neu-border);
-    box-shadow: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
+    border-color: transparent;
+    color: var(--color-primary);
+    box-shadow: var(--neu-key);
   }
 
   .neu-button:hover {
-    box-shadow: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
+    box-shadow: var(--neu-key-hover);
     transform: translateY(-1px);
   }
 
-  .neu-button:active {
+  /* A pressed key: while clicked, or `.neu-pressed` for the active tab, the
+     current nav item and a toggled control. Pressed keys do not lift on
+     hover. */
+  .neu-button:active,
+  .neu-pressed,
+  .neu-pressed:hover {
     box-shadow: var(--neu-pressed);
-    transform: translateY(0);
+    transform: none;
   }
 
-  /* Small raised affordance that floats *inside* a node box — e.g. the BPMN
-   * "View subprocess" pill. The same top-left-lit neumorphism as `.neu-button`,
-   * but with the shadow scaled down to a pill sitting on a node, not a
-   * full-size button in a form row. Press swaps to the inset so the pill reads
-   * as a real button. No `transform` (the host centers it with its own
-   * `translateX(-50%)`); the box-shadow alone carries the raised → pressed feel. */
-  .neu-pill-button {
-    box-shadow: 2px 2px 4px var(--neu-shadow-soft), -2px -2px 3px var(--neu-highlight);
+  .neu-button.neu-small {
+    --neu-key: var(--neu-key-small);
+    --neu-key-hover: var(--neu-key-small-hover);
   }
 
-  .neu-pill-button:hover {
-    box-shadow: 3px 3px 6px var(--neu-shadow-soft), -3px -3px 5px var(--neu-highlight);
+  .neu-button.bg-primary {
+    color: var(--color-primary-foreground);
   }
 
-  .neu-pill-button:active {
-    box-shadow: var(--neu-pressed);
+  .neu-button.bg-destructive {
+    color: var(--color-destructive-foreground);
+  }
+
+  .neu-button.text-destructive {
+    color: var(--color-destructive);
+  }
+
+  /* A floating element (dialog, drawer, dropdown, tooltip) lives above the
+     page, so it casts a drop shadow down instead of standing out of the
+     clay. */
+  .neu-floating {
+    border-color: transparent;
+    box-shadow: 0 18px 36px color-mix(in oklch, var(--color-foreground) 16%, transparent), 0 4px
+      10px color-mix(in oklch, var(--color-foreground) 10%, transparent);
   }
 
   .neu-header {
@@ -468,16 +316,6 @@ button[class*="bg-primary"]:active {
     background-color: color-mix(in oklch, var(--color-card) 96%, white);
     border-color: color-mix(in oklch, var(--color-border) 65%, transparent);
     box-shadow: 10px 0 24px color-mix(in oklch, var(--color-foreground) 8%, transparent);
-  }
-
-  /* Chat message bubble — same directional etched edge as `.neu-surface`. */
-  .neu-bubble {
-    box-shadow: inset 1px 1px 0 color-mix(in oklch, white 75%, transparent), inset -1px -1px 0
-      color-mix(in oklch, var(--color-foreground) 22%, transparent);
-  }
-
-  .neu-shadow-sm {
-    box-shadow: 4px 4px 10px var(--neu-shadow-soft), -4px -4px 10px var(--neu-highlight);
   }
 }
 
@@ -604,7 +442,6 @@ button[class*="bg-primary"]:active {
 }
 .body-md pre {
   background-color: var(--color-input);
-  border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 12px;
   box-shadow: var(--neu-inset);
@@ -720,22 +557,16 @@ button[class*="bg-primary"]:active {
   transform: translateZ(0);
 }
 
-/* Morphic styling for React Flow's top-right zoom-controls stack. True
-   neumorphism — the panel uses the SAME colour as the page background
-   and gets its "raised" feel entirely from the shadow + highlight pair,
-   not from being a different-coloured card. !important defeats React
-   Flow's defaults (which paint a near-white `#fefefe` background and a
-   tiny `0 0 2px` shadow that drowns out the neumorphic look). */
-.react-flow__controls {
-  background: var(--color-background) !important;
-  border: 1px solid var(--neu-border) !important;
-  border-radius: var(--radius) !important;
-  box-shadow: 7px 7px 16px var(--neu-shadow), -7px -7px 16px var(--neu-highlight) !important;
-  overflow: hidden;
-}
+/* React Flow's zoom controls: a column of small keys. !important defeats
+   React Flow's defaults (a near-white panel with a hairline border and a
+   tiny shadow). */
 .react-flow__controls {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 .react-flow__controls-button {
   width: 28px;
@@ -743,23 +574,17 @@ button[class*="bg-primary"]:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent !important;
+  background: var(--color-background) !important;
   border: none !important;
-  /* Hairline divider between stacked buttons; suppressed on the last
-     one so the panel's rounded bottom edge stays clean. */
-  border-bottom: 1px solid color-mix(in oklch, var(--neu-border) 60%, transparent) !important;
-  color: var(--color-foreground);
-  transition: background-color 120ms ease, color 120ms ease;
-}
-.react-flow__controls-button:last-child {
-  border-bottom: none !important;
+  border-radius: var(--radius);
+  box-shadow: var(--neu-key-small);
+  color: var(--color-primary);
+  transition: background-color 120ms ease, box-shadow 120ms ease;
 }
 .react-flow__controls-button:hover {
-  background: color-mix(in oklch, var(--color-background) 88%, var(--color-foreground)) !important;
-  color: var(--color-primary);
+  box-shadow: var(--neu-key-small-hover);
 }
 .react-flow__controls-button:active {
-  background: color-mix(in oklch, var(--color-background) 78%, var(--color-foreground)) !important;
   box-shadow: var(--neu-pressed);
 }
 .react-flow__controls-button svg {
@@ -887,8 +712,9 @@ button[class*="bg-primary"]:active {
   opacity: 0.3;
 }
 
-/* Chips are etched into the plate and the workspace is pressed into it; the
-   ones in play keep those edges and take a purplish fill and darker text. */
+/* Chips are small keys on the plate and the workspace is a well pressed into
+   it; the ones in play keep those edges and take a purplish fill and darker
+   text. */
 .hdw-chip,
 .hdw-ws {
   position: absolute;
@@ -906,7 +732,7 @@ button[class*="bg-primary"]:active {
   gap: var(--hdw-gap);
   padding-left: var(--hdw-pad);
   white-space: nowrap;
-  box-shadow: var(--neu-etched);
+  box-shadow: var(--neu-key-small);
 }
 .hdw-chip-more {
   justify-content: center;
@@ -1000,7 +826,7 @@ button[class*="bg-primary"]:active {
   border-radius: 50%;
   font-size: 14px;
   color: var(--color-primary);
-  box-shadow: 3px 3px 7px var(--neu-shadow-soft), -3px -3px 6px var(--neu-highlight);
+  box-shadow: var(--neu-key-small);
   transition: box-shadow 300ms ease;
 }
 .hdw-step[aria-current="step"] .hdw-num {
