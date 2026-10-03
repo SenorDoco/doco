@@ -78,20 +78,21 @@ export function DocoMark({
         <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
           <circle cx="90.59" cy="68.31" r="57.81" />
         </clipPath>
-        {/* The raised logo's bevel, in viewBox units so it scales with the
-            logo: a white rim where the purple faces the light (top left) and
-            a dark rim where it turns away (bottom right). The shadow and
+        {/* The raised logo's rounded edge, in viewBox units so it scales with
+            the logo: the purple lightens softly where it faces the light (top
+            left) and darkens softly where it turns away (bottom right), matte
+            like the site's clay rather than a glossy rim. The shadow and
             highlight it casts on the page are `.doco-mark-raised` in app.css. */}
         {raised ? (
           <filter id={reliefId} colorInterpolationFilters="sRGB">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="soft" />
-            <feOffset in="soft" dx="6" dy="6" result="down" />
-            <feOffset in="soft" dx="-6" dy="-6" result="up" />
+            <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="soft" />
+            <feOffset in="soft" dx="8" dy="8" result="down" />
+            <feOffset in="soft" dx="-8" dy="-8" result="up" />
             <feComposite in="SourceAlpha" in2="down" operator="out" result="litRim" />
             <feComposite in="SourceAlpha" in2="up" operator="out" result="shadedRim" />
-            <feFlood floodColor="white" floodOpacity="0.45" />
+            <feFlood floodColor="white" floodOpacity="0.22" />
             <feComposite in2="litRim" operator="in" result="lit" />
-            <feFlood floodColor="black" floodOpacity="0.35" />
+            <feFlood floodColor="black" floodOpacity="0.22" />
             <feComposite in2="shadedRim" operator="in" result="shaded" />
             <feMerge>
               <feMergeNode in="SourceGraphic" />

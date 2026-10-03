@@ -61,7 +61,7 @@ describe("one clay: the neumorphic roles in app.css", () => {
   it("draws no hairline or outline anywhere", () => {
     expect(appCss).not.toMatch(/inset -?1px -?1px 0/);
     expect(appCss).not.toMatch(
-      /--neu-etched|--neu-border|neu-surface-open-bottom|neu-pill-button|neu-shadow-sm|neu-surface-strong|\.neu-inset|\.neu-bubble/,
+      /--neu-etched|--neu-border|--neu-shadow-soft|neu-surface-open-bottom|neu-pill-button|neu-shadow-sm|neu-surface-strong|\.neu-inset|\.neu-bubble/,
     );
   });
 

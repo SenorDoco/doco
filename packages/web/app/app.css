@@ -93,17 +93,16 @@
   /* One material, lit from the top left. Every edge on the site is one of
      these shadows: nothing is drawn with a hairline or an outline. */
   --neu-highlight: color-mix(in oklch, white 88%, var(--color-background));
-  --neu-shadow: color-mix(in oklch, var(--color-foreground) 19%, transparent);
-  --neu-shadow-soft: color-mix(in oklch, var(--color-foreground) 11%, transparent);
+  --neu-shadow: color-mix(in oklch, var(--color-foreground) 11%, transparent);
   /* A slab stands out of the page (`.neu-surface`). */
   --neu-slab: 7px 7px 16px color-mix(in oklch, var(--color-foreground) 9%, transparent), -7px -7px
     16px var(--neu-highlight);
   /* A key is a slab you can press (`.neu-button`); the small size is for icon
      tiles, pills and chips (`.neu-small`, on small slabs too). */
-  --neu-key: 5px 5px 12px var(--neu-shadow-soft), -5px -5px 12px var(--neu-highlight);
-  --neu-key-hover: 7px 7px 16px var(--neu-shadow-soft), -7px -7px 16px var(--neu-highlight);
-  --neu-key-small: 3px 3px 7px var(--neu-shadow-soft), -3px -3px 7px var(--neu-highlight);
-  --neu-key-small-hover: 4px 4px 9px var(--neu-shadow-soft), -4px -4px 9px var(--neu-highlight);
+  --neu-key: 5px 5px 12px var(--neu-shadow), -5px -5px 12px var(--neu-highlight);
+  --neu-key-hover: 7px 7px 16px var(--neu-shadow), -7px -7px 16px var(--neu-highlight);
+  --neu-key-small: 3px 3px 7px var(--neu-shadow), -3px -3px 7px var(--neu-highlight);
+  --neu-key-small-hover: 4px 4px 9px var(--neu-shadow), -4px -4px 9px var(--neu-highlight);
   /* A well sinks into the page (`.neu-well`, every field, code). */
   --neu-inset: inset 4px 4px 9px color-mix(in oklch, var(--color-foreground) 13%, transparent),
     inset -4px -4px 9px color-mix(in oklch, white 86%, var(--color-background));
@@ -432,12 +431,14 @@ a:focus-visible {
   }
 }
 
-/* The home page's logo, neumorphic (Alexander, 2026-10-03): it stands out of
-   the page like the How Doco works plate, lit from the top left, so it casts
-   a shadow down and to the right and catches a highlight up and to the left.
-   DocoMark's relief filter bevels the purple itself. */
+/* The home page's logo, neumorphic (Alexander, 2026-10-03): purple pressed
+   out of the same clay as the keys, so it casts a key's shadow down and to
+   the right and catches a key's highlight up and to the left (the numbers
+   are `--neu-key`'s; a filter cannot read a box-shadow list). DocoMark's
+   relief filter rounds the purple's own edge. */
 .doco-mark-raised {
-  filter: drop-shadow(4px 4px 6px var(--neu-shadow)) drop-shadow(-4px -4px 6px var(--neu-highlight));
+  filter: drop-shadow(5px 5px 12px var(--neu-shadow))
+    drop-shadow(-5px -5px 12px var(--neu-highlight));
 }
 
 /* One-shot focus pulse for list-style perspectives (glossary, list,

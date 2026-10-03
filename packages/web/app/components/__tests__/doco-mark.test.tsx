@@ -39,12 +39,18 @@ describe("DocoMark", () => {
     }
   });
 
-  it("lifts the raised logo with the site's neumorphic shadow and highlight", () => {
+  it("casts the key's shadow and highlight, so it is the same clay as the buttons", () => {
+    // One clay (Alexander, 2026-10-03): the logo is lifted by the same shadow
+    // as a key (`--neu-key`), not by a darker, tighter one of its own.
+    const key = appCss.match(
+      /--neu-key: (\S+ \S+ \S+) var\(--neu-shadow\), (\S+ \S+ \S+) var\(--neu-highlight\);/,
+    );
+    expect(key).toBeTruthy();
     const at = appCss.indexOf("\n.doco-mark-raised {");
     expect(at).toBeGreaterThan(0);
-    const rule = appCss.slice(at, appCss.indexOf("}", at));
-    expect(rule).toMatch(
-      /filter: drop-shadow\(\d+px \d+px \d+px var\(--neu-shadow\)\) drop-shadow\(-\d+px -\d+px \d+px var\(--neu-highlight\)\)/,
+    const rule = appCss.slice(at, appCss.indexOf("}", at)).replace(/\s+/g, " ");
+    expect(rule).toContain(
+      `filter: drop-shadow(${key?.[1]} var(--neu-shadow)) drop-shadow(${key?.[2]} var(--neu-highlight))`,
     );
   });
 });
