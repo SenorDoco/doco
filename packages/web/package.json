@@ -9,6 +9,7 @@
     "dev": "react-router dev --port 5173",
     "prebuild": "cd ../.. && pnpm run build:packages",
     "build": "react-router build",
+    "eval:brief": "tsx scripts/eval-brief.ts",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
