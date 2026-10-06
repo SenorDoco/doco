@@ -27,11 +27,16 @@ beforeEach(async () => {
       ('doco_prs', 'prs', 'workspace_1', 'workspace_1',
          '{"template_handle":"github-pull-requests"}'::jsonb);
   `);
-  const node = async (id: string, doco: string, prose: string, locator: string | null = null) => {
+  const node = async (
+    id: string,
+    doco: string,
+    prose: string,
+    opts: { lifecycle?: string; locator?: string | null } = {},
+  ) => {
     await db.query(
       `INSERT INTO nodes (id, doco_id, node_type, lifecycle, prose, locator)
-       VALUES ($1, $2, split_part($1, '_', 1), 'active', $3, $4)`,
-      [id, doco, prose, locator],
+       VALUES ($1, $2, split_part($1, '_', 1), $3, $4, $5)`,
+      [id, doco, opts.lifecycle ?? "active", prose, opts.locator ?? null],
     );
     await db.query(
       `INSERT INTO entity_fts_nodes (entity_id, doco_id, node_type, summary, body)
@@ -47,11 +52,19 @@ beforeEach(async () => {
     "Session on search ranking with decision_01AAAAAAAAAAAAAAAAAAAAAAAA\nAlso produced decision_01BBBBBBBBBBBBBBBBBBBBBBBB and cites log_01DDDDDDDDDDDDDDDDDDDDDDDD.",
   );
   await node("log_01DDDDDDDDDDDDDDDDDDDDDDDD", "doco_chats", "A chat that cites nothing.");
+  await node("reference_01EEEEEEEEEEEEEEEEEEEEEEEE", "doco_prs", "Brief engine (#1334)", {
+    locator: "https://github.com/torrenegra/doco/pull/1334",
+  });
   await node(
-    "reference_01EEEEEEEEEEEEEEEEEEEEEEEE",
-    "doco_prs",
-    "Brief engine (#1334)",
-    "https://github.com/torrenegra/doco/pull/1334",
+    "rule_01FFFFFFFFFFFFFFFFFFFFFFFF",
+    "doco_dec",
+    "Always ship through a pull request with auto-merge.",
+  );
+  await node(
+    "rule_01GGGGGGGGGGGGGGGGGGGGGGGG",
+    "doco_dec",
+    "Push finished work directly to main.",
+    { lifecycle: "retired" },
   );
   await db.query(
     `INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type)
@@ -76,13 +89,15 @@ describe("loadBriefEvaluationSet", () => {
         id: "log_01CCCCCCCCCCCCCCCCCCCCCCCC",
         kind: "log",
         about: "Session on search ranking with",
-        relevant: ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA", "decision_01BBBBBBBBBBBBBBBBBBBBBBBB"],
+        required: ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA", "decision_01BBBBBBBBBBBBBBBBBBBBBBBB"],
+        exclude: ["log_01CCCCCCCCCCCCCCCCCCCCCCCC"],
       },
       {
         id: "reference_01EEEEEEEEEEEEEEEEEEEEEEEE",
         kind: "pull_request",
         about: "Brief engine (#1334)",
-        relevant: ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA"],
+        required: ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA"],
+        exclude: ["reference_01EEEEEEEEEEEEEEEEEEEEEEEE"],
       },
     ]);
   });
@@ -91,22 +106,85 @@ describe("loadBriefEvaluationSet", () => {
 describe("evaluateBriefs", () => {
   it("scores what each brief served against what the record cites, and names the misses", async () => {
     const set = await loadBriefEvaluationSet(c, SCOPE.docoIds);
-    const { report, results } = await evaluateBriefs(c, SCOPE, set, OFF, { ks: [1, 5] });
+    const { passed, report, results } = await evaluateBriefs(c, SCOPE, set, OFF, { ks: [1, 5] });
     // Words alone find the search decision for the session (and, one hop on,
     // the pull request it supports), nothing for the pull request's own title
     // once the pull request itself is hidden: half the session's citations,
     // none of the PR's.
-    expect(results.map((r) => [r.id, r.served, r.missed])).toEqual([
+    expect(results.map((r) => [r.id, r.served, r.requiredMissing])).toEqual([
       [
         "log_01CCCCCCCCCCCCCCCCCCCCCCCC",
-        ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA", "reference_01EEEEEEEEEEEEEEEEEEEEEEEE"],
+        [
+          "rule_01FFFFFFFFFFFFFFFFFFFFFFFF",
+          "decision_01AAAAAAAAAAAAAAAAAAAAAAAA",
+          "reference_01EEEEEEEEEEEEEEEEEEEEEEEE",
+        ],
         ["decision_01BBBBBBBBBBBBBBBBBBBBBBBB"],
       ],
-      ["reference_01EEEEEEEEEEEEEEEEEEEEEEEE", [], ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA"]],
+      [
+        "reference_01EEEEEEEEEEEEEEEEEEEEEEEE",
+        ["rule_01FFFFFFFFFFFFFFFFFFFFFFFF"],
+        ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA"],
+      ],
     ]);
+    expect(passed).toBe(false);
     expect(report.queries).toBe(2);
     expect(report.recall[5]).toBeCloseTo(0.25, 5);
-    expect(report.recall[1]).toBeCloseTo(0.25, 5);
-    expect(report.mrr).toBeCloseTo(0.5, 5);
+    expect(report.recall[1]).toBe(0);
+    expect(report.mrr).toBeCloseTo(0.25, 5);
+  });
+
+  it("passes a gold case only when required evidence is delivered under the production budget", async () => {
+    const evaluation = await evaluateBriefs(
+      c,
+      SCOPE,
+      [
+        {
+          id: "shipping-workflow",
+          kind: "gold",
+          about: "How should I ship this change?",
+          required: ["rule_01FFFFFFFFFFFFFFFFFFFFFFFF"],
+          forbidden: ["rule_01GGGGGGGGGGGGGGGGGGGGGGGG"],
+          mustObey: ["rule_01FFFFFFFFFFFFFFFFFFFFFFFF"],
+        },
+      ],
+      OFF,
+    );
+
+    expect(evaluation.passed).toBe(true);
+    expect(evaluation.results[0]).toMatchObject({
+      passed: true,
+      served: ["rule_01FFFFFFFFFFFFFFFFFFFFFFFF"],
+      requiredMissing: [],
+      forbiddenServed: [],
+      mustObeyViolations: [],
+      duplicateIds: [],
+      budgetExceededBy: 0,
+      budget: 4_000,
+    });
+  });
+
+  it("keeps excluded records out even when graph expansion reaches them", async () => {
+    const evaluation = await evaluateBriefs(
+      c,
+      SCOPE,
+      [
+        {
+          id: "excluded-graph-neighbour",
+          kind: "gold",
+          about: "search ranking",
+          required: ["decision_01AAAAAAAAAAAAAAAAAAAAAAAA"],
+          forbidden: ["reference_01EEEEEEEEEEEEEEEEEEEEEEEE"],
+          exclude: ["reference_01EEEEEEEEEEEEEEEEEEEEEEEE"],
+        },
+      ],
+      OFF,
+    );
+
+    expect(evaluation.results[0]).toMatchObject({
+      passed: true,
+      requiredMissing: [],
+      forbiddenServed: [],
+    });
   });
 });

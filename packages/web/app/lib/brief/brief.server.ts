@@ -202,9 +202,11 @@ export async function composeBrief(
       })
     : null;
 
+  const excluded = new Set(request.exclude ?? []);
   const candidates = new Map<string, Candidate>();
   const nodeIds = new Set<string>();
   const signal = (id: string, s: Signal) => {
+    if (excluded.has(id)) return;
     const existing = candidates.get(id);
     if (existing) existing.signals.push(s);
     else {
@@ -330,6 +332,7 @@ export async function composeBrief(
             limit: MIRROR_LIMIT,
           });
           for (const hit of hits) {
+            if (excluded.has(hit.entity_id)) continue;
             mirrorItems.push({
               id: hit.entity_id,
               tier: "background",
@@ -367,10 +370,6 @@ export async function composeBrief(
       })(),
     ]);
   });
-  for (const id of request.exclude ?? []) {
-    candidates.delete(id);
-    nodeIds.delete(id);
-  }
   touchIds.push(...touchHits.keys());
   touchIds.sort(
     (a, b) => (touchHits.get(b)?.size ?? 0) - (touchHits.get(a)?.size ?? 0) || a.localeCompare(b),
