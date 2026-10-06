@@ -18,7 +18,7 @@ type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
-/** A line of a file that names a search term. */
+/** A line of a file that names one or more search terms. */
 export interface CodeMatch {
   /** 1-based. */
   line: number;
@@ -31,7 +31,7 @@ export interface CodeSearchHit {
   repo: string;
   path: string;
   url: string;
-  /** The first lines naming the first search term; empty when only the path matched. */
+  /** The lines matching the most query terms; empty when only repo or path matched. */
   matches: CodeMatch[];
   /** Every line naming it. */
   matchCount: number;
@@ -78,18 +78,57 @@ const MATCHES_PER_FILE = 3;
 const MARKDOWN_RE = /\.(md|markdown|mdx)$/i;
 const README_RE = /^readme(\.(md|markdown|txt))?$/i;
 
-/** The search terms a match looks for: the words of the query, lowercased. */
+const QUERY_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "at",
+  "by",
+  "did",
+  "do",
+  "does",
+  "for",
+  "how",
+  "in",
+  "is",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "use",
+  "used",
+  "uses",
+  "using",
+  "was",
+  "were",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+]);
+
+const QUERY_EXPANSIONS: Record<string, string[]> = {
+  jdk: ["java"],
+  jvm: ["java"],
+};
+
+/** Meaningful identifier-shaped terms, with narrow code-domain synonyms. */
 function searchTerms(query: string): string[] {
-  return query
-    .toLowerCase()
-    .split(/\s+/)
-    .map((term) => term.replace(/^["-]+|"+$/g, ""))
-    .filter((term) => term.length > 1);
+  const raw = query.toLowerCase().match(/[a-z0-9][a-z0-9._+-]*/g) ?? [];
+  const meaningful = raw.filter(
+    (term) => !QUERY_STOP_WORDS.has(term) && (term.length > 1 || /^\d+$/.test(term)),
+  );
+  const base = meaningful.length > 0 ? meaningful : raw;
+  return [...new Set(base.flatMap((term) => [term, ...(QUERY_EXPANSIONS[term] ?? [])]))];
 }
 
-/** Code files matching `query` by path or content, best first, each with
- *  the first lines naming the first search term. Empty for a Doco that
- *  copies no code. */
+/** Code files matching the meaningful parts of `query` in repo, path or
+ *  content. Repository matches lead, then term coverage, path and text rank;
+ *  snippets are the lines covering the most terms. */
 export async function searchCodebase(
   c: QueryClient,
   docoId: string,
@@ -98,7 +137,9 @@ export async function searchCodebase(
 ): Promise<CodeSearchHit[]> {
   const q = query.trim();
   if (!q) return [];
-  const term = searchTerms(q)[0] ?? q.toLowerCase();
+  const terms = searchTerms(q);
+  if (terms.length === 0) return [];
+  const lexicalQuery = terms.join(" OR ");
   const rows = (
     await c.query<{
       repo: string;
@@ -107,27 +148,57 @@ export async function searchCodebase(
       text: string | null;
       total: number | null;
     }>(
-      `WITH q AS (SELECT websearch_to_tsquery('simple', $2) AS tsq),
+      `WITH terms AS (
+              SELECT term, term ~ '^[0-9]+$' AS numeric
+                FROM (SELECT DISTINCT unnest($2::text[]) AS term) t),
+            q AS (SELECT websearch_to_tsquery('simple', $3) AS tsq),
             hits AS (
               SELECT f.repo, f.path, f.content,
-                     strpos(lower(f.path), lower($2)) > 0 AS by_path,
-                     ts_rank(f.search_tsv, q.tsq) AS rank
+                     (SELECT count(*) FROM terms t
+                       WHERE (NOT t.numeric AND strpos(lower(f.repo), t.term) > 0)
+                          OR (t.numeric AND to_tsvector('simple', f.repo)
+                                           @@ plainto_tsquery('simple', t.term))) AS repo_hits,
+                     (SELECT count(*) FROM terms t
+                       WHERE (NOT t.numeric AND strpos(lower(f.path), t.term) > 0)
+                          OR (t.numeric AND to_tsvector('simple', f.path)
+                                           @@ plainto_tsquery('simple', t.term))) AS path_hits,
+                     (SELECT count(*) FROM terms t
+                       WHERE (NOT t.numeric AND strpos(lower(f.repo), t.term) > 0)
+                          OR (NOT t.numeric AND strpos(lower(f.path), t.term) > 0)
+                          OR (t.numeric AND to_tsvector('simple', f.repo || ' ' || f.path)
+                                           @@ plainto_tsquery('simple', t.term))
+                          OR f.search_tsv @@ plainto_tsquery('simple', t.term)) AS matched_terms,
+                     ts_rank_cd(f.search_tsv, q.tsq) AS text_rank
                 FROM code_files f, q
                WHERE f.doco_id = $1
-                 AND (f.search_tsv @@ q.tsq OR strpos(lower(f.path), lower($2)) > 0)
-               ORDER BY by_path DESC, rank DESC, f.repo, f.path
+                 AND (f.search_tsv @@ q.tsq OR EXISTS (
+                       SELECT 1 FROM terms t
+                        WHERE (NOT t.numeric AND strpos(lower(f.repo), t.term) > 0)
+                           OR (NOT t.numeric AND strpos(lower(f.path), t.term) > 0)
+                           OR (t.numeric AND to_tsvector('simple', f.repo || ' ' || f.path)
+                                            @@ plainto_tsquery('simple', t.term))))
+               ORDER BY repo_hits DESC, matched_terms DESC, path_hits DESC,
+                        text_rank DESC, f.repo, f.path
                LIMIT $4)
        SELECT h.repo, h.path, m.line::int AS line, m.text, m.total::int AS total
          FROM hits h
          LEFT JOIN LATERAL (
-           SELECT l.n AS line, left(btrim(l.text), ${SNIPPET_WIDTH}) AS text,
+           SELECT l.line, left(btrim(l.text), ${SNIPPET_WIDTH}) AS text,
                   count(*) OVER () AS total
-             FROM string_to_table(h.content, E'\\n') WITH ORDINALITY AS l(text, n)
-            WHERE strpos(lower(l.text), $3) > 0
-            ORDER BY l.n
+             FROM (
+               SELECT source.n AS line, source.text,
+                      (SELECT count(*) FROM terms t
+                        WHERE (NOT t.numeric AND strpos(lower(source.text), t.term) > 0)
+                           OR (t.numeric AND to_tsvector('simple', source.text)
+                                            @@ plainto_tsquery('simple', t.term))) AS term_hits
+                 FROM string_to_table(h.content, E'\\n') WITH ORDINALITY AS source(text, n)
+             ) l
+            WHERE l.term_hits > 0
+            ORDER BY l.term_hits DESC, l.line
             LIMIT ${MATCHES_PER_FILE}) m ON true
-        ORDER BY h.by_path DESC, h.rank DESC, h.repo, h.path, m.line`,
-      [docoId, q, term, limit],
+        ORDER BY h.repo_hits DESC, h.matched_terms DESC, h.path_hits DESC,
+                 h.text_rank DESC, h.repo, h.path, m.line`,
+      [docoId, terms, lexicalQuery, limit],
     )
   ).rows;
   const hits = new Map<string, CodeSearchHit>();

@@ -10,6 +10,8 @@
     "prebuild": "cd ../.. && pnpm run build:packages",
     "build": "react-router build",
     "eval:brief": "tsx scripts/eval-brief.ts",
+    "eval:codebase": "vitest run app/lib/__tests__/codebase-retrieval-eval.real-db.test.ts",
+    "eval:codebase:stress": "DOCO_EVAL_STRESS=1 pnpm run eval:codebase",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
