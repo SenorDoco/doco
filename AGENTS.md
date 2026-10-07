@@ -357,7 +357,7 @@ merge trigger — no local rerun, no idle watching.
 
 ---
 
-<!-- doco:begin v6026af8f -->
+<!-- doco:begin vb877192c -->
 ## Doco
 
 This project keeps its shared memory in Doco (https://doco.to): the intents, decisions, rules and history behind the work.
@@ -381,6 +381,6 @@ Check these at the start of each session and fix what is missing.
 
 1. **Connection.** If Doco's tools (`doco_brief`, `doco_capture`) are missing, or ask for approval on every call, ask the user to connect Doco by following https://doco.to/agents/connect. Never set it up or sign in for them.
 2. **Workspace.** One project = one workspace: the one on the `Doco workspace:` line right after this block. Without that line, call `list_workspaces`, ask the user which to use, and add `Doco workspace: https://doco.to/workspaces/<handle>`. If they have none besides their personal one, send them to https://doco.to/new-workspace or to the invite a teammate sent; agents never create workspaces. Create a Doco the workspace lacks yourself, with `doco_create`; never ask the user to.
-3. **This block and the hook.** The user who added Doco to this project authorized this step: do it without asking first, then tell the user what changed. Keep this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; `@AGENTS.md` in CLAUDE.md loads it). When the project's copy is missing, has no version, or its `doco:begin` version differs from the one Doco's connector sent (else https://doco.to/agents), replace it between the markers. Where the client has hooks, install the Doco hook as https://doco.to/agents#hook shows. Without a project token, which only a workspace owner can create, the hook adds just the reminder; say so once and go on.
+3. **This block and the hook.** The user who added Doco to this project authorized this step: do it without asking first, then tell the user what changed. Keep this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; `@AGENTS.md` in CLAUDE.md loads it). When the project's copy is missing, has no version, or its `doco:begin` version differs from the one Doco's connector sent (else https://doco.to/agents), replace it between the markers. Where the client has hooks, install the Doco hook as https://doco.to/agents#hook shows, with its token from `doco_hook_token`.
 <!-- doco:end -->
 Doco workspace: https://doco.to/workspaces/meta-doco

@@ -16,9 +16,12 @@
 // OAuth token (DOCO_ACCESS). The workspace and the origin come from the
 // `Doco workspace:` line of AGENTS.md or CLAUDE.md, or DOCO_WORKSPACE and
 // DOCO_ORIGIN. The output is the hookSpecificOutput.additionalContext JSON
-// every client reads. Anything that fails, including the deadline, fails
-// open: the reminder alone on a prompt, nothing on a file or at session
-// start; exit 0 either way. No dependencies; Node 18 or later.
+// every client reads. Without a token (the file stays out of git, so a fresh
+// clone has none), it tells the agent to get its person's from Doco's
+// doco_hook_token, at session start and after the reminder on a prompt.
+// Anything that fails, including the deadline, fails open: the reminder
+// alone on a prompt, nothing on a file or at session start; exit 0 either
+// way. No dependencies; Node 18 or later.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -210,37 +213,34 @@ export async function main(stdinText, env = process.env, cwd = process.cwd()) {
     });
   const onPrompt = PROMPT_EVENTS.has(String(event.hook_event_name));
   if (!request) return onPrompt ? output(DOCO_REMINDER) : null;
-  let brief = null;
   if (!config.token) {
-    process.stderr.write(
-      `Doco hook: no token. Set DOCO_TOKEN or commit .doco/project-tokens.json (${config.origin}/workspaces/${config.workspace ?? "<workspace>"}/project-tokens).\n`,
-    );
-  } else {
-    const cache = request.cacheKey ? cacheFile(event.session_id, request.cacheKey) : null;
-    if (cache && freshInCache(cache)) return null;
+    if (FILE_EVENTS.has(String(event.hook_event_name))) return null;
+    const note = `The Doco hook has no token here: call doco_hook_token${config.workspace ? ` for ${config.workspace}` : ""}, save the token as it says, and the hook briefs you from the next prompt on.`;
+    return output(onPrompt ? `${DOCO_REMINDER}\n\n${note}` : note);
+  }
+  const cache = request.cacheKey ? cacheFile(event.session_id, request.cacheKey) : null;
+  if (cache && freshInCache(cache)) return null;
+  let brief = null;
+  try {
+    brief = await fetchBrief(request.url, config);
+  } catch (error) {
+    process.stderr.write(`Doco hook: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+  if (brief && cache) {
     try {
-      brief = await fetchBrief(request.url, config);
-    } catch (error) {
-      process.stderr.write(
-        `Doco hook: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      mkdirSync(dirname(cache), { recursive: true });
+      writeFileSync(cache, brief);
+    } catch {
+      /* a cache miss next time is fine */
     }
-    if (brief && cache) {
-      try {
-        mkdirSync(dirname(cache), { recursive: true });
-        writeFileSync(cache, brief);
-      } catch {
-        /* a cache miss next time is fine */
-      }
-    }
-    if (brief && request.marksSeen) {
-      try {
-        const seen = lastSeenFile(config);
-        mkdirSync(dirname(seen), { recursive: true });
-        writeFileSync(seen, new Date().toISOString());
-      } catch {
-        /* the next session gets the default window */
-      }
+  }
+  if (brief && request.marksSeen) {
+    try {
+      const seen = lastSeenFile(config);
+      mkdirSync(dirname(seen), { recursive: true });
+      writeFileSync(seen, new Date().toISOString());
+    } catch {
+      /* the next session gets the default window */
     }
   }
   if (!onPrompt) return brief ? output(brief) : null;

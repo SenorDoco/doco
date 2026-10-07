@@ -45,6 +45,7 @@ describe("loadOnboardingView", () => {
         { step: "mcp", done: true },
         { step: "agent", done: false },
       ],
+      agent: { wrote: true, hook: false },
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_bo" });
     expect(mocks.ensureWorkspaceDoco).toHaveBeenCalledWith({
@@ -54,6 +55,8 @@ describe("loadOnboardingView", () => {
       userId: "user_bo",
     });
     expect(view?.agent.agentsChatsHandle).toBe("acme-agents-chats");
+    // What the step still waits for: here the hook, not the note.
+    expect(view?.agent).toMatchObject({ wrote: true, hook: false });
   });
 
   it("makes nothing while an earlier step is open", async () => {
@@ -67,8 +70,8 @@ describe("loadOnboardingView", () => {
         { step: "sources", done: false },
         { step: "mcp", done: false },
         { step: "agent", done: false },
-        { step: "hook", done: false },
       ],
+      agent: { wrote: false, hook: false },
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_ana" });
     expect(view?.pending).toBe("github");

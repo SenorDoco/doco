@@ -31,8 +31,8 @@ const PROSE_TYPES = [
 export interface StandingOrdersScope {
   workspaceId: string;
   origin: string;
-  /** The Docos the caller may read; null for every live Doco of the workspace. */
-  docoIds: string[] | null;
+  /** The Docos of the workspace the caller may read. */
+  docoIds: string[];
 }
 
 export interface StandingOrdersRequest {
@@ -99,8 +99,7 @@ export async function composeStandingOrders(
   const docos = (
     await c.query<{ id: string; handle: string; template: string | null; goal: string }>(
       `SELECT id, handle, data->>'template_handle' AS template, goal FROM docos
-        WHERE workspace_id = $1 AND deleted_at IS NULL
-          AND ($2::text[] IS NULL OR id = ANY($2::text[]))
+        WHERE workspace_id = $1 AND deleted_at IS NULL AND id = ANY($2::text[])
         ORDER BY handle`,
       [scope.workspaceId, scope.docoIds],
     )

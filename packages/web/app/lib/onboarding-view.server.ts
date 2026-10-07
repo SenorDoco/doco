@@ -52,6 +52,10 @@ export interface OnboardingView {
     instructions: string;
     /** The workspace's Agents chats Doco, where the agent notes it got them. */
     agentsChatsHandle: string | null;
+    /** Whether the agent wrote that note. */
+    wrote: boolean;
+    /** Whether the person's Doco hook is on, or their agent doesn't run hooks. */
+    hook: boolean;
   };
 }
 
@@ -126,6 +130,7 @@ export async function loadOnboardingView(opts: {
       agent: {
         instructions: agentInstructionsForWorkspace(baseUrl, workspace.handle),
         agentsChatsHandle: (agentsChats ?? (await docoFor("agents-chats")))?.handle ?? null,
+        ...progress.agent,
       },
     };
   });

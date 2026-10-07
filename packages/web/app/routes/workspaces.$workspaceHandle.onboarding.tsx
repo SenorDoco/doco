@@ -8,22 +8,18 @@
 //                              creates the source's Doco and goes to approve
 //                              the copy (Slack, Notion), coming back here.
 //   intent=finish-sources      finishes (or skips) the other sources.
-//   intent=hook-token confirm_repo_readable=on
-//                              creates a project token for the Doco hook and
-//                              answers { message }: the token with what the
-//                              agent does with it, shown once.
-//   intent=finish-hook         ends the hook step: the agent doesn't run hooks.
+//   intent=finish-hook         the person's agent doesn't run hooks, so the
+//                              agent step waits for its note alone.
 //
-// Every other outcome redirects to the workspace page; a refusal rides along
-// as ?onboarding=<reason> for the steps to explain.
+// Connecting sources is an owner's; saying their agent doesn't run hooks is
+// any member's. Every outcome redirects to the workspace page; a refusal rides
+// along as ?onboarding=<reason> for the steps to explain.
 import { getWorkspaceRole, withClient } from "@doco/db";
-import { getPublicBaseUrl } from "@doco/shared";
 import { redirect } from "react-router";
 import { KNOWLEDGE_SOURCE_INTEGRATIONS } from "~/lib/integrations-catalog";
 import { KNOWLEDGE_SOURCE_CONNECTORS } from "~/lib/knowledge-sources.server";
 import { pendingStep } from "~/lib/onboarding-steps";
 import { finishStep, loadOnboardingProgress } from "~/lib/onboarding.server";
-import { mintProjectToken, projectTokenInstallHint } from "~/lib/project-tokens.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { ensureWorkspaceDoco, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 
@@ -47,7 +43,11 @@ export async function loader(args: RouteArgs) {
     loadOnboardingProgress(c, { workspaceId: workspace.id, userId: me.id }),
   );
   return Response.json(
-    { steps: progress?.steps ?? [], pending: progress ? pendingStep(progress) : null },
+    {
+      steps: progress?.steps ?? [],
+      pending: progress ? pendingStep(progress) : null,
+      agent: progress?.agent ?? null,
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -57,13 +57,20 @@ export async function action(args: RouteArgs): Promise<Response> {
   const { request } = args;
   const home = `/workspaces/${workspace.handle}`;
   const refused = (reason: string) => redirect(`${home}?onboarding=${reason}`);
-  // Connecting sources makes Docos in the workspace and binds its apps, and
-  // a project token reads all of it: an owner's call, as on each
-  // integration's own page and the project tokens page.
-  if ((await getWorkspaceRole(workspace.id, me.id)) !== "owner") return refused("not_owner");
-
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
+
+  // Ends the hook for a member of the workspace (finishStep keeps to them).
+  if (intent === "finish-hook") {
+    await withClient((c) =>
+      finishStep(c, { workspaceId: workspace.id, userId: me.id, step: "hook" }),
+    );
+    return redirect(home);
+  }
+
+  // Connecting sources makes Docos in the workspace and binds its apps: an
+  // owner's call, as on each integration's own page.
+  if ((await getWorkspaceRole(workspace.id, me.id)) !== "owner") return refused("not_owner");
 
   if (intent === "source") {
     const integration = KNOWLEDGE_SOURCE_INTEGRATIONS.find(
@@ -88,26 +95,11 @@ export async function action(args: RouteArgs): Promise<Response> {
     return url ? redirect(url) : refused("source_unavailable");
   }
 
-  if (intent === "finish-sources" || intent === "finish-hook") {
-    const step = intent === "finish-sources" ? "sources" : "hook";
-    await withClient((c) => finishStep(c, { workspaceId: workspace.id, userId: me.id, step }));
-    return redirect(home);
-  }
-
-  if (intent === "hook-token") {
-    // Whoever reads the repository the token is saved in reads the workspace.
-    if (form.get("confirm_repo_readable") !== "on") return refused("unconfirmed");
-    const { full_token } = await mintProjectToken({
-      workspace_id: workspace.id,
-      created_by_user_id: me.id,
-      label: "Doco hook",
-    });
-    return Response.json(
-      {
-        message: projectTokenInstallHint(getPublicBaseUrl(request), workspace.handle, full_token),
-      },
-      { headers: { "Cache-Control": "no-store" } },
+  if (intent === "finish-sources") {
+    await withClient((c) =>
+      finishStep(c, { workspaceId: workspace.id, userId: me.id, step: "sources" }),
     );
+    return redirect(home);
   }
 
   return refused("unknown");

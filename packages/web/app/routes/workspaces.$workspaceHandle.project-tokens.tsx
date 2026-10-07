@@ -1,10 +1,8 @@
-// /workspaces/<workspace-handle>/project-tokens: owner-only management of the
-// workspace's committable read-only project tokens (lib/project-tokens.server).
-//
-// Minting sits behind a confirmation checkbox: anyone with read access to the
-// repository the token is committed to will read every doco in this
-// workspace. The minted token is shown once, with the message that has an
-// agent save it in .doco/project-tokens.json and turn on the Doco hook.
+// /workspaces/<workspace-handle>/project-tokens: a member's read-only project
+// tokens for the workspace, each reading it as them
+// (lib/project-tokens.server). An owner sees and revokes everyone's. A minted
+// token is shown once, with the message that has an agent save it in
+// .doco/project-tokens.json, kept out of git, and turn on the Doco hook.
 
 import { getPublicBaseUrl } from "@doco/shared";
 import { Form, Link, redirect, useNavigation } from "react-router";
@@ -19,7 +17,7 @@ import {
   projectTokenInstallHint,
   revokeProjectTokenById,
 } from "~/lib/project-tokens.server";
-import { loadWorkspaceForOwner } from "~/lib/workspace-helpers.server";
+import { loadWorkspaceForProjectTokens } from "~/lib/workspace-helpers.server";
 
 export async function loader({
   request,
@@ -28,16 +26,17 @@ export async function loader({
   request: Request;
   params: { workspaceHandle: string };
 }) {
-  const owner = await loadWorkspaceForOwner(request, params.workspaceHandle);
-  if (!owner.ok) {
-    if (owner.status === 401) {
+  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  if (!member.ok) {
+    if (member.status === 401) {
       throw redirect(`/sign-in?next=${encodeURIComponent(new URL(request.url).pathname)}`);
     }
-    throw new Response(owner.error, { status: owner.status });
+    throw new Response(member.error, { status: member.status });
   }
   return {
-    workspaceHandle: owner.workspace.handle,
-    tokens: await listProjectTokens(owner.workspace.id),
+    workspaceHandle: member.workspace.handle,
+    everyones: member.madeBy === null,
+    tokens: await listProjectTokens(member.workspace.id, member.madeBy),
   };
 }
 
@@ -50,26 +49,24 @@ export async function action({
   request: Request;
   params: { workspaceHandle: string };
 }): Promise<ActionResult | Response> {
-  const owner = await loadWorkspaceForOwner(request, params.workspaceHandle);
-  if (!owner.ok) return { error: owner.error };
-  const { workspace, me } = owner;
+  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  if (!member.ok) return { error: member.error };
+  const { workspace, me, madeBy } = member;
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
   if (intent === "revoke") {
     const id = String(form.get("id") ?? "");
     if (!id) return { error: "Missing token id." };
-    await revokeProjectTokenById({ workspace_id: workspace.id, token_suffix_id: id });
+    await revokeProjectTokenById({
+      workspace_id: workspace.id,
+      token_suffix_id: id,
+      created_by_user_id: madeBy,
+    });
     return redirect(`/workspaces/${workspace.handle}/project-tokens`);
   }
 
   if (intent === "mint") {
-    if (form.get("confirm_repo_readable") !== "on") {
-      return {
-        error:
-          "Check the confirmation box first: anyone with read access to the repository this token is committed to will read every doco in this workspace.",
-      };
-    }
     const result = await mintProjectToken({
       workspace_id: workspace.id,
       created_by_user_id: me.id,
@@ -100,7 +97,7 @@ export default function ProjectTokensPage({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: ActionResult;
 }) {
-  const { workspaceHandle, tokens } = loaderData;
+  const { workspaceHandle, everyones, tokens } = loaderData;
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
   const justMinted = actionData && "minted" in actionData ? actionData : null;
@@ -112,17 +109,19 @@ export default function ProjectTokensPage({
         items={workspaceBreadcrumb({ workspaceSlug: workspaceHandle, pageLabel: "Project tokens" })}
       />
       <p className="text-sm text-muted-foreground">
-        A project token is a committable, read-only credential for every doco in this workspace.
-        Commit it to <code>.doco/project-tokens.json</code> in a repository whose readers may also
-        read the workspace: the Doco hook and the agents that clone the repository then read it
-        without OAuth. Only workspace owners can mint and revoke tokens.
+        A project token reads, and only reads, what you can read in {workspaceHandle}, as you. The
+        Doco hook briefs your agent with one: your agent gets it from Doco&apos;s{" "}
+        <code>doco_hook_token</code> tool and keeps it in <code>.doco/project-tokens.json</code>,
+        out of git. Mint one here for anything else that should read the workspace as you.
+        {everyones ? " As an owner, you see and revoke everyone's." : null}
       </p>
 
       <Card>
         <CardHeader>
           <CardTitle>Mint a project token</CardTitle>
           <CardDescription>
-            Read-only, with no expiry. Revoke it here when the repository's read access changes.
+            Read-only, with no expiry. It stops reading what you can no longer read; revoke it here
+            any time.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -132,16 +131,9 @@ export default function ProjectTokensPage({
               <input
                 type="text"
                 name="label"
-                placeholder="e.g. the product repository"
+                placeholder="e.g. my laptop"
                 className="block w-full max-w-md rounded-md px-2 py-1 text-sm font-mono"
               />
-            </label>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" name="confirm_repo_readable" className="mt-0.5" required />
-              <span>
-                Anyone with read access to a repository where this token is committed will be able
-                to read every doco in this workspace.
-              </span>
             </label>
             <button
               type="submit"
@@ -174,33 +166,36 @@ export default function ProjectTokensPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>All project tokens</CardTitle>
+          <CardTitle>{everyones ? "Everyone's project tokens" : "Your project tokens"}</CardTitle>
           <CardDescription>
             {tokens.length === 0 ? "None minted yet." : `${tokens.length} in all, newest first.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {tokens.map((token) => (
-            <TokenRow key={token.id} token={token} />
+            <TokenRow key={token.id} token={token} showMaker={everyones} />
           ))}
         </CardContent>
       </Card>
-      <p className="text-xs text-muted-foreground">
-        <Link to={`/workspaces/${workspaceHandle}/settings`} className="hover:underline">
-          Back to settings
-        </Link>
-      </p>
+      {everyones ? (
+        <p className="text-xs text-muted-foreground">
+          <Link to={`/workspaces/${workspaceHandle}/settings`} className="hover:underline">
+            Back to settings
+          </Link>
+        </p>
+      ) : null}
     </PageMain>
   );
 }
 
-function TokenRow({ token }: { token: ProjectTokenSummary }) {
+function TokenRow({ token, showMaker }: { token: ProjectTokenSummary; showMaker: boolean }) {
   return (
     <div className="neu-surface flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs">
       <div className="min-w-0 flex-1">
         <div className="font-mono break-all">{token.preview}</div>
         <div className="mt-1 text-muted-foreground">
           {token.label ? <>{token.label} · </> : null}
+          {showMaker && token.created_by ? <>@{token.created_by} · </> : null}
           {token.revoked ? "Revoked" : "Active"} · minted{" "}
           {new Date(token.created_at).toLocaleString()}
           {token.last_used_at

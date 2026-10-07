@@ -1,11 +1,10 @@
-// Getting a workspace going. Its owners walk five steps on its page: connect
+// Getting a workspace going. Its owners walk four steps on its page: connect
 // GitHub, connect other sources of knowledge (or skip them), connect Doco to
-// their agent, ask their agent to start using Doco, turn on the Doco hook (or
-// skip it). Everyone else in it walks only connecting and asking their agent.
-// The workspace page (and its card on the list) keeps the person on the first
-// step not done until every one is. Whoever creates a workspace or joins it
-// from an invite gets a reminder email 15 minutes later if a step is still
-// open.
+// their agent, ask their agent to start using Doco, which also turns on the
+// Doco hook. Everyone else in it walks only the last two. The workspace page
+// (and its card on the list) keeps the person on the first step not done
+// until every one is. Whoever creates a workspace or joins it from an invite
+// gets a reminder email 15 minutes later if a step is still open.
 //
 // Each step reads as done from what the database already holds:
 //   github  — a Doco in the workspace is connected to a GitHub repository or
@@ -17,20 +16,26 @@
 //             workspace and hasn't been revoked or run out, or their agent
 //             already read or wrote in it;
 //   agent   — the person's agent wrote into the workspace's Agents chats Doco
-//             (the instructions ask it to note there that it got them);
-//   hook    — a project token of the workspace, not revoked, has been used,
-//             which is how the hook reaches Doco (the token is the
-//             workspace's, so Doco can't tell whose hook it was), or the
-//             person said their agent doesn't run hooks.
+//             (the instructions ask it to note there that it got them), and
+//             their Doco hook is on: a project token they made for the
+//             workspace, not revoked, has been used (the agent gets it with
+//             doco_hook_token), or they said their agent doesn't run hooks
+//             (decision_01M4C2JDN3EZMA2FR8JPPMT7NN).
 // Every member of a workspace walks them, except in their personal workspace
 // (named after them), which isn't a project's. workspace_onboarding holds what
 // nothing else records: who created the workspace or joined it from an invite,
-// when (the reminder's clock), and when they ended the other-sources and hook
-// steps themselves. A member without a row (in a workspace made before the
+// when (the reminder's clock), and when they ended the other-sources step and
+// the hook themselves. A member without a row (in a workspace made before the
 // steps, or added another way) walks them by role, and never gets a reminder.
 
 import { byAgentOverApiSql } from "./authoring-provenance";
-import { type JoinedAs, ONBOARDING_STEPS, type StepState, pendingStep } from "./onboarding-steps";
+import {
+  type JoinedAs,
+  ONBOARDING_STEPS,
+  type OnboardingStep,
+  type StepState,
+  pendingStep,
+} from "./onboarding-steps";
 
 type QueryClient = {
   query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
@@ -46,6 +51,8 @@ export interface OnboardingProgress {
   joinedAs: JoinedAs;
   /** The person's steps in order, each with whether it is done. */
   steps: StepState[];
+  /** What the agent step waits for: the agent's note, and the person's hook. */
+  agent: { wrote: boolean; hook: boolean };
 }
 
 /** Start walking a workspace's steps. A person already walking them keeps
@@ -62,13 +69,13 @@ export async function startOnboarding(
   );
 }
 
-/** The steps a person ends themselves, each with the column that says when. */
+/** What a person ends themselves, each with the column that says when. */
 const ENDED_BY_THE_PERSON = { sources: "sources_done_at", hook: "hook_done_at" } as const;
 
-/** End the other-sources step (with whatever was connected, or nothing) or the
- *  hook step (their agent doesn't run hooks). Only owners walk them, so a
- *  member without a row is one; the row it adds counts as reminded, since
- *  nobody started the steps to be reminded of. */
+/** End the other-sources step (with whatever was connected, or nothing) or
+ *  the hook (their agent doesn't run hooks). A member without a row walks
+ *  the steps by role, which the row it adds keeps; it counts as reminded,
+ *  since nobody started the steps to be reminded of. */
 export async function finishStep(
   c: QueryClient,
   opts: { workspaceId: string; userId: string; step: keyof typeof ENDED_BY_THE_PERSON },
@@ -77,7 +84,10 @@ export async function finishStep(
   await c.query(
     `INSERT INTO workspace_onboarding
        (workspace_id, user_id, joined_as, ${column}, reminded_at)
-     VALUES ($1, $2, 'creator', now(), now())
+     SELECT workspace_id, user_id,
+            CASE WHEN role = 'owner' THEN 'creator' ELSE 'invitee' END, now(), now()
+       FROM workspace_users
+      WHERE workspace_id = $1 AND user_id = $2
      ON CONFLICT (workspace_id, user_id) DO UPDATE
        SET ${column} = COALESCE(workspace_onboarding.${column}, now())`,
     [opts.workspaceId, opts.userId],
@@ -143,10 +153,11 @@ const PROGRESS_SQL = `
               AND d.data->>'template_handle' = 'agents-chats'
               AND cs.actor = wu.user_id
               AND ${byAgentOverApiSql("cs")}
-         ) AS agent,
+         ) AS wrote,
          o.hook_done_at IS NOT NULL OR EXISTS (
            SELECT 1 FROM project_tokens pt
             WHERE pt.workspace_id = wu.workspace_id
+              AND pt.created_by_user_id = wu.user_id
               AND NOT pt.revoked
               AND pt.last_used_at IS NOT NULL
          ) AS hook
@@ -165,17 +176,24 @@ interface ProgressRow {
   github: boolean;
   sources: boolean;
   mcp: boolean;
-  agent: boolean;
+  wrote: boolean;
   hook: boolean;
 }
 
 function toProgress(row: ProgressRow): OnboardingProgress {
+  const done: Record<OnboardingStep, boolean> = {
+    github: row.github,
+    sources: row.sources,
+    mcp: row.mcp,
+    agent: row.wrote && row.hook,
+  };
   return {
     workspaceId: row.workspace_id,
     workspaceHandle: row.workspace_handle,
     userId: row.user_id,
     joinedAs: row.joined_as,
-    steps: ONBOARDING_STEPS[row.joined_as].map((step) => ({ step, done: row[step] })),
+    steps: ONBOARDING_STEPS[row.joined_as].map((step) => ({ step, done: done[step] })),
+    agent: { wrote: row.wrote, hook: row.hook },
   };
 }
 

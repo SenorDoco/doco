@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   listVisibleDocoIdsForRequest: vi.fn(),
   isProjectToken: vi.fn(),
   validateProjectToken: vi.fn(),
-  queryProjectTokenDocos: vi.fn(),
+  listReadableDocosInWorkspace: vi.fn(),
   loadAgentDisplayIdentity: vi.fn(),
   recordQuery: vi.fn(),
   waitUntil: vi.fn(),
@@ -24,11 +24,11 @@ vi.mock("~/lib/session.server", () => ({
 }));
 vi.mock("~/lib/doco-access.server", () => ({
   listVisibleDocoIdsForRequest: mocks.listVisibleDocoIdsForRequest,
+  listReadableDocosInWorkspace: mocks.listReadableDocosInWorkspace,
 }));
 vi.mock("~/lib/project-tokens.server", () => ({
   isProjectToken: mocks.isProjectToken,
   validateProjectToken: mocks.validateProjectToken,
-  queryProjectTokenDocos: mocks.queryProjectTokenDocos,
 }));
 vi.mock("~/lib/agent-identity.server", () => ({
   loadAgentDisplayIdentity: mocks.loadAgentDisplayIdentity,
@@ -171,15 +171,19 @@ describe("GET /api/v1/brief.json", () => {
     expect(mocks.composeBrief.mock.calls[0][1].docoIds).toEqual(["doco_2"]);
   });
 
-  it("gives a project token every Doco of its workspace, with no actor", async () => {
+  // decision_01M4C2J610DPD028P55Q8X6VG2: a token reads as the person who made it.
+  it("gives a project token the Docos its maker can read in its workspace, with no actor", async () => {
     mocks.extractBearer.mockReturnValue("doco_pt_x");
     mocks.isProjectToken.mockReturnValue(true);
-    mocks.validateProjectToken.mockResolvedValue({ workspace_id: "workspace_9" });
-    mocks.queryProjectTokenDocos.mockResolvedValue([{ id: "doco_9" }, { id: "doco_10" }]);
+    mocks.validateProjectToken.mockResolvedValue({
+      workspace_id: "workspace_9",
+      created_by_user_id: "user_maker",
+    });
+    mocks.listReadableDocosInWorkspace.mockResolvedValue([{ id: "doco_9" }, { id: "doco_10" }]);
     const res = await get("about=x", { authorization: "Bearer doco_pt_x" });
     expect(res.status).toBe(200);
     expect(mocks.getCurrentPrincipalAsync).not.toHaveBeenCalled();
-    expect(mocks.queryProjectTokenDocos.mock.calls[0][1]).toBe("workspace_9");
+    expect(mocks.listReadableDocosInWorkspace).toHaveBeenCalledWith("workspace_9", "user_maker");
     expect(mocks.composeBrief.mock.calls[0][1].docoIds).toEqual(["doco_9", "doco_10"]);
     expect(mocks.recordQuery.mock.calls[0][2]).toBeNull();
     expect((await res.json()).display.found).toContain("[🔮 Doco] briefed");

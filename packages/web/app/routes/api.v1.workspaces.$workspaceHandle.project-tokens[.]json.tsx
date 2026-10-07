@@ -1,17 +1,15 @@
 // GET/POST/DELETE /api/v1/workspaces/<workspace-handle>/project-tokens.json:
-// owner-only management of the workspace's committable read-only project
-// tokens (lib/project-tokens.server).
+// a member's read-only project tokens for the workspace, each reading it as
+// them (lib/project-tokens.server). An owner sees and revokes everyone's.
 //
 // GET    → list (revoked + active), summaries only (no token bodies).
-// POST   → mint a token. Requires `confirm_repo_readable: true` in the JSON
-//          body: the owner acknowledges that anyone with read access to the
-//          repository the token is committed to will read every Doco of the
-//          workspace. `install_hint` is the message for the agent: where to
-//          save the token and how to turn on the Doco hook.
+// POST   → mint a token (optional `label` in the JSON body). `install_hint`
+//          is the message for the agent: where to save the token, kept out
+//          of git, and how to turn on the Doco hook.
 // DELETE → revoke a token by its 8-character id (?id=…). Idempotent.
 //
-// Errors: 401 anonymous, 403 not an owner, 404 no such workspace, 400 POST
-// without the confirmation or DELETE without ?id=.
+// Errors: 401 anonymous, 403 not a member, 404 no such workspace, 400 DELETE
+// without ?id=.
 
 import { getPublicBaseUrl } from "@doco/shared";
 import {
@@ -20,7 +18,7 @@ import {
   projectTokenInstallHint,
   revokeProjectTokenById,
 } from "~/lib/project-tokens.server";
-import { loadWorkspaceForOwner } from "~/lib/workspace-helpers.server";
+import { loadWorkspaceForProjectTokens } from "~/lib/workspace-helpers.server";
 
 export async function loader({
   request,
@@ -29,9 +27,9 @@ export async function loader({
   request: Request;
   params: { workspaceHandle: string };
 }) {
-  const owner = await loadWorkspaceForOwner(request, params.workspaceHandle);
-  if (!owner.ok) return Response.json({ error: owner.error }, { status: owner.status });
-  return Response.json({ tokens: await listProjectTokens(owner.workspace.id) });
+  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  if (!member.ok) return Response.json({ error: member.error }, { status: member.status });
+  return Response.json({ tokens: await listProjectTokens(member.workspace.id, member.madeBy) });
 }
 
 export async function action({
@@ -44,25 +42,16 @@ export async function action({
   if (request.method !== "POST" && request.method !== "DELETE") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
-  const owner = await loadWorkspaceForOwner(request, params.workspaceHandle);
-  if (!owner.ok) return Response.json({ error: owner.error }, { status: owner.status });
-  const { workspace, me } = owner;
+  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  if (!member.ok) return Response.json({ error: member.error }, { status: member.status });
+  const { workspace, me, madeBy } = member;
 
   if (request.method === "POST") {
-    let body: { confirm_repo_readable?: boolean; label?: string } = {};
+    let body: { label?: string } = {};
     try {
-      body = (await request.json()) as { confirm_repo_readable?: boolean; label?: string };
+      body = (await request.json()) as { label?: string };
     } catch {
-      // An empty body falls through to the confirmation check.
-    }
-    if (body.confirm_repo_readable !== true) {
-      return Response.json(
-        {
-          error: "confirmation_required",
-          hint: "Pass { confirm_repo_readable: true } in the request body: the owner acknowledges that anyone with read access to the repository this token is committed to will read every doco in the workspace.",
-        },
-        { status: 400 },
-      );
+      // An empty body mints a token without a label.
     }
     const result = await mintProjectToken({
       workspace_id: workspace.id,
@@ -88,6 +77,10 @@ export async function action({
       { status: 400 },
     );
   }
-  const revoked = await revokeProjectTokenById({ workspace_id: workspace.id, token_suffix_id: id });
+  const revoked = await revokeProjectTokenById({
+    workspace_id: workspace.id,
+    token_suffix_id: id,
+    created_by_user_id: madeBy,
+  });
   return Response.json({ revoked });
 }

@@ -5,11 +5,11 @@
 // `workspace` names the workspace by handle; `format=text` returns the text
 // rendering alone.
 //
-// Auth: a project token (its workspace; `workspace` may only name that one) or
-// a signed-in principal (cookie or OAuth bearer) who names a workspace they
-// are a member of or can read a Doco of; either reads its constitution. 401
-// when no caller resolves, 400 without a workspace. Each read is one query of
-// the workspace in the query log.
+// Auth: a project token (its workspace, as the person who made it reads it;
+// `workspace` may only name that one) or a signed-in principal (cookie or
+// OAuth bearer) who names a workspace they are a member of or can read a Doco
+// of; either reads its constitution. 401 when no caller resolves, 400 without
+// a workspace. Each read is one query of the workspace in the query log.
 
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
@@ -35,23 +35,26 @@ export async function loader({ request }: { request: Request }) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
 
-  let scope: { workspaceId: string; docoIds: string[] | null };
+  let workspace = wanted;
   if (projectToken) {
     const handle = await lookupWorkspaceHandle(projectToken.workspace_id);
-    if (wanted && wanted !== handle && wanted !== projectToken.workspace_id) {
+    if (!handle || (wanted && wanted !== handle && wanted !== projectToken.workspace_id)) {
       return Response.json(
         { error: "Project token is scoped to a different workspace." },
         { status: 403 },
       );
     }
-    scope = { workspaceId: projectToken.workspace_id, docoIds: null };
-  } else {
-    if (!wanted) {
-      return Response.json({ error: "Name the workspace (workspace=<handle>)." }, { status: 400 });
-    }
-    const read = await loadWorkspaceForRead(wanted, (me as { id: string }).id);
-    scope = { workspaceId: read.workspace.id, docoIds: read.docos.map((d) => d.id) };
+    workspace = handle;
   }
+  if (!workspace) {
+    return Response.json({ error: "Name the workspace (workspace=<handle>)." }, { status: 400 });
+  }
+  // A project token reads as the person who made it.
+  const read = await loadWorkspaceForRead(
+    workspace,
+    projectToken ? projectToken.created_by_user_id : (me as { id: string }).id,
+  );
+  const scope = { workspaceId: read.workspace.id, docoIds: read.docos.map((d) => d.id) };
 
   const orders = await withClient((c) =>
     composeStandingOrders(c, { ...scope, origin: getPublicBaseUrl(request) }, { since }),

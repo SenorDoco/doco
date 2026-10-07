@@ -209,17 +209,43 @@ describe("the Doco hook", () => {
     ).toBeNull();
   });
 
-  it("fails open: no token, a failing route, a slow route and bad stdin leave the reminder alone, exit 0", async () => {
+  // decision_01M4C2J610DPD028P55Q8X6VG2: a fresh clone has the hook but not
+  // the token, which stays out of git; the agent gets its person's back.
+  it("without a token, tells the agent to get its own from doco_hook_token, and asks Doco nothing", async () => {
+    const cwd = project();
+    const env = { DOCO_ORIGIN: origin, DOCO_WORKSPACE: "acme" };
+    const context = (out: string) => JSON.parse(out).hookSpecificOutput.additionalContext;
+    const note =
+      "The Doco hook has no token here: call doco_hook_token for acme, save the token as it says, and the hook briefs you from the next prompt on.";
+    const start = await runHook({ hook_event_name: "SessionStart", cwd }, env, cwd);
+    expect([start.code, context(start.stdout)]).toEqual([0, note]);
+    const prompt = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: session(), cwd, prompt: "x" },
+      env,
+      cwd,
+    );
+    expect(context(prompt.stdout)).toBe(`${DOCO_REMINDER}\n\n${note}`);
+    const edit = await runHook(
+      {
+        hook_event_name: "PreToolUse",
+        session_id: session(),
+        cwd,
+        tool_input: { file_path: "a.ts" },
+      },
+      env,
+      cwd,
+    );
+    expect([edit.code, edit.stdout]).toEqual([0, ""]);
+    expect(requests).toHaveLength(0);
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("fails open: a failing route, a slow route and bad stdin leave the reminder alone, exit 0", async () => {
     const cwd = project();
     const prompt = { hook_event_name: "UserPromptSubmit", session_id: session(), cwd, prompt: "x" };
     const reminderOnly = JSON.stringify({
       hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: DOCO_REMINDER },
     });
-    const noToken = await runHook(prompt, { DOCO_ORIGIN: origin, DOCO_WORKSPACE: "acme" }, cwd);
-    expect([noToken.code, noToken.stdout.trim()]).toEqual([0, reminderOnly]);
-    expect(noToken.stderr).toContain(`${origin}/workspaces/acme/project-tokens`);
-    expect(requests).toHaveLength(0);
-
     respond = () => ({ status: 500, body: "boom" });
     const failing = await runHook(prompt, { DOCO_ORIGIN: origin, DOCO_TOKEN: "t" }, cwd);
     expect([failing.code, failing.stdout.trim()]).toEqual([0, reminderOnly]);

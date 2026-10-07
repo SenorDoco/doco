@@ -113,19 +113,29 @@ describe("GET /api/v1/standing-orders.json", () => {
     });
   });
 
-  it("gives a project token its own workspace whole, and no other", async () => {
+  // decision_01M4C2J610DPD028P55Q8X6VG2: a token reads as the person who made it.
+  it("gives a project token its own workspace as its maker reads it, and no other", async () => {
     mocks.extractBearer.mockReturnValue("doco_pt_x");
     mocks.isProjectToken.mockReturnValue(true);
-    mocks.validateProjectToken.mockResolvedValue({ workspace_id: "workspace_9" });
+    mocks.validateProjectToken.mockResolvedValue({
+      workspace_id: "workspace_9",
+      created_by_user_id: "user_maker",
+    });
     mocks.lookupWorkspaceHandle.mockResolvedValue("nine");
+    mocks.loadWorkspaceForRead.mockResolvedValue({
+      workspace: { id: "workspace_9", handle: "nine" },
+      myRole: "reader",
+      docos: [{ id: "doco_9" }],
+    });
     const res = await get("format=text", { authorization: "Bearer doco_pt_x" });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/plain");
     expect(await res.text()).toBe(ORDERS.text);
     expect(mocks.getCurrentPrincipalAsync).not.toHaveBeenCalled();
+    expect(mocks.loadWorkspaceForRead).toHaveBeenCalledWith("nine", "user_maker");
     expect(mocks.composeStandingOrders.mock.calls[0][1]).toMatchObject({
       workspaceId: "workspace_9",
-      docoIds: null,
+      docoIds: ["doco_9"],
     });
     expect(mocks.recordQuery.mock.calls[0][2]).toBeNull();
     expect((await get("workspace=nine", { authorization: "Bearer doco_pt_x" })).status).toBe(200);

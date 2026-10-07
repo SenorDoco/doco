@@ -44,8 +44,10 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
           Docos and what changed since the last session), then briefs the agent before each prompt
           and each file edit, with the reminder line first. It reads the workspace from the{" "}
           <code>Doco workspace:</code> line and the token from <code>DOCO_TOKEN</code> or{" "}
-          <code>.doco/project-tokens.json</code>, which a workspace owner mints under the
-          workspace's settings. When it cannot reach Doco, the agent gets the reminder alone.
+          <code>.doco/project-tokens.json</code>, where the agent saves the token Doco&apos;s{" "}
+          <code>doco_hook_token</code> tool gives it, kept out of git: the token reads what you can
+          read in the workspace, as you. Without a token, the hook tells the agent to get it; when
+          it cannot reach Doco, the agent gets the reminder alone.
         </p>
         {loaderData.hook.map((snippet) => (
           <div key={snippet.title} className="flex min-w-0 flex-col gap-2">
