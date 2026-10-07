@@ -13,6 +13,7 @@ import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { PolicyView, toPolicyItem } from "~/components/policy-view";
 import { loadPolicyForEdit, transitionPolicyLifecycle } from "~/lib/capture.server";
 import {
@@ -116,7 +117,7 @@ export default function PolicyDetail({
   const isRetired = (item.lifecycle ?? "active") === "retired";
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={docoBreadcrumb({
           ownerSlug,
@@ -181,6 +182,6 @@ export default function PolicyDetail({
           </p>
         </CardContent>
       </Card>
-    </main>
+    </PageMain>
   );
 }

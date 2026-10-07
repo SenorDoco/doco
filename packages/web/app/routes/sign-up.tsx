@@ -1,6 +1,7 @@
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { NarrowPageMain } from "~/components/page-main";
 import { isValidSignupInviteCode, setSignupInviteCookie } from "~/lib/invite.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
@@ -42,7 +43,7 @@ export default function SignUp({
 }) {
   const error = actionData?.error ?? loaderData.error;
   return (
-    <main className="mx-auto max-w-md px-6 py-10 space-y-4">
+    <NarrowPageMain className="py-10 space-y-4">
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign up" }]} />
       <Card>
         <CardHeader>
@@ -82,7 +83,7 @@ export default function SignUp({
           </p>
         </CardContent>
       </Card>
-    </main>
+    </NarrowPageMain>
   );
 }
 

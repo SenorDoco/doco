@@ -1,6 +1,7 @@
 import { getPublicBaseUrl } from "@doco/shared";
 import { Link } from "react-router";
 import { ConnectAgentGuide } from "~/components/connect-agent-guide";
+import { PageMain } from "~/components/page-main";
 import { agentConnectGuides } from "~/lib/agent-connect-guides";
 import { AGENT_INSTRUCTIONS_PATH } from "~/lib/agent-instructions";
 
@@ -32,21 +33,19 @@ export default function ConnectAgentPage({
   loaderData: ReturnType<typeof loader>;
 }) {
   return (
-    <main className="px-6 py-12 md:py-16">
-      <div className="mx-auto max-w-3xl space-y-8">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">Connect Doco to your agent</h1>
-          <p className="text-sm text-muted-foreground">
-            Your agent reads and writes Doco through Doco's MCP server. Pick your agent and follow
-            its steps; you sign in to Doco once, and choose what the agent may reach.
-          </p>
-        </header>
-        <ConnectAgentGuide guides={loaderData.guides} initial={loaderData.agent} />
+    <PageMain className="space-y-8 py-12 md:py-16">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold">Connect Doco to your agent</h1>
         <p className="text-sm text-muted-foreground">
-          Once it's connected, give your agent{" "}
-          <Link to={AGENT_INSTRUCTIONS_PATH}>the instructions for agents</Link>.
+          Your agent reads and writes Doco through Doco's MCP server. Pick your agent and follow its
+          steps; you sign in to Doco once, and choose what the agent may reach.
         </p>
-      </div>
-    </main>
+      </header>
+      <ConnectAgentGuide guides={loaderData.guides} initial={loaderData.agent} />
+      <p className="text-sm text-muted-foreground">
+        Once it's connected, give your agent{" "}
+        <Link to={AGENT_INSTRUCTIONS_PATH}>the instructions for agents</Link>.
+      </p>
+    </PageMain>
   );
 }

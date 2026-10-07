@@ -1,7 +1,7 @@
 import { redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { loadScopeOptions } from "~/lib/api-keys.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { buildSlackInstallUrl, getSlackConfig } from "~/lib/slack.server";
@@ -50,7 +50,7 @@ export function meta() {
 export default function SlackInstallPage({ loaderData }: { loaderData: SlackInstallPageData }) {
   const { workspaces } = loaderData;
   return (
-    <SingleColumnPageMain className="space-y-6 py-8">
+    <PageMain className="space-y-6 py-8">
       <Breadcrumb
         items={[...hostBreadcrumb({ pageLabel: "App integrations" }), { label: "Slack" }]}
       />
@@ -88,6 +88,6 @@ export default function SlackInstallPage({ loaderData }: { loaderData: SlackInst
           )}
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

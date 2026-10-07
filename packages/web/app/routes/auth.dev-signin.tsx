@@ -19,6 +19,7 @@
 import { getUserByGithubLogin, withClient } from "@doco/db";
 import { Form, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
+import { NarrowPageMain } from "~/components/page-main";
 import { setSessionCookie } from "~/lib/session.server";
 
 const TEST_USERNAMES = ["doco-test-harness", "doco-test-alice", "doco-test-bob"] as const;
@@ -135,7 +136,7 @@ export default function DevSignin({
   loaderData: LoaderData;
 }) {
   return (
-    <main style={{ maxWidth: 480, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
+    <NarrowPageMain className="py-14" style={{ fontFamily: "system-ui" }}>
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Dev sign-in" }]} className="mb-2" />
       <h1>Dev sign-in</h1>
       <p style={{ color: "#a00", marginBottom: 16 }}>
@@ -159,6 +160,6 @@ export default function DevSignin({
         </label>
         <button type="submit">Sign in</button>
       </Form>
-    </main>
+    </NarrowPageMain>
   );
 }

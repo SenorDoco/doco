@@ -16,6 +16,7 @@
 import { withClient } from "@doco/db";
 import { redirect } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { PageMain } from "~/components/page-main";
 import { type HealthSnapshot, getAgentHealth } from "~/lib/agent-health.server";
 import { type AnthropicUsageBucket, aggregateAnthropicUsage } from "~/lib/agent-usage.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -240,7 +241,7 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
   return (
     <>
       <meta httpEquiv="refresh" content="30" />
-      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+      <PageMain className="flex-1 py-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold">Agent token usage</h1>
@@ -417,7 +418,7 @@ export default function AgentUsagePage({ loaderData }: { loaderData: UsageSnapsh
             </CardContent>
           </Card>
         </div>
-      </div>
+      </PageMain>
     </>
   );
 }

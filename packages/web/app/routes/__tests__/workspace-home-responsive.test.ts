@@ -21,7 +21,7 @@ describe("/workspaces/:workspaceHandle responsive layout", () => {
   it("uses the shared wide page width and desktop sidebar grid", () => {
     const src = routeSource();
 
-    expect(src).toContain("mx-auto w-full max-w-6xl px-6");
+    expect(src).toContain("<PageMain");
     expect(src).toContain(workspaceTwoColumnGrid);
     // The two-column split must not kick in before there's room for it: the
     // old 840px breakpoint left a cramped two-column band below the nav's

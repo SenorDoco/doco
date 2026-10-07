@@ -3,7 +3,7 @@ import { validateRequestedDocoHandle as validateRequestedWorkspaceHandle } from 
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   HANDLE_FORMAT_HELP,
   HANDLE_INPUT_PATTERN,
@@ -180,7 +180,7 @@ export default function WorkspaceSettings({
   const isConfirmingDelete = searchParams.get("confirm") === "delete";
 
   return (
-    <SingleColumnPageMain className="py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <Breadcrumb
         items={workspaceBreadcrumb({ workspaceSlug: workspace.handle, pageLabel: "Settings" })}
       />
@@ -310,6 +310,6 @@ export default function WorkspaceSettings({
           </Card>
         </aside>
       </div>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

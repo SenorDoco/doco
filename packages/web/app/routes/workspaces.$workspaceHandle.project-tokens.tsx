@@ -9,7 +9,7 @@
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   type ProjectTokenSummary,
   listProjectTokens,
@@ -101,7 +101,7 @@ export default function ProjectTokensPage({
   const errorMsg = actionData && "error" in actionData ? actionData.error : null;
 
   return (
-    <SingleColumnPageMain className="py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <Breadcrumb
         items={workspaceBreadcrumb({ workspaceSlug: workspaceHandle, pageLabel: "Project tokens" })}
       />
@@ -183,7 +183,7 @@ export default function ProjectTokensPage({
           Back to settings
         </Link>
       </p>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

@@ -27,7 +27,7 @@ export function HowDocoWorks() {
   return (
     <section className="@container flex flex-col items-center gap-6 text-center">
       <h2 className="text-lg font-bold leading-tight md:text-xl">How Doco works:</h2>
-      <ol className="grid w-full max-w-3xl gap-6 text-left @2xl:grid-cols-3">
+      <ol className="grid w-full gap-6 text-left @2xl:grid-cols-3">
         {STEPS.map((step, i) => (
           <li key={step.title} className="neu-surface flex flex-col gap-3 rounded-2xl bg-card p-6">
             <span className="neu-well flex size-9 items-center justify-center rounded-full font-bold">

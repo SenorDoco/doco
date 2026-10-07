@@ -23,6 +23,7 @@ import { countPendingFeedback } from "~/lib/feedback-reports.server";
 import { createMainScrollRestorer } from "~/lib/main-scroll-restoration";
 import { type CurrentPrincipal, getCurrentPrincipal } from "~/lib/session.server";
 import "./app.css";
+import { PageMain } from "~/components/page-main";
 
 // Root loader — fetch the current Principal once so the shell's header
 // knows whether to offer Sign in or the nav, and whether the persistent
@@ -209,7 +210,7 @@ function RouteError() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <PageMain className="py-6">
       <div className="rounded-lg border border-destructive bg-card p-5">
         <h1 className="text-base font-semibold text-destructive">{message}</h1>
         {details ? <pre className="mt-2 text-xs text-muted-foreground">{details}</pre> : null}
@@ -217,7 +218,7 @@ function RouteError() {
           <pre className="mt-3 overflow-auto text-xs text-muted-foreground">{stack}</pre>
         ) : null}
       </div>
-    </div>
+    </PageMain>
   );
 }
 

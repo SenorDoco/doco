@@ -4,6 +4,7 @@
 import { ArrowUpRight } from "lucide-react";
 import { Fragment, type ReactNode, useState } from "react";
 import { Form, Link } from "react-router";
+import { NarrowPageMain } from "~/components/page-main";
 import type { GitHubInstallationChoice } from "~/lib/github-connection.server";
 
 // Doco's raised "neu-button" affordance — primary (filled) and neutral variants.
@@ -273,7 +274,7 @@ export function GitHubImportStarted({
 }) {
   const list = new Intl.ListFormat("en", { type: "conjunction" });
   return (
-    <main className="mx-auto max-w-xl px-6 py-16">
+    <NarrowPageMain className="py-16">
       <div className="flex flex-col items-center gap-4 text-center">
         <span
           aria-hidden
@@ -307,6 +308,6 @@ export function GitHubImportStarted({
           Continue
         </Link>
       </div>
-    </main>
+    </NarrowPageMain>
   );
 }

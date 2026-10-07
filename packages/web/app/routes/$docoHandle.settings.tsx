@@ -12,6 +12,7 @@ import { validateRequestedDocoHandle } from "@doco/shared";
 import { Form, Link, redirect, useSearchParams } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { PageMain } from "~/components/page-main";
 import { loadDocoRouteForAdmin } from "~/lib/doco-access.server";
 import {
   HANDLE_FORMAT_HELP,
@@ -224,7 +225,7 @@ export default function DocoSettings({
   const currentWorkspaceId = workspaceId || ownerId;
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-6 space-y-5">
+    <PageMain className="py-6 space-y-5">
       <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Settings" })} />
       {actionData?.error ? (
         <div className="rounded-md border border-destructive bg-destructive/5 px-4 py-3 text-xs text-destructive">
@@ -517,6 +518,6 @@ export default function DocoSettings({
           )}
         </CardContent>
       </Card>
-    </main>
+    </PageMain>
   );
 }

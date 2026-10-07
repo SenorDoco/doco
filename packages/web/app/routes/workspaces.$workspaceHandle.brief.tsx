@@ -14,7 +14,7 @@ import { workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { AGENT_INSTRUCTIONS_PATH } from "~/lib/agent-instructions";
 import { BRIEF_TIERS, BRIEF_TIER_LABELS, type Brief, type BriefItem } from "~/lib/brief/brief";
 import { composeBrief } from "~/lib/brief/brief.server";
@@ -75,7 +75,7 @@ export default function WorkspaceBrief({
     items: brief?.items.filter((item) => item.tier === tier) ?? [],
   })).filter((t) => t.items.length > 0);
   return (
-    <SingleColumnPageMain className="py-6 space-y-5">
+    <PageMain className="py-6 space-y-5">
       <PageHeader
         breadcrumb={workspaceBreadcrumb({
           workspaceSlug: workspace.handle,
@@ -207,7 +207,7 @@ export default function WorkspaceBrief({
           </Card>
         </aside>
       </div>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

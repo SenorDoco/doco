@@ -86,7 +86,6 @@ import {
   CONNECTION_ACTION_DESTRUCTIVE,
   CONNECTION_ACTION_SECONDARY,
 } from "../../components/integrations-shell";
-import { singleColumnPageMainWidth } from "../../components/page-main";
 import IntegrationsPage, { meta as accountIntegrationsMeta } from "../integrations";
 import WorkspaceIntegrations, {
   meta as workspaceIntegrationsMeta,
@@ -126,7 +125,7 @@ describe("integrations page layout", () => {
     ];
 
     for (const page of pages) {
-      expect(mainClassName(renderRoute(page))).toContain(singleColumnPageMainWidth);
+      expect(mainClassName(renderRoute(page))).toContain("max-w-6xl");
     }
   });
 

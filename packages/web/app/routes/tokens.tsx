@@ -17,7 +17,7 @@ import { hostBreadcrumb } from "~/components/breadcrumb";
 import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { agentConnectGuides } from "~/lib/agent-connect-guides";
 import { agentInstructions } from "~/lib/agent-instructions";
 import {
@@ -226,7 +226,7 @@ export default function ApiKeysPage({
   const catalog = useMemo(() => scopeOptionsToCatalog(scopeOptions), [scopeOptions]);
 
   return (
-    <SingleColumnPageMain className="py-6 space-y-6">
+    <PageMain className="py-6 space-y-6">
       <PageHeader breadcrumb={hostBreadcrumb({ pageLabel: "Tokens/MCP" })} title="Tokens/MCP" />
 
       <TokensTabs
@@ -237,7 +237,7 @@ export default function ApiKeysPage({
         error={error}
         minted={minted}
       />
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

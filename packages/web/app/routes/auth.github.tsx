@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { readOAuthConfig, setOAuthReturnCookie, startOAuth } from "~/lib/oauth.server";
 
 /**
@@ -42,7 +42,7 @@ export default function AuthGitHub({
   // reaches this component.
   if (!loaderData || loaderData.error !== "missing_config") return null;
   return (
-    <SingleColumnPageMain className="py-10 space-y-4">
+    <PageMain className="py-10 space-y-4">
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "GitHub OAuth" }]} />
       <Card>
         <CardHeader>
@@ -104,6 +104,6 @@ DOCO_GITHUB_CLIENT_SECRET=<from the OAuth app>`}
           </p>
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

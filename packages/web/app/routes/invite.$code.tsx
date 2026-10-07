@@ -29,6 +29,7 @@ import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { HowDocoWorks } from "~/components/how-doco-works";
+import { PageMain } from "~/components/page-main";
 import { rootDir } from "~/lib/db.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
 import { startOnboarding } from "~/lib/onboarding.server";
@@ -349,9 +350,9 @@ function errorDescription(err: LoaderError["error"]): string {
 
 function InviteMain({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12 w-full space-y-4">
+    <PageMain className="py-12 space-y-4">
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
       {children}
-    </main>
+    </PageMain>
   );
 }

@@ -52,10 +52,12 @@ describe("How Doco works", () => {
   });
 
   // Three columns where there is room (the home page and the invite page on a
-  // computer); one step under the other on phones.
+  // computer); one step under the other on phones. The steps span the page
+  // (Alexander, 2026-10-07: "448px and 1152 - no 768px").
   it("sits the steps side by side only when its own width allows", () => {
     const html = render();
     expect(html).toMatch(/<section[^>]*class="[^"]*@container/);
     expect(html).toMatch(/<ol[^>]*class="[^"]*@2xl:grid-cols-3/);
+    expect(html).not.toMatch(/max-w-/);
   });
 });

@@ -13,6 +13,7 @@ import { LifecycleBadge, NodeTypeBadge } from "~/components/badge";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
+import { PageMain } from "~/components/page-main";
 import { isAgentRead, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { embedQuery } from "~/lib/embedding-provider.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -201,7 +202,7 @@ export default function SearchInDoco({
   );
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <Breadcrumb items={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Search" })} />
       {/* Two columns: the search box + facet filters live in a left sidebar
           so they stop pushing the results down the page; results fill the
@@ -302,7 +303,7 @@ export default function SearchInDoco({
           <PaginationControls pagination={pagination} searchParams={sp} />
         </section>
       </div>
-    </main>
+    </PageMain>
   );
 }
 

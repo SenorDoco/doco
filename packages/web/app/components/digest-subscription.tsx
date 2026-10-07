@@ -4,6 +4,7 @@
 
 import { Form, Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { NarrowPageMain } from "~/components/page-main";
 
 export type DigestSubscriptionView =
   | { state: "subscribed" | "unsubscribed"; workspaceHandle: string; token: string }
@@ -17,7 +18,7 @@ const BUTTON =
 
 export function DigestSubscription({ view }: { view: DigestSubscriptionView }) {
   return (
-    <main className="mx-auto max-w-md space-y-4 px-6 py-10">
+    <NarrowPageMain className="space-y-4 py-10">
       <Card>
         <CardHeader>
           <CardTitle>{TITLES[view.state]}</CardTitle>
@@ -26,7 +27,7 @@ export function DigestSubscription({ view }: { view: DigestSubscriptionView }) {
           <Body view={view} />
         </CardContent>
       </Card>
-    </main>
+    </NarrowPageMain>
   );
 }
 

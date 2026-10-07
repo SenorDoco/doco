@@ -1,6 +1,7 @@
 import { Link, redirect } from "react-router";
 import { DocoMark } from "~/components/doco-mark";
 import { HowDocoWorks } from "~/components/how-doco-works";
+import { PageMain } from "~/components/page-main";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { TAGLINE } from "~/lib/tagline";
 
@@ -26,13 +27,13 @@ export function meta() {
 
 export default function Home() {
   return (
-    <main className="px-6 pb-16">
+    <PageMain className="pb-16">
       {/* Alexander, 2026-10-02: the same visible gap (96px) between the
           header and the logo, the headline and Get started, and Get started
           and How Doco works. Each margin is 96px less the air its element
           already shows: 4px atop the logo's artwork, the headline's line
           box below its text, and the caption's below "minute". */}
-      <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+      <div className="flex flex-col items-center text-center">
         <h1 className="sr-only">Doco</h1>
         <DocoMark height={72} raised className="mt-23" />
         <p className="mt-3 text-2xl font-bold leading-tight md:text-3xl">{TAGLINE}</p>
@@ -47,6 +48,6 @@ export default function Home() {
           <HowDocoWorks />
         </div>
       </div>
-    </main>
+    </PageMain>
   );
 }

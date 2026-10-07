@@ -9,6 +9,7 @@
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { canWriteDoco, loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
 import {
@@ -87,7 +88,7 @@ export default function PerspectivesPicker({
   const navigation = useNavigation();
   const submitting = navigation.state === "submitting";
   return (
-    <main className="mx-auto max-w-3xl px-6 py-6">
+    <PageMain className="py-6">
       <PageHeader
         className="mb-4"
         breadcrumb={[
@@ -161,6 +162,6 @@ export default function PerspectivesPicker({
           );
         })}
       </ul>
-    </main>
+    </PageMain>
   );
 }

@@ -2,7 +2,7 @@ import { Form, Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   HANDLE_FORMAT_HELP,
   HANDLE_INPUT_PATTERN,
@@ -80,7 +80,7 @@ export default function NewWorkspace({
 }) {
   const suggested = actionData?.suggested ?? null;
   return (
-    <SingleColumnPageMain className="py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={hostBreadcrumb({
           section: { label: "Workspaces", to: "/workspaces" },
@@ -148,6 +148,6 @@ export default function NewWorkspace({
           </Form>
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

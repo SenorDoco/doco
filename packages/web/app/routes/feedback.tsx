@@ -2,7 +2,7 @@ import { Bug, Lightbulb } from "lucide-react";
 import { Form, redirect } from "react-router";
 import { Badge } from "~/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   type FeedbackReportRow,
   clearFeedbackReports,
@@ -180,7 +180,7 @@ function ClearButton({
 export default function FeedbackPage({ loaderData }: { loaderData: LoaderData }) {
   const { reports, counts } = loaderData;
   return (
-    <SingleColumnPageMain className="space-y-6 py-8">
+    <PageMain className="space-y-6 py-8">
       <header className="space-y-3">
         <h1 className="text-2xl font-semibold">Feedback</h1>
         <div className="flex flex-wrap gap-2 text-xs">
@@ -204,7 +204,7 @@ export default function FeedbackPage({ loaderData }: { loaderData: LoaderData })
           ))}
         </div>
       )}
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

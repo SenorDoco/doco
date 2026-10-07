@@ -24,7 +24,7 @@ import {
   RemoveSlackButton,
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   type AccountIntegrationsRollup,
   type DocoPicker,
@@ -123,7 +123,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
 
   if (slackConfirmation) {
     return (
-      <SingleColumnPageMain className="space-y-8 py-8">
+      <PageMain className="space-y-8 py-8">
         <Breadcrumb items={hostBreadcrumb({ pageLabel: "App integrations" })} />
         <section className="max-w-2xl space-y-5">
           <CheckCircle2 className="h-8 w-8 text-primary" aria-hidden="true" />
@@ -143,12 +143,12 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
             Back to integrations
           </a>
         </section>
-      </SingleColumnPageMain>
+      </PageMain>
     );
   }
 
   return (
-    <SingleColumnPageMain className="space-y-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={hostBreadcrumb({ pageLabel: "App integrations" })}
         title="App integrations"
@@ -291,7 +291,7 @@ export default function IntegrationsPage({ loaderData }: { loaderData: Integrati
           <AvailableIntegrations pageScope="account" />
         </section>
       </div>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

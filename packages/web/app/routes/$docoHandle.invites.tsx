@@ -11,7 +11,7 @@ import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PersonInviteDialog } from "~/components/invite-dialog";
 import { PageHeader } from "~/components/page-header";
-import { DocoPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { rootDir } from "~/lib/db.server";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { type Invite, InviteStore } from "~/lib/invite-store.server";
@@ -137,7 +137,7 @@ export default function Invites({
   const [closedInviteUrl, setClosedInviteUrl] = useState<string | null>(null);
 
   return (
-    <DocoPageMain className="py-6 space-y-5">
+    <PageMain className="py-6 space-y-5">
       <PageHeader
         breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Invites" })}
         title={
@@ -227,7 +227,7 @@ export default function Invites({
           ))}
         </CardContent>
       </Card>
-    </DocoPageMain>
+    </PageMain>
   );
 }
 

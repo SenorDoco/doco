@@ -11,6 +11,7 @@ import { Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { type WorkspaceSetup, WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import { STEP_TITLES, pendingStep } from "~/lib/onboarding-steps";
 import { loadUnfinishedOnboarding } from "~/lib/onboarding.server";
@@ -52,7 +53,7 @@ export default function WorkspacesPage({
   // Every person gets a personal workspace named after them; it isn't a project's.
   const inAProject = workspaces.some((w) => w.handle.toLowerCase() !== me.username.toLowerCase());
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={hostBreadcrumb({ pageLabel: "Workspaces" })}
         title="Workspaces"
@@ -100,6 +101,6 @@ export default function WorkspacesPage({
           <p className="text-sm text-muted-foreground">No workspaces yet.</p>
         ) : null}
       </section>
-    </main>
+    </PageMain>
   );
 }
