@@ -1,13 +1,13 @@
 // The emails that get a workspace going: the welcome its creator gets the
 // moment it exists, and the reminder 15 minutes later while a step is still
-// open. When asking the agent is all that's left, the reminder carries the
+// open. When asking the agent is the next step, the reminder carries the
 // message to send the agent itself, the same one the workspace page hands
 // over. Pure.
 
 import { agentInstructionsForWorkspace } from "./agent-instructions";
 import { emailHtml } from "./email-html";
 import type { Email } from "./email.server";
-import { ONBOARDING_STEPS, STEP_TITLES, type StepState } from "./onboarding-steps";
+import { ONBOARDING_STEPS, STEP_TITLES, type StepState, pendingStep } from "./onboarding-steps";
 
 type Message = Omit<Email, "to">;
 
@@ -38,15 +38,14 @@ export function welcomeEmail(opts: { baseUrl: string; workspaceHandle: string })
 }
 
 /** The reminder for steps still open, or the agent's message when asking
- *  the agent is the only one left. */
+ *  the agent is the next one. */
 export function reminderEmail(opts: {
   baseUrl: string;
   workspaceHandle: string;
   steps: readonly StepState[];
 }): Message {
   const url = workspaceUrl(opts.baseUrl, opts.workspaceHandle);
-  const open = opts.steps.filter((s) => !s.done);
-  if (open.length === 1 && open[0].step === "agent") {
+  if (pendingStep(opts) === "agent") {
     const instructions = agentInstructionsForWorkspace(opts.baseUrl, opts.workspaceHandle);
     const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it the message below: it has your agent start using Doco there and note in ${opts.workspaceHandle}'s Agents chats Doco that it received the instructions.`;
     const after = `You can also copy the message from ${opts.workspaceHandle}: ${url}`;

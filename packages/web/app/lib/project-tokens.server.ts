@@ -173,12 +173,22 @@ export async function queryProjectTokenDocos(
   return r.rows;
 }
 
-/** What the owner pastes into the repository, shown once with the token. */
-export function projectTokenInstallHint(workspaceHandle: string, fullToken: string): string {
+/**
+ * What the agent does with a fresh token, shown once with it wherever one is
+ * minted (the workspace's setup, its project tokens page, the API): save it
+ * where the Doco hook reads it, keep it out of a public repository's history,
+ * and install the hook if it isn't yet.
+ */
+export function projectTokenInstallHint(
+  baseUrl: string,
+  workspaceHandle: string,
+  fullToken: string,
+): string {
+  const host = baseUrl.replace(/\/+$/, "");
   return [
-    "Save this token now; it is shown once and cannot be recovered.",
+    `Turn on the Doco hook in this project for the workspace ${workspaceHandle} with this project token, which reads every Doco in ${workspaceHandle}.`,
     "",
-    "Commit it to the repository at `.doco/project-tokens.json`:",
+    "Save it in `.doco/project-tokens.json` at the root of the repository, keeping any entries already there:",
     "",
     "```json",
     "{",
@@ -186,8 +196,8 @@ export function projectTokenInstallHint(workspaceHandle: string, fullToken: stri
     "}",
     "```",
     "",
-    "The Doco hook and the agents that clone the repository then read every doco in the workspace with it, with no OAuth. Any request may also send it as `Authorization: Bearer <token>`.",
+    "Commit the file so every clone of the repository has the token, unless the repository is public: then add `.doco/project-tokens.json` to `.gitignore` instead.",
     "",
-    "Revoke it from the workspace's project tokens page when the repository's read access changes.",
+    `If the Doco hook isn't installed yet, install it as ${host}/agents#hook shows. Then tell the user the hook is on: it briefs you from ${workspaceHandle} before each prompt and each file edit.`,
   ].join("\n");
 }

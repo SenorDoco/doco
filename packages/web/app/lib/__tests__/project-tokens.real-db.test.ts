@@ -16,6 +16,7 @@ const {
   isProjectToken,
   listProjectTokens,
   mintProjectToken,
+  projectTokenInstallHint,
   queryProjectTokenDocos,
   revokeProjectTokenById,
   validateProjectToken,
@@ -86,11 +87,41 @@ describe("project tokens", () => {
     expect((await listProjectTokens("workspace_1"))[0]?.revoked).toBe(true);
   });
 
+  // The workspace's setup reads a used token as the Doco hook turned on
+  // (decision_01M4BK9TWE3SYDC1X2D8SB67Y2), so the mark lands with the read.
+  it("marks a token used the moment it reads", async () => {
+    const { full_token } = await mintProjectToken({
+      workspace_id: "workspace_1",
+      created_by_user_id: "user_1",
+    });
+    expect((await listProjectTokens("workspace_1"))[0]?.last_used_at).toBeNull();
+    await validateProjectToken(full_token);
+    expect((await listProjectTokens("workspace_1"))[0]?.last_used_at).not.toBeNull();
+  });
+
   it("reads every live Doco of its workspace", async () => {
     const ids = async (workspace: string) =>
       (await queryProjectTokenDocos(dbm.db, workspace)).map((d) => d.id);
     expect(await ids("workspace_1")).toEqual(["doco_a", "doco_b"]);
     expect(await ids("workspace_2")).toEqual(["doco_c"]);
     expect(await ids("workspace_none")).toEqual([]);
+  });
+});
+
+// One message, wherever a token is minted (the workspace's setup, its project
+// tokens page, the API): what the agent does with it.
+describe("projectTokenInstallHint", () => {
+  const hint = projectTokenInstallHint("https://doco.test/", "acme", "doco_pt_secret");
+
+  it("has the agent save the token in .doco/project-tokens.json, keyed by the workspace", () => {
+    expect(hint).toContain("Turn on the Doco hook in this project for the workspace acme");
+    expect(hint).toContain("`.doco/project-tokens.json`");
+    expect(hint).toContain('{\n  "acme": "doco_pt_secret"\n}');
+  });
+
+  it("commits it unless the repository is public, and installs the hook if it is missing", () => {
+    expect(hint).toContain("unless the repository is public");
+    expect(hint).toContain("`.gitignore`");
+    expect(hint).toContain("install it as https://doco.test/agents#hook shows");
   });
 });

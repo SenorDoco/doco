@@ -5,8 +5,9 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceRole: vi.fn(),
   resolveWorkspaceByHandle: vi.fn(),
   ensureWorkspaceDoco: vi.fn(),
-  finishSourcesStep: vi.fn(),
+  finishStep: vi.fn(),
   loadOnboardingProgress: vi.fn(),
+  mintProjectToken: vi.fn(),
   slackConfigured: vi.fn(),
   slackAuthorizeUrl: vi.fn(),
 }));
@@ -27,10 +28,15 @@ vi.mock("~/lib/knowledge-sources.server", () => ({
   },
 }));
 vi.mock("~/lib/onboarding.server", () => ({
-  finishSourcesStep: mocks.finishSourcesStep,
+  finishStep: mocks.finishStep,
   loadOnboardingProgress: mocks.loadOnboardingProgress,
 }));
+vi.mock("~/lib/project-tokens.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/project-tokens.server")>()),
+  mintProjectToken: mocks.mintProjectToken,
+}));
 
+import { projectTokenInstallHint } from "~/lib/project-tokens.server";
 import { action, loader } from "../workspaces.$workspaceHandle.onboarding";
 
 const ACME = { id: "workspace_acme", handle: "acme" };
@@ -107,9 +113,9 @@ describe("POST /workspaces/:handle/onboarding", () => {
   it("finishes (or skips) the other sources", async () => {
     const res = await post({ intent: "finish-sources" });
     expect(res.headers.get("Location")).toBe("/workspaces/acme");
-    expect(mocks.finishSourcesStep).toHaveBeenCalledWith(
+    expect(mocks.finishStep).toHaveBeenCalledWith(
       {},
-      { workspaceId: "workspace_acme", userId: "user_alice" },
+      { workspaceId: "workspace_acme", userId: "user_alice", step: "sources" },
     );
   });
 
@@ -117,7 +123,46 @@ describe("POST /workspaces/:handle/onboarding", () => {
     mocks.getWorkspaceRole.mockResolvedValue("writer");
     const res = await post({ intent: "finish-sources" });
     expect(res.headers.get("Location")).toBe("/workspaces/acme?onboarding=not_owner");
-    expect(mocks.finishSourcesStep).not.toHaveBeenCalled();
+    expect(mocks.finishStep).not.toHaveBeenCalled();
+  });
+
+  // Alexander, 2026-10-07 (decision_01M4BK9TWE3SYDC1X2D8SB67Y2): the hook step
+  // creates the workspace's project token and hands over the message that has
+  // the agent save it.
+  it("creates a project token for the hook once the owner confirms, with the message for the agent", async () => {
+    mocks.mintProjectToken.mockResolvedValue({ full_token: "doco_pt_secret" });
+    const res = await post({ intent: "hook-token", confirm_repo_readable: "on" });
+    expect(mocks.mintProjectToken).toHaveBeenCalledWith({
+      workspace_id: "workspace_acme",
+      created_by_user_id: "user_alice",
+      label: "Doco hook",
+    });
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    expect(await res.json()).toEqual({
+      message: projectTokenInstallHint("https://doco.test", "acme", "doco_pt_secret"),
+    });
+  });
+
+  it("creates no token until the owner confirms who will read the workspace", async () => {
+    const res = await post({ intent: "hook-token" });
+    expect(res.headers.get("Location")).toBe("/workspaces/acme?onboarding=unconfirmed");
+    expect(mocks.mintProjectToken).not.toHaveBeenCalled();
+  });
+
+  it("leaves the hook's token to the workspace's owners", async () => {
+    mocks.getWorkspaceRole.mockResolvedValue("writer");
+    const res = await post({ intent: "hook-token", confirm_repo_readable: "on" });
+    expect(res.headers.get("Location")).toBe("/workspaces/acme?onboarding=not_owner");
+    expect(mocks.mintProjectToken).not.toHaveBeenCalled();
+  });
+
+  it("ends the hook step when the owner's agent doesn't run hooks", async () => {
+    const res = await post({ intent: "finish-hook" });
+    expect(res.headers.get("Location")).toBe("/workspaces/acme");
+    expect(mocks.finishStep).toHaveBeenCalledWith(
+      {},
+      { workspaceId: "workspace_acme", userId: "user_alice", step: "hook" },
+    );
   });
 
   it("sends someone signed out to sign in", async () => {

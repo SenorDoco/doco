@@ -1,6 +1,6 @@
 // A new workspace's creator gets a welcome email that links to it, and 15
-// minutes later a reminder while a step is open. When asking the agent is all
-// that's left, the reminder carries the message for the agent right away.
+// minutes later a reminder while a step is open. When asking the agent is the
+// next step, the reminder carries the message for the agent right away.
 import { describe, expect, it } from "vitest";
 import { agentInstructionsForWorkspace } from "../agent-instructions";
 import { reminderEmail, welcomeEmail } from "../onboarding-emails";
@@ -17,15 +17,15 @@ describe("welcomeEmail", () => {
     expect(email.html).toContain('href="https://doco.test/workspaces/acme"');
   });
 
-  it("names the four steps that set it up", () => {
+  it("names the five steps that set it up", () => {
     expect(email.text).toContain(
-      "Four steps set it up: connect GitHub, connect other sources of knowledge, connect Doco to your agent, and ask your agent to start using Doco.",
+      "Five steps set it up: connect GitHub, connect other sources of knowledge, connect Doco to your agent, ask your agent to start using Doco, and turn on the Doco hook.",
     );
   });
 });
 
 describe("reminderEmail", () => {
-  it("invites the creator to finish the four simple steps, marking the done ones", () => {
+  it("invites the creator to finish the five simple steps, marking the done ones", () => {
     const email = reminderEmail({
       ...base,
       steps: [
@@ -33,18 +33,20 @@ describe("reminderEmail", () => {
         { step: "sources", done: false },
         { step: "mcp", done: false },
         { step: "agent", done: false },
+        { step: "hook", done: false },
       ],
     });
     expect(email.subject).toBe("Finish setting up acme on Doco");
-    expect(email.text).toContain("acme is four simple steps from");
+    expect(email.text).toContain("acme is five simple steps from");
     expect(email.text).toContain(
-      "1. Connect GitHub (done)\n2. Connect other sources of knowledge\n3. Connect Doco to your agent\n4. Ask your agent to start using Doco\n",
+      "1. Connect GitHub (done)\n2. Connect other sources of knowledge\n3. Connect Doco to your agent\n4. Ask your agent to start using Doco\n5. Turn on the Doco hook\n",
     );
     expect(email.text).toContain("https://doco.test/workspaces/acme");
     expect(email.text).not.toContain("doco:begin");
   });
 
-  it("hands over the agent's message when asking the agent is the only step left", () => {
+  // The hook step comes after it, so asking the agent is still what's next.
+  it("hands over the agent's message when asking the agent is the next step", () => {
     const email = reminderEmail({
       ...base,
       steps: [
@@ -52,6 +54,7 @@ describe("reminderEmail", () => {
         { step: "sources", done: true },
         { step: "mcp", done: true },
         { step: "agent", done: false },
+        { step: "hook", done: false },
       ],
     });
     expect(email.subject).toBe("Ask your agent to start using Doco in acme");

@@ -1,14 +1,16 @@
 // The steps that get a workspace going, on top of its page until every one is
 // done: connect GitHub, connect other sources of knowledge (or skip them),
-// connect Doco to your agent, ask your agent to start using Doco. Someone who
-// joined from an invite only has the last two. The page keeps the person on
-// the first step not done. Connecting GitHub goes through the GitHub setup
+// connect Doco to your agent, ask your agent to start using Doco, turn on the
+// Doco hook (or skip it). Someone who joined from an invite only has the two
+// about their agent. The page keeps the person on the first step not done.
+// Connecting GitHub goes through the GitHub setup
 // (routes/integrations.github.tsx), which asks which repositories to bring;
 // the other sources are one click each
 // (routes/workspaces.$workspaceHandle.onboarding.tsx) and come back here
-// saying what happened. The last two wait in view for what happens in the
-// agent: the person approving its connection to Doco, then its note in the
-// workspace's Agents chats Doco.
+// saying what happened. The last three wait in view for what happens in the
+// agent: the person approving its connection to Doco, its note in the
+// workspace's Agents chats Doco, then the hook's first brief with the project
+// token the step creates.
 
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -30,11 +32,13 @@ const SECONDARY =
 
 /** Why a step's click came back without doing it (`?onboarding=<reason>`). */
 const REFUSALS: Record<string, string> = {
-  not_owner: "Only an owner of this workspace can connect its sources.",
+  not_owner: "Only an owner of this workspace can take this step.",
   github_unavailable: "GitHub isn't set up on this host, so Doco can't connect it.",
   source_unavailable: "That source isn't set up on this host, so Doco can't connect it.",
   source_public:
     "Make the source's Doco private first: a copy of a team's Slack or Notion is never public.",
+  unconfirmed:
+    "Check the box first: anyone who can read the repository where the token is saved will read every Doco in this workspace.",
   unknown: "That didn't work. Try again.",
 };
 
@@ -57,7 +61,7 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
         </CardTitle>
         <CardDescription>
           {creator
-            ? "Four steps to shared knowledge and context for your team and its agents."
+            ? "Five steps to shared knowledge and context for your team and its agents."
             : `You joined ${view.workspaceHandle}. Two steps left: connect Doco to your agent, then ask it to start using Doco here.`}
         </CardDescription>
       </CardHeader>
@@ -145,7 +149,8 @@ function StepBody({
   if (step === "github") return <GitHubStep view={view} />;
   if (step === "sources") return <SourcesStep view={view} action={action} />;
   if (step === "mcp") return <McpStep view={view} action={action} onFinished={onFinished} />;
-  return <AgentStep view={view} action={action} onFinished={onFinished} />;
+  if (step === "agent") return <AgentStep view={view} action={action} onFinished={onFinished} />;
+  return <HookStep view={view} action={action} onFinished={onFinished} />;
 }
 
 /**
@@ -338,6 +343,74 @@ function AgentStep({
   );
 }
 
+function HookStep({
+  view,
+  action,
+  onFinished,
+}: {
+  view: OnboardingView;
+  action: string;
+  onFinished: () => void;
+}) {
+  useWaitForAgent(view, action, onFinished);
+  const fetcher = useFetcher<{ message: string }>();
+  const message = fetcher.data?.message;
+  const skip = (
+    <button type="submit" name="intent" value="finish-hook" formNoValidate className={SECONDARY}>
+      My agent doesn&apos;t run hooks
+    </button>
+  );
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-muted-foreground">
+        The Doco hook briefs your agent from {view.workspaceHandle} before each prompt and each file
+        edit, so it acts on what your team already decided. It runs in Claude Code, Codex and Gemini
+        CLI, and your agent installs it from the message in step 4. It reads {view.workspaceHandle}{" "}
+        with a project token, which only an owner can create.
+      </p>
+      {message ? (
+        <>
+          <AgentInstructionsBlock title="Message for your agent" instructions={message} />
+          <p className="text-xs text-muted-foreground">
+            The token is shown only here, once. Revoke it any time from the workspace&apos;s{" "}
+            <Link to={`/workspaces/${view.workspaceHandle}/project-tokens`}>project tokens</Link>.
+          </p>
+          <Waiting>
+            Waiting for the hook&apos;s first brief. Once your agent saves the token, send it
+            another message, or start a new session if it just installed the hook. This page moves
+            on by itself.
+          </Waiting>
+          <fetcher.Form method="post" action={action}>
+            {skip}
+          </fetcher.Form>
+        </>
+      ) : (
+        <fetcher.Form method="post" action={action} className="space-y-3">
+          <label className="flex items-start gap-2 text-xs">
+            <input type="checkbox" name="confirm_repo_readable" required className="mt-0.5" />
+            <span>
+              Anyone who can read the repository where the token is saved will be able to read every
+              Doco in {view.workspaceHandle}.
+            </span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              name="intent"
+              value="hook-token"
+              disabled={fetcher.state !== "idle"}
+              className={PRIMARY}
+            >
+              Create project token
+            </button>
+            {skip}
+          </div>
+        </fetcher.Form>
+      )}
+    </div>
+  );
+}
+
 function DoneSummary({ step, view }: { step: OnboardingStep; view: OnboardingView }) {
   if (step === "github" && view.github.docos.length > 0) {
     return (
@@ -378,8 +451,8 @@ function AllSet({ view }: { view: OnboardingView }) {
           {view.workspaceHandle} is set up
         </CardTitle>
         <CardDescription>
-          Your agent wrote in {view.agent.agentsChatsHandle ?? "Agents chats"}, so it's working in
-          Doco. It loads the workspace's context before it answers and records what it decides.
+          Your agent is working in Doco: it loads the workspace&apos;s context before it answers and
+          records what it decides.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -1,10 +1,11 @@
-// Getting a workspace going. Its owners walk four steps on its page: connect
+// Getting a workspace going. Its owners walk five steps on its page: connect
 // GitHub, connect other sources of knowledge (or skip them), connect Doco to
-// their agent, ask their agent to start using Doco. Everyone else in it walks
-// only the last two. The workspace page (and its card on the list) keeps the
-// person on the first step not done until every one is. Whoever creates a
-// workspace or joins it from an invite gets a reminder email 15 minutes later
-// if a step is still open.
+// their agent, ask their agent to start using Doco, turn on the Doco hook (or
+// skip it). Everyone else in it walks only connecting and asking their agent.
+// The workspace page (and its card on the list) keeps the person on the first
+// step not done until every one is. Whoever creates a workspace or joins it
+// from an invite gets a reminder email 15 minutes later if a step is still
+// open.
 //
 // Each step reads as done from what the database already holds:
 //   github  — a Doco in the workspace is connected to a GitHub repository or
@@ -16,13 +17,17 @@
 //             workspace and hasn't been revoked or run out, or their agent
 //             already read or wrote in it;
 //   agent   — the person's agent wrote into the workspace's Agents chats Doco
-//             (the instructions ask it to note there that it got them).
+//             (the instructions ask it to note there that it got them);
+//   hook    — a project token of the workspace, not revoked, has been used,
+//             which is how the hook reaches Doco (the token is the
+//             workspace's, so Doco can't tell whose hook it was), or the
+//             person said their agent doesn't run hooks.
 // Every member of a workspace walks them, except in their personal workspace
 // (named after them), which isn't a project's. workspace_onboarding holds what
 // nothing else records: who created the workspace or joined it from an invite,
-// when (the reminder's clock), and when they finished the other-sources step.
-// A member without a row (in a workspace made before the steps, or added
-// another way) walks them by role, and never gets a reminder.
+// when (the reminder's clock), and when they ended the other-sources and hook
+// steps themselves. A member without a row (in a workspace made before the
+// steps, or added another way) walks them by role, and never gets a reminder.
 
 import { byAgentOverApiSql } from "./authoring-provenance";
 import { type JoinedAs, ONBOARDING_STEPS, type StepState, pendingStep } from "./onboarding-steps";
@@ -57,19 +62,24 @@ export async function startOnboarding(
   );
 }
 
-/** Finish the other-sources step, with whatever was connected or nothing.
- *  Only owners walk it, so a member without a row is one; the row it adds
- *  counts as reminded, since nobody started the steps to be reminded of. */
-export async function finishSourcesStep(
+/** The steps a person ends themselves, each with the column that says when. */
+const ENDED_BY_THE_PERSON = { sources: "sources_done_at", hook: "hook_done_at" } as const;
+
+/** End the other-sources step (with whatever was connected, or nothing) or the
+ *  hook step (their agent doesn't run hooks). Only owners walk them, so a
+ *  member without a row is one; the row it adds counts as reminded, since
+ *  nobody started the steps to be reminded of. */
+export async function finishStep(
   c: QueryClient,
-  opts: { workspaceId: string; userId: string },
+  opts: { workspaceId: string; userId: string; step: keyof typeof ENDED_BY_THE_PERSON },
 ): Promise<void> {
+  const column = ENDED_BY_THE_PERSON[opts.step];
   await c.query(
     `INSERT INTO workspace_onboarding
-       (workspace_id, user_id, joined_as, sources_done_at, reminded_at)
+       (workspace_id, user_id, joined_as, ${column}, reminded_at)
      VALUES ($1, $2, 'creator', now(), now())
      ON CONFLICT (workspace_id, user_id) DO UPDATE
-       SET sources_done_at = COALESCE(workspace_onboarding.sources_done_at, now())`,
+       SET ${column} = COALESCE(workspace_onboarding.${column}, now())`,
     [opts.workspaceId, opts.userId],
   );
 }
@@ -133,7 +143,13 @@ const PROGRESS_SQL = `
               AND d.data->>'template_handle' = 'agents-chats'
               AND cs.actor = wu.user_id
               AND ${byAgentOverApiSql("cs")}
-         ) AS agent
+         ) AS agent,
+         o.hook_done_at IS NOT NULL OR EXISTS (
+           SELECT 1 FROM project_tokens pt
+            WHERE pt.workspace_id = wu.workspace_id
+              AND NOT pt.revoked
+              AND pt.last_used_at IS NOT NULL
+         ) AS hook
     FROM workspace_users wu
     JOIN workspaces w ON w.id = wu.workspace_id
     JOIN users u ON u.id = wu.user_id
@@ -150,6 +166,7 @@ interface ProgressRow {
   sources: boolean;
   mcp: boolean;
   agent: boolean;
+  hook: boolean;
 }
 
 function toProgress(row: ProgressRow): OnboardingProgress {

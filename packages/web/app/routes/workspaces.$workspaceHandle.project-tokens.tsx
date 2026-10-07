@@ -3,10 +3,12 @@
 //
 // Minting sits behind a confirmation checkbox: anyone with read access to the
 // repository the token is committed to will read every doco in this
-// workspace. The minted token is shown once, with what to paste into
-// .doco/project-tokens.json.
+// workspace. The minted token is shown once, with the message that has an
+// agent save it in .doco/project-tokens.json and turn on the Doco hook.
 
+import { getPublicBaseUrl } from "@doco/shared";
 import { Form, Link, redirect, useNavigation } from "react-router";
+import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageMain } from "~/components/page-main";
@@ -76,7 +78,11 @@ export async function action({
     return {
       minted: true,
       full_token: result.full_token,
-      install_hint: projectTokenInstallHint(workspace.handle, result.full_token),
+      install_hint: projectTokenInstallHint(
+        getPublicBaseUrl(request),
+        workspace.handle,
+        result.full_token,
+      ),
     };
   }
 
@@ -157,9 +163,10 @@ export default function ProjectTokensPage({
               <pre className="overflow-x-auto rounded bg-background px-2 py-1 text-xs font-mono">
                 {justMinted.full_token}
               </pre>
-              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-background px-2 py-1 text-xs">
-                {justMinted.install_hint}
-              </pre>
+              <AgentInstructionsBlock
+                title="Message for your agent"
+                instructions={justMinted.install_hint}
+              />
             </div>
           ) : null}
         </CardContent>

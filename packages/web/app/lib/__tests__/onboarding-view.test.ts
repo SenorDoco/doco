@@ -67,6 +67,7 @@ describe("loadOnboardingView", () => {
         { step: "sources", done: false },
         { step: "mcp", done: false },
         { step: "agent", done: false },
+        { step: "hook", done: false },
       ],
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_ana" });
