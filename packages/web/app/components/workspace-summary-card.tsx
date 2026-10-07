@@ -1,7 +1,7 @@
 // One workspace at a glance: the icons of its Docos, any integration or agent
 // gone unexpectedly quiet, the three things to do next (add a Doco or a source
-// of knowledge, invite a person, invite an agent: the message that asks an
-// agent to start using Doco in this workspace, in the invite dialog) and when
+// of knowledge, invite a person, invite an agent: connect Doco to it, then the
+// message that asks it to start using Doco here, in the invite dialog) and when
 // it last saw activity. The Workspaces page lists one per workspace, with the way back to
 // the person's open onboarding step; each workspace's own page shows its card
 // under the steps.
@@ -10,9 +10,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Card, CardContent } from "~/components/card";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
-import { InviteDialog } from "~/components/invite-dialog";
+import { AgentInviteDialog } from "~/components/invite-dialog";
 import { SilenceAlertList } from "~/components/silence-alerts";
-import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import { timeAgo } from "~/lib/time-ago";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
@@ -33,7 +32,7 @@ export function WorkspaceSummaryCard({
   setup,
 }: {
   workspace: WorkspaceSummary;
-  /** Doco's public URL, which the agent's message points at. */
+  /** Doco's public URL, which the agent's guide and message point at. */
   baseUrl: string;
   /** The workspace's own page already names it in the header. */
   showName?: boolean;
@@ -107,11 +106,9 @@ export function WorkspaceSummaryCard({
           </button>
         </div>
         {invitingAgent ? (
-          <InviteDialog
-            title="Send this prompt to your agent"
-            description={`It asks your agent to start using Doco in ${workspace.handle}.`}
-            message={agentInstructionsForWorkspace(baseUrl, workspace.handle)}
-            copyLabel="Copy prompt"
+          <AgentInviteDialog
+            workspaceHandle={workspace.handle}
+            baseUrl={baseUrl}
             onClose={() => setInvitingAgent(false)}
           />
         ) : null}
