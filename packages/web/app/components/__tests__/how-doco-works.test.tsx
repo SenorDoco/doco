@@ -4,18 +4,9 @@ import { describe, expect, it } from "vitest";
 import { HowDocoWorks } from "../how-doco-works";
 
 // Alexander, 2026-10-06: the home page and the invite page explain Doco with
-// three steps instead of the animation, in his words, each led in bold.
+// three steps instead of the animation, in his words.
 function render(): string {
   return renderToStaticMarkup(createElement(HowDocoWorks));
-}
-
-/** The visible text of some markup, entities decoded and spaces collapsed. */
-function text(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&#x27;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 /** The list items, in order. */
@@ -32,18 +23,20 @@ describe("How Doco works", () => {
     );
   });
 
-  it("lists Alexander's three steps in order, each led in bold, in his words", () => {
+  // Alexander, 2026-10-07: "We have titles and text after all." Each step's
+  // bold lead-in is its title, on its own line, and the rest is its text.
+  it("gives each of Alexander's three steps a title and a text, in his words", () => {
     const steps = items(render());
     expect(steps).toHaveLength(3);
-    expect(steps.map((step) => step.match(/<strong[^>]*>(.*?)<\/strong>/)?.[1])).toEqual([
-      "Your knowledge is collected,",
-      "Agents query such knowledge:",
-      "Agents capture more knowledge:",
+    expect(steps.map((step) => step.match(/<h3[^>]*>(.*?)<\/h3>/)?.[1])).toEqual([
+      "Your knowledge is collected",
+      "Agents query such knowledge",
+      "Agents capture more knowledge",
     ]);
-    expect(steps.map(text)).toEqual([
-      "1 Your knowledge is collected, including chats, GitHub, Slack, Notion, and AI agents",
-      "2 Agents query such knowledge: when agents work, Doco tells them what to keep in mind for their task at hand",
-      "3 Agents capture more knowledge: important decisions and chats are collected and shared",
+    expect(steps.map((step) => step.match(/<p[^>]*>(.*?)<\/p>/)?.[1])).toEqual([
+      "Including chats, GitHub, Slack, Notion, and AI agents",
+      "When agents work, Doco tells them what to keep in mind for their task at hand",
+      "Important decisions and chats are collected and shared",
     ]);
   });
 
