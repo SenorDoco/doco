@@ -1,5 +1,7 @@
+// @vitest-environment happy-dom
 import { Window } from "happy-dom";
-import { createElement } from "react";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -48,6 +50,7 @@ function render(workspace: WorkspaceSummary, showName?: boolean): string {
       null,
       createElement(WorkspaceSummaryCard, {
         workspace,
+        baseUrl: "https://doco.test",
         ...(showName === undefined ? {} : { showName }),
       }),
     ),
@@ -70,16 +73,15 @@ describe("WorkspaceSummaryCard", () => {
     expect(html).toContain('href="/new-doco?workspace_id=workspace_torre"');
     expect(html).toContain(">Invite person</a>");
     expect(html).toContain('href="/users?scope=workspace%3Aworkspace_torre"');
-    expect(html).toContain(">Invite agent</a>");
-    expect(html).toContain('href="/workspaces/torre/agent"');
+    expect(html).toContain(">Invite agent</button>");
   });
 
   // No button outshouts the others; the purple goes to the name instead.
   it("draws the three buttons alike", () => {
     const doc = new Window().document;
     doc.body.innerHTML = render(TORRE);
-    const classes = ["/new-doco", "/users", "/workspaces/torre/agent"].map(
-      (href) => doc.querySelector(`a[href^="${href}"]`)?.className,
+    const classes = ['a[href^="/new-doco"]', 'a[href^="/users"]', "button"].map(
+      (selector) => doc.querySelector(selector)?.className,
     );
     expect(new Set(classes).size).toBe(1);
     expect(classes[0]).not.toContain("bg-primary");
@@ -126,7 +128,7 @@ describe("WorkspaceSummaryCard", () => {
     const rowOf = (selector: string) => rows.findIndex((row) => row.querySelector(selector));
     expect(rows).toHaveLength(3);
     expect(rowOf('ul[aria-label="Docos"]')).toBe(0);
-    expect(rowOf('a[href="/workspaces/torre/agent"]')).toBe(1);
+    expect(rowOf("button")).toBe(1);
     expect(rows[2]).toBe(lastActivity);
   });
 
@@ -142,7 +144,7 @@ describe("WorkspaceSummaryCard", () => {
     );
     const rows = Array.from(alerts?.parentElement?.children ?? []);
     expect(rows[1]).toBe(alerts);
-    expect(rows[2]?.querySelector('a[href="/workspaces/torre/agent"]')).not.toBeNull();
+    expect(rows[2]?.querySelector("button")?.textContent).toBe("Invite agent");
   });
 
   it("flags an agent that stopped reading and writing", () => {
@@ -159,5 +161,39 @@ describe("WorkspaceSummaryCard", () => {
 
   it("leaves the name out on the workspace's own page", () => {
     expect(render(TORRE, false)).not.toContain('href="/workspaces/torre"');
+  });
+
+  // Alexander, 2026-10-06: an invite shows in a dialog, and an agent's copies
+  // with "Copy prompt". The message is the one that asks an agent to start
+  // using Doco in this workspace.
+  it("opens the agent's message in a dialog with Copy prompt", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(WorkspaceSummaryCard, { workspace: TORRE, baseUrl: "https://doco.test" }),
+        ),
+      ),
+    );
+    expect(container.querySelector("dialog")).toBeNull();
+    const invite = [...container.querySelectorAll("button")].find(
+      (b) => b.textContent === "Invite agent",
+    );
+    await act(async () => invite?.click());
+    const dialog = container.querySelector("dialog");
+    expect(dialog?.open).toBe(true);
+    expect(dialog?.querySelector("pre")?.textContent).toContain(
+      "Doco workspace: https://doco.test/workspaces/torre",
+    );
+    expect([...(dialog?.querySelectorAll("button") ?? [])].map((b) => b.textContent)).toContain(
+      "Copy prompt",
+    );
+    act(() => root.unmount());
+    container.remove();
   });
 });

@@ -18,7 +18,7 @@
 //     per person and agent (or the website)
 
 import { getWorkspaceRole, updateWorkspaceConstitution, withClient } from "@doco/db";
-import { entityUrl } from "@doco/shared";
+import { entityUrl, getPublicBaseUrl } from "@doco/shared";
 import { useEffect, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import { HEATMAP_WEEKS } from "~/components/activity-heatmap";
@@ -211,6 +211,7 @@ export async function loader({
       byDay,
       lastWeek,
       items,
+      baseUrl: getPublicBaseUrl(request),
     };
   });
 }
@@ -262,6 +263,7 @@ export default function WorkspaceHome({
     byDay,
     lastWeek,
     items,
+    baseUrl,
   } = loaderData;
   const docoItems: DocoListEntry[] = docos.map((d) => ({
     id: d.docoId,
@@ -295,7 +297,7 @@ export default function WorkspaceHome({
 
       {onboarding ? <OnboardingStepper view={onboarding} /> : null}
 
-      <WorkspaceSummaryCard workspace={summary} showName={false} />
+      <WorkspaceSummaryCard workspace={summary} baseUrl={baseUrl} showName={false} />
 
       <DocoListCard
         title="Docos in this workspace"

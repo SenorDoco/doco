@@ -6,6 +6,7 @@
 // every person gets) is shown how to start one.
 
 import { withClient } from "@doco/db";
+import { getPublicBaseUrl } from "@doco/shared";
 import { Link, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
@@ -35,7 +36,7 @@ export async function loader({ request }: { request: Request }) {
       total: progress.steps.length,
     };
   }
-  return { me, setup, workspaces };
+  return { me, setup, workspaces, baseUrl: getPublicBaseUrl(request) };
 }
 
 export function meta() {
@@ -47,7 +48,7 @@ export default function WorkspacesPage({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, setup, workspaces } = loaderData;
+  const { me, setup, workspaces, baseUrl } = loaderData;
   // Every person gets a personal workspace named after them; it isn't a project's.
   const inAProject = workspaces.some((w) => w.handle.toLowerCase() !== me.username.toLowerCase());
   return (
@@ -91,6 +92,7 @@ export default function WorkspacesPage({
           <WorkspaceSummaryCard
             key={workspace.id}
             workspace={workspace}
+            baseUrl={baseUrl}
             setup={setup[workspace.id]}
           />
         ))}

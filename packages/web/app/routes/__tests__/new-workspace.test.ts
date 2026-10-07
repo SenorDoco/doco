@@ -1,6 +1,3 @@
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createWorkspace = vi.fn();
@@ -17,9 +14,7 @@ vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipal: vi.fn(async () => ({ id: "user_alice", username: "alice" })),
 }));
 
-import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import { action as submitNewWorkspace } from "../new-workspace";
-import WorkspaceAgentPage from "../workspaces.$workspaceHandle.agent";
 
 beforeEach(() => createWorkspace.mockReset());
 
@@ -39,32 +34,5 @@ describe("after creating a workspace", () => {
       ownerUserId: "user_alice",
       autoSuffix: false,
     });
-  });
-});
-
-describe("/workspaces/:handle/agent", () => {
-  const instructions = agentInstructionsForWorkspace("https://doco.test", "acme");
-  const html = renderToStaticMarkup(
-    createElement(
-      MemoryRouter,
-      null,
-      createElement(WorkspaceAgentPage, {
-        loaderData: {
-          me: { id: "user_alice", username: "alice" },
-          workspace: { handle: "acme" },
-          instructions,
-        } as never,
-      }),
-    ),
-  );
-
-  it("hands over instructions that already name the workspace, with a Copy button", () => {
-    expect(html).toContain("Connect your agent to acme");
-    expect(html).toContain(">Copy</button>");
-    expect(html).toContain("Doco workspace: https://doco.test/workspaces/acme");
-  });
-
-  it("links on to the workspace", () => {
-    expect(html).toContain('href="/workspaces/acme"');
   });
 });

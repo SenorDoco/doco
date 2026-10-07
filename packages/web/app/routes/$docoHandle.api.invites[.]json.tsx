@@ -29,12 +29,9 @@
 
 import { type DocoRole, ROLE_RANK } from "@doco/db";
 import type { EntityId } from "@doco/shared";
-import {
-  buildAgentInvitePrompt,
-  buildHumanInvitePrompt,
-} from "~/components/collaboration-invite-prompt";
 import { rootDir } from "~/lib/db.server";
 import { getDocoLevelRoleForRequest, loadDocoRouteForRead } from "~/lib/doco-access.server";
+import { buildAgentInvitePrompt, buildHumanInvitePrompt } from "~/lib/invite-prompts";
 import { InviteStore } from "~/lib/invite-store.server";
 
 const ROLE_VALUES = new Set<DocoRole>(["owner", "writer", "reader"]);
