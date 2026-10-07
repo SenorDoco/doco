@@ -238,7 +238,7 @@ export default function WorkspaceSettings({
         <aside className="min-w-0 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Project tokens</CardTitle>
+              <CardTitle>Hook tokens</CardTitle>
               <CardDescription>
                 Read-only tokens that read this workspace as the member who made them, for the Doco
                 hook and anything else. Agents get theirs with doco_hook_token.
@@ -246,10 +246,10 @@ export default function WorkspaceSettings({
             </CardHeader>
             <CardContent>
               <Link
-                to={`/workspaces/${workspace.handle}/project-tokens`}
+                to={`/workspaces/${workspace.handle}/hook-tokens`}
                 className="text-sm text-primary hover:underline"
               >
-                Manage project tokens →
+                Manage hook tokens →
               </Link>
             </CardContent>
           </Card>

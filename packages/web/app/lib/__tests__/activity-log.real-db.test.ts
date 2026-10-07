@@ -112,7 +112,7 @@ describe("summarizeActivity writes", () => {
     // What the GitHub import recorded: an import, not a write.
     await write("user_bob", "doco_notes", "api", null, "2026-09-05T10:00:00Z");
     await write("user_bob", "doco_notes", "api", null, "2026-09-06T10:00:00Z");
-    // A project token has no person behind it: a write, but nobody to list.
+    // A write with no person behind it: counted, but nobody to list.
     await write(null, "doco_notes", "api", { auth: "bearer" }, "2026-09-07T10:00:00Z");
 
     const summary = await summarizeActivity(db, BOTH, SEPTEMBER, 10);

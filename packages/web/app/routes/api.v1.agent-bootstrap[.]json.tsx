@@ -32,34 +32,26 @@
 // null`.
 
 import { buildAgentBootstrapBody } from "~/lib/agent-bootstrap-body";
-import {
-  loadBootstrapForPrincipal,
-  loadBootstrapForProjectToken,
-} from "~/lib/agent-bootstrap.server";
+import { loadBootstrapForHookToken, loadBootstrapForPrincipal } from "~/lib/agent-bootstrap.server";
 import { loadAgentDisplayIdentity } from "~/lib/agent-identity.server";
 import { getOauthTokenForRequest } from "~/lib/doco-access.server";
-import {
-  type ProjectToken,
-  isProjectToken,
-  validateProjectToken,
-} from "~/lib/project-tokens.server";
+import { type HookToken, isHookToken, validateHookToken } from "~/lib/hook-tokens.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
-  // Project-token bearers get a focused bootstrap: principal=null,
-  // oauth_grant=null, a project_token_grant marker, and the policies of
+  // Hook-token bearers get a focused bootstrap: principal=null,
+  // oauth_grant=null, a hook_token_grant marker, and the policies of
   // the workspace the token reads. This is the read-only
   // committed-credential path, distinct from the per-user OAuth flow.
-  const projectToken = await getProjectTokenFromRequest(request);
-  if (projectToken) {
-    const { docoPolicies, workspaceConstitutions } =
-      await loadBootstrapForProjectToken(projectToken);
+  const hookToken = await getHookTokenFromRequest(request);
+  if (hookToken) {
+    const { docoPolicies, workspaceConstitutions } = await loadBootstrapForHookToken(hookToken);
     return Response.json(
       buildAgentBootstrapBody({
         origin: new URL(request.url).origin,
         principal: null,
         oauthGrant: null,
-        projectTokenGrant: { workspace_id: projectToken.workspace_id, role: "reader" },
+        hookTokenGrant: { workspace_id: hookToken.workspace_id, role: "reader" },
         docoPolicies,
         workspaceConstitutions,
       }),
@@ -90,15 +82,15 @@ export async function loader({ request }: { request: Request }) {
             expires_at: oauthGrant.expires_at.toISOString(),
           }
         : null,
-      projectTokenGrant: null,
+      hookTokenGrant: null,
       docoPolicies,
       workspaceConstitutions,
     }),
   );
 }
 
-async function getProjectTokenFromRequest(request: Request): Promise<ProjectToken | null> {
+async function getHookTokenFromRequest(request: Request): Promise<HookToken | null> {
   const bearer = extractBearer(request);
-  if (!bearer || !isProjectToken(bearer)) return null;
-  return await validateProjectToken(bearer);
+  if (!bearer || !isHookToken(bearer)) return null;
+  return await validateHookToken(bearer);
 }

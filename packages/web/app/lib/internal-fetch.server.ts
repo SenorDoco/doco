@@ -133,8 +133,8 @@ const ROUTES: RouteEntry[] = [
     load: () => import("~/routes/$docoHandle.graph-edge-details[.]json"),
   },
   {
-    pattern: "/api/v1/workspaces/:workspaceHandle/project-tokens.json",
-    load: () => import("~/routes/api.v1.workspaces.$workspaceHandle.project-tokens[.]json"),
+    pattern: "/api/v1/workspaces/:workspaceHandle/hook-tokens.json",
+    load: () => import("~/routes/api.v1.workspaces.$workspaceHandle.hook-tokens[.]json"),
   },
   {
     pattern: "/:docoHandle/api/github.json",

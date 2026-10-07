@@ -155,10 +155,10 @@ export async function ensureWorkspaceDoco(opts: {
 
 /**
  * The workspace behind a handle and the caller as one of its members, for its
- * project tokens: an owner sees and revokes everyone's (`madeBy` null), any
+ * hook tokens: an owner sees and revokes everyone's (`madeBy` null), any
  * other member their own; otherwise the status and the reason.
  */
-export async function loadWorkspaceForProjectTokens(
+export async function loadWorkspaceForHookTokens(
   request: Request,
   workspaceHandle: string,
 ): Promise<
@@ -170,10 +170,10 @@ export async function loadWorkspaceForProjectTokens(
     return { ok: false, status: 404, error: `Workspace "${workspaceHandle}" not found.` };
   }
   const me = await getCurrentPrincipalAsync(request);
-  if (!me) return { ok: false, status: 401, error: "Sign in to manage your project tokens." };
+  if (!me) return { ok: false, status: 401, error: "Sign in to manage your hook tokens." };
   const role = await getWorkspaceRole(workspace.id, me.id);
   if (!role) {
-    return { ok: false, status: 403, error: "Only members of this workspace have project tokens." };
+    return { ok: false, status: 403, error: "Only members of this workspace have hook tokens." };
   }
   return { ok: true, workspace, me, madeBy: role === "owner" ? null : me.id };
 }

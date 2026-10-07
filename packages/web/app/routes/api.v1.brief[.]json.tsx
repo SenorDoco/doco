@@ -10,7 +10,7 @@
 // text rendering alone.
 //
 // Auth: a signed-in principal (cookie session or OAuth bearer, narrowed to the
-// token's workspace boundary) or a project token (the Docos the person who
+// token's workspace boundary) or a hook token (the Docos the person who
 // made it can read in its workspace). 401 when none resolves. Each brief is one query of the workspace in the query log,
 // with the brief's id, what it served and how long each step took.
 
@@ -24,8 +24,8 @@ import {
   listReadableDocosInWorkspace,
   listVisibleDocoIdsForRequest,
 } from "~/lib/doco-access.server";
+import { isHookToken, validateHookToken } from "~/lib/hook-tokens.server";
 import { buildBriefDisplay } from "~/lib/indicator-lines";
-import { isProjectToken, validateProjectToken } from "~/lib/project-tokens.server";
 import { recordQuery } from "~/lib/query-log.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 
@@ -74,18 +74,15 @@ export async function loader({ request }: { request: Request }) {
   const params = parseBriefParams(url);
 
   const bearer = extractBearer(request);
-  const projectToken = bearer && isProjectToken(bearer) ? await validateProjectToken(bearer) : null;
-  const me = projectToken ? null : await getCurrentPrincipalAsync(request);
-  if (!projectToken && !me) {
+  const hookToken = bearer && isHookToken(bearer) ? await validateHookToken(bearer) : null;
+  const me = hookToken ? null : await getCurrentPrincipalAsync(request);
+  if (!hookToken && !me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
-  // A project token reads its workspace as the person who made it.
-  let docoIds = projectToken
+  // A hook token reads its workspace as the person who made it.
+  let docoIds = hookToken
     ? (
-        await listReadableDocosInWorkspace(
-          projectToken.workspace_id,
-          projectToken.created_by_user_id,
-        )
+        await listReadableDocosInWorkspace(hookToken.workspace_id, hookToken.created_by_user_id)
       ).map((d) => d.id)
     : await listVisibleDocoIdsForRequest(request, (me as { id: string }).id);
 

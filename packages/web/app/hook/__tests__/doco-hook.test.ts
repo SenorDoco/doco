@@ -80,7 +80,7 @@ describe("the Doco hook", () => {
     for (const name of ["UserPromptSubmit", "BeforeAgent"]) {
       const out = await runHook(
         { hook_event_name: name, session_id: session(), cwd, prompt: "add a brief route" },
-        { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_pt_env", DOCO_WORKSPACE: "acme" },
+        { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_ht_env", DOCO_WORKSPACE: "acme" },
         cwd,
       );
       expect(out.code).toBe(0);
@@ -95,7 +95,7 @@ describe("the Doco hook", () => {
       "/api/v1/brief.json?workspace=acme&format=text&about=add+a+brief+route&budget=4000",
       "/api/v1/brief.json?workspace=acme&format=text&about=add+a+brief+route&budget=4000",
     ]);
-    expect(requests[0].authorization).toBe("Bearer doco_pt_env");
+    expect(requests[0].authorization).toBe("Bearer doco_ht_env");
     rmSync(cwd, { recursive: true, force: true });
   });
 
@@ -109,7 +109,7 @@ describe("the Doco hook", () => {
       tool_name: "Edit",
       tool_input: { file_path: join(cwd, "packages/web/app/lib/search.server.ts") },
     };
-    const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_pt_env", DOCO_WORKSPACE: "acme" };
+    const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_ht_env", DOCO_WORKSPACE: "acme" };
     const first = await runHook(event, env, cwd);
     expect(JSON.parse(first.stdout).hookSpecificOutput).toEqual({
       hookEventName: "PreToolUse",
@@ -133,7 +133,7 @@ describe("the Doco hook", () => {
 
   it("loads the standing orders at session start, with what changed since the last start here", async () => {
     const cwd = project();
-    const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_pt_env", DOCO_WORKSPACE: "acme" };
+    const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_ht_env", DOCO_WORKSPACE: "acme" };
     const orders = "Standing orders for Acme (acme)\n\n## Constitution\nShip small.";
     respond = () => ({ status: 200, body: orders });
     const event = {
@@ -169,11 +169,11 @@ describe("the Doco hook", () => {
     );
     mkdirSync(join(cwd, ".doco"));
     writeFileSync(
-      join(cwd, ".doco", "project-tokens.json"),
-      JSON.stringify({ other: "doco_pt_other", acme: "doco_pt_file" }),
+      join(cwd, ".doco", "hook-tokens.json"),
+      JSON.stringify({ other: "doco_ht_other", acme: "doco_ht_file" }),
     );
     const config = resolveConfig({}, join(cwd, "packages", "web"));
-    expect(config).toMatchObject({ root: cwd, origin, workspace: "acme", token: "doco_pt_file" });
+    expect(config).toMatchObject({ root: cwd, origin, workspace: "acme", token: "doco_ht_file" });
     expect(requestFor({ hook_event_name: "UserPromptSubmit", prompt: "x" }, config)?.url).toBe(
       `${origin}/api/v1/brief.json?workspace=acme&format=text&about=x&budget=4000`,
     );
@@ -185,7 +185,7 @@ describe("the Doco hook", () => {
     expect(JSON.parse(out.stdout).hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
     expect(requests[0]).toEqual({
       url: "/api/v1/brief.json?workspace=acme&format=text&about=ship+it&budget=4000",
-      authorization: "Bearer doco_pt_file",
+      authorization: "Bearer doco_ht_file",
     });
     rmSync(cwd, { recursive: true, force: true });
   });
@@ -237,6 +237,53 @@ describe("the Doco hook", () => {
     );
     expect([edit.code, edit.stdout]).toEqual([0, ""]);
     expect(requests).toHaveLength(0);
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  // A revoked token, or one minted as a project token before hook tokens were
+  // renamed (doco_pt_…), gets a 401: the agent fetches its person's again.
+  it("with a token Doco refuses, tells the agent to get its own again from doco_hook_token", async () => {
+    const cwd = project();
+    const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_pt_old", DOCO_WORKSPACE: "acme" };
+    const context = (out: string) => JSON.parse(out).hookSpecificOutput.additionalContext;
+    const note =
+      "Doco refused the Doco hook's token: call doco_hook_token for acme, save the token as it says, and the hook briefs you from the next prompt on.";
+    respond = () => ({ status: 401, body: '{"kind":"invalid_token"}' });
+    const start = await runHook({ hook_event_name: "SessionStart", cwd }, env, cwd);
+    expect([start.code, context(start.stdout)]).toEqual([0, note]);
+    const prompt = await runHook(
+      { hook_event_name: "UserPromptSubmit", session_id: session(), cwd, prompt: "x" },
+      env,
+      cwd,
+    );
+    expect(context(prompt.stdout)).toBe(`${DOCO_REMINDER}\n\n${note}`);
+    const edit = await runHook(
+      {
+        hook_event_name: "PreToolUse",
+        session_id: session(),
+        cwd,
+        tool_input: { file_path: "a.ts" },
+      },
+      env,
+      cwd,
+    );
+    expect([edit.code, edit.stdout]).toEqual([0, ""]);
+    respond = () => ({ status: 200, body: "fine" });
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  // The agent saves the token doco_hook_token gives it in the file, so the
+  // file wins over a DOCO_TOKEN set earlier that Doco may since refuse.
+  it("prefers the saved token over DOCO_TOKEN", () => {
+    const cwd = project();
+    mkdirSync(join(cwd, ".doco"));
+    writeFileSync(join(cwd, ".doco", "hook-tokens.json"), JSON.stringify({ acme: "doco_ht_file" }));
+    expect(resolveConfig({ DOCO_TOKEN: "doco_ht_env", DOCO_WORKSPACE: "acme" }, cwd).token).toBe(
+      "doco_ht_file",
+    );
+    expect(
+      resolveConfig({ DOCO_TOKEN: "doco_ht_env", DOCO_WORKSPACE: "acme" }, tmpdir()).token,
+    ).toBe("doco_ht_env");
     rmSync(cwd, { recursive: true, force: true });
   });
 

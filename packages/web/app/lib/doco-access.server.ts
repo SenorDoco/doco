@@ -26,9 +26,9 @@ import { redirect } from "react-router";
 import { AUTHORING_SURFACE_HEADER } from "./authoring-source.server";
 import { docoPath } from "./db.server";
 import { type DocoMetadata, readDocoMetadata } from "./doco-metadata.server";
+import { type HookToken, isHookToken, validateHookToken } from "./hook-tokens.server";
 import { type ValidAccessToken, validateAccessToken } from "./oauth-server.server";
 import { readCreatedDocoIdSearchParam } from "./post-create-doco-route";
-import { type ProjectToken, isProjectToken, validateProjectToken } from "./project-tokens.server";
 import { recordQuery } from "./query-log.server";
 import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "./session.server";
 
@@ -58,7 +58,7 @@ export function isSenorDocoRequest(request: Request): boolean {
 
 /**
  * An agent reading a Doco: a GET made with a token (MCP, the REST API, a
- * project token) or by Señor Doco. Each one is a query in the query log; a
+ * hook token) or by Señor Doco. Each one is a query in the query log; a
  * person opening a page on the website isn't.
  */
 export function isAgentRead(request: Request): boolean {
@@ -813,16 +813,16 @@ export async function loadDocoForRead(
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
 
-  // Project-token short-circuit. A project token reads, at reader role, what
+  // Hook-token short-circuit. A hook token reads, at reader role, what
   // its maker can read in its workspace; it isn't a session of theirs, so the
   // standard "validate-bearer then check principal access" path does not
   // apply. Resolve and gate it here before falling through to OAuth/cookie.
-  const projectTokenResult = await tryProjectTokenAccess(request, {
+  const hookTokenResult = await tryHookTokenAccess(request, {
     workspaceId: row.workspace_id,
     meta,
     minRole,
   });
-  if (projectTokenResult.handled) {
+  if (hookTokenResult.handled) {
     if (isAgentRead(request)) {
       waitUntil(recordQuery(request, { workspaceId: row.workspace_id, docoId: row.id }, null));
     }
@@ -864,42 +864,42 @@ export async function loadDocoForRead(
 }
 
 /**
- * Try to satisfy the request with a project token. Returns
- * `{ handled: true }` when the bearer was a project token AND it
+ * Try to satisfy the request with a hook token. Returns
+ * `{ handled: true }` when the bearer was a hook token AND it
  * granted the requested operation on this Doco — the caller can skip
  * the rest of the access check.
  *
- * Throws a 401/403 Response when the bearer was a project token but
+ * Throws a 401/403 Response when the bearer was a hook token but
  * the grant did not match (revoked, another workspace's Doco, a Doco its
  * maker can't read, or trying to write with a reader-only token). That
  * short-circuits with the right RFC 6750 framing.
  *
- * Returns `{ handled: false }` when there is no project-token bearer
+ * Returns `{ handled: false }` when there is no hook-token bearer
  * present — the caller falls through to OAuth + cookie logic.
  */
-async function tryProjectTokenAccess(
+async function tryHookTokenAccess(
   request: Request,
   args: {
     workspaceId: string;
     meta: { ownerId: string; visibility: string; docoId?: string };
     minRole: DocoRole;
   },
-): Promise<{ handled: boolean; token?: ProjectToken }> {
+): Promise<{ handled: boolean; token?: HookToken }> {
   const bearer = extractBearer(request);
-  if (!bearer || !isProjectToken(bearer)) return { handled: false };
+  if (!bearer || !isHookToken(bearer)) return { handled: false };
 
-  const token = await validateProjectToken(bearer);
+  const token = await validateHookToken(bearer);
   if (!token) {
     throw new Response(
       JSON.stringify({
         kind: "invalid_token",
-        error: "Project token is unknown or revoked.",
+        error: "Hook token is unknown or revoked.",
       }),
       {
         status: 401,
         headers: {
           "Content-Type": "application/json",
-          "WWW-Authenticate": `Bearer error="invalid_token", error_description="The project token is unknown or revoked"`,
+          "WWW-Authenticate": `Bearer error="invalid_token", error_description="The hook token is unknown or revoked"`,
         },
       },
     );
@@ -908,7 +908,7 @@ async function tryProjectTokenAccess(
     throw new Response(
       JSON.stringify({
         kind: "access_denied",
-        error: "Project token is scoped to a different workspace.",
+        error: "Hook token is scoped to a different workspace.",
       }),
       { status: 403, headers: { "Content-Type": "application/json" } },
     );
@@ -918,7 +918,7 @@ async function tryProjectTokenAccess(
       JSON.stringify({
         kind: "access_denied",
         error:
-          "Project token reads only what the person who made it can read, and they can't read this Doco.",
+          "Hook token reads only what the person who made it can read, and they can't read this Doco.",
       }),
       { status: 403, headers: { "Content-Type": "application/json" } },
     );
@@ -927,7 +927,7 @@ async function tryProjectTokenAccess(
     throw new Response(
       JSON.stringify({
         kind: "insufficient_scope",
-        error: `Project token grants 'reader' on this Doco; this operation requires '${args.minRole}'. Use an OAuth token with the required role.`,
+        error: `Hook token grants 'reader' on this Doco; this operation requires '${args.minRole}'. Use an OAuth token with the required role.`,
       }),
       {
         status: 403,

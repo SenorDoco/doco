@@ -1,8 +1,8 @@
-// /workspaces/<workspace-handle>/project-tokens: a member's read-only project
+// /workspaces/<workspace-handle>/hook-tokens: a member's read-only hook
 // tokens for the workspace, each reading it as them
-// (lib/project-tokens.server). An owner sees and revokes everyone's. A minted
+// (lib/hook-tokens.server). An owner sees and revokes everyone's. A minted
 // token is shown once, with the message that has an agent save it in
-// .doco/project-tokens.json, kept out of git, and turn on the Doco hook.
+// .doco/hook-tokens.json, kept out of git, and turn on the Doco hook.
 
 import { getPublicBaseUrl } from "@doco/shared";
 import { Form, Link, redirect, useNavigation } from "react-router";
@@ -11,13 +11,13 @@ import { Breadcrumb, workspaceBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageMain } from "~/components/page-main";
 import {
-  type ProjectTokenSummary,
-  listProjectTokens,
-  mintProjectToken,
-  projectTokenInstallHint,
-  revokeProjectTokenById,
-} from "~/lib/project-tokens.server";
-import { loadWorkspaceForProjectTokens } from "~/lib/workspace-helpers.server";
+  type HookTokenSummary,
+  hookTokenInstallHint,
+  listHookTokens,
+  mintHookToken,
+  revokeHookTokenById,
+} from "~/lib/hook-tokens.server";
+import { loadWorkspaceForHookTokens } from "~/lib/workspace-helpers.server";
 
 export async function loader({
   request,
@@ -26,7 +26,7 @@ export async function loader({
   request: Request;
   params: { workspaceHandle: string };
 }) {
-  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  const member = await loadWorkspaceForHookTokens(request, params.workspaceHandle);
   if (!member.ok) {
     if (member.status === 401) {
       throw redirect(`/sign-in?next=${encodeURIComponent(new URL(request.url).pathname)}`);
@@ -36,7 +36,7 @@ export async function loader({
   return {
     workspaceHandle: member.workspace.handle,
     everyones: member.madeBy === null,
-    tokens: await listProjectTokens(member.workspace.id, member.madeBy),
+    tokens: await listHookTokens(member.workspace.id, member.madeBy),
   };
 }
 
@@ -49,7 +49,7 @@ export async function action({
   request: Request;
   params: { workspaceHandle: string };
 }): Promise<ActionResult | Response> {
-  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  const member = await loadWorkspaceForHookTokens(request, params.workspaceHandle);
   if (!member.ok) return { error: member.error };
   const { workspace, me, madeBy } = member;
   const form = await request.formData();
@@ -58,16 +58,16 @@ export async function action({
   if (intent === "revoke") {
     const id = String(form.get("id") ?? "");
     if (!id) return { error: "Missing token id." };
-    await revokeProjectTokenById({
+    await revokeHookTokenById({
       workspace_id: workspace.id,
       token_suffix_id: id,
       created_by_user_id: madeBy,
     });
-    return redirect(`/workspaces/${workspace.handle}/project-tokens`);
+    return redirect(`/workspaces/${workspace.handle}/hook-tokens`);
   }
 
   if (intent === "mint") {
-    const result = await mintProjectToken({
+    const result = await mintHookToken({
       workspace_id: workspace.id,
       created_by_user_id: me.id,
       label: String(form.get("label") ?? "").trim() || null,
@@ -75,7 +75,7 @@ export async function action({
     return {
       minted: true,
       full_token: result.full_token,
-      install_hint: projectTokenInstallHint(
+      install_hint: hookTokenInstallHint(
         getPublicBaseUrl(request),
         workspace.handle,
         result.full_token,
@@ -87,10 +87,10 @@ export async function action({
 }
 
 export function meta({ params }: { params: { workspaceHandle: string } }) {
-  return [{ title: `Project tokens · ${params.workspaceHandle} · Doco` }];
+  return [{ title: `Hook tokens · ${params.workspaceHandle} · Doco` }];
 }
 
-export default function ProjectTokensPage({
+export default function HookTokensPage({
   loaderData,
   actionData,
 }: {
@@ -106,19 +106,19 @@ export default function ProjectTokensPage({
   return (
     <PageMain className="py-6 space-y-4">
       <Breadcrumb
-        items={workspaceBreadcrumb({ workspaceSlug: workspaceHandle, pageLabel: "Project tokens" })}
+        items={workspaceBreadcrumb({ workspaceSlug: workspaceHandle, pageLabel: "Hook tokens" })}
       />
       <p className="text-sm text-muted-foreground">
-        A project token reads, and only reads, what you can read in {workspaceHandle}, as you. The
-        Doco hook briefs your agent with one: your agent gets it from Doco&apos;s{" "}
-        <code>doco_hook_token</code> tool and keeps it in <code>.doco/project-tokens.json</code>,
-        out of git. Mint one here for anything else that should read the workspace as you.
+        A hook token reads, and only reads, what you can read in {workspaceHandle}, as you. The Doco
+        hook briefs your agent with one: your agent gets it from Doco&apos;s{" "}
+        <code>doco_hook_token</code> tool and keeps it in <code>.doco/hook-tokens.json</code>, out
+        of git. Mint one here for anything else that should read the workspace as you.
         {everyones ? " As an owner, you see and revoke everyone's." : null}
       </p>
 
       <Card>
         <CardHeader>
-          <CardTitle>Mint a project token</CardTitle>
+          <CardTitle>Mint a hook token</CardTitle>
           <CardDescription>
             Read-only, with no expiry. It stops reading what you can no longer read; revoke it here
             any time.
@@ -142,7 +142,7 @@ export default function ProjectTokensPage({
               disabled={submitting}
               className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              {submitting ? "Minting…" : "Mint project token"}
+              {submitting ? "Minting…" : "Mint hook token"}
             </button>
           </Form>
           {errorMsg ? <p className="mt-3 text-sm text-destructive">{errorMsg}</p> : null}
@@ -166,7 +166,7 @@ export default function ProjectTokensPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>{everyones ? "Everyone's project tokens" : "Your project tokens"}</CardTitle>
+          <CardTitle>{everyones ? "Everyone's hook tokens" : "Your hook tokens"}</CardTitle>
           <CardDescription>
             {tokens.length === 0 ? "None minted yet." : `${tokens.length} in all, newest first.`}
           </CardDescription>
@@ -188,7 +188,7 @@ export default function ProjectTokensPage({
   );
 }
 
-function TokenRow({ token, showMaker }: { token: ProjectTokenSummary; showMaker: boolean }) {
+function TokenRow({ token, showMaker }: { token: HookTokenSummary; showMaker: boolean }) {
   return (
     <div className="neu-surface flex items-center justify-between gap-3 rounded-md bg-card px-3 py-2 text-xs">
       <div className="min-w-0 flex-1">

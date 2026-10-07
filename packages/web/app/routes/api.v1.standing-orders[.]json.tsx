@@ -5,7 +5,7 @@
 // `workspace` names the workspace by handle; `format=text` returns the text
 // rendering alone.
 //
-// Auth: a project token (its workspace, as the person who made it reads it;
+// Auth: a hook token (its workspace, as the person who made it reads it;
 // `workspace` may only name that one) or a signed-in principal (cookie or
 // OAuth bearer) who names a workspace they are a member of or can read a Doco
 // of; either reads its constitution. 401 when no caller resolves, 400 without
@@ -15,7 +15,7 @@ import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
 import { waitUntil } from "@vercel/functions";
 import { composeStandingOrders } from "~/lib/brief/standing-orders.server";
-import { isProjectToken, validateProjectToken } from "~/lib/project-tokens.server";
+import { isHookToken, validateHookToken } from "~/lib/hook-tokens.server";
 import { recordQuery } from "~/lib/query-log.server";
 import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 import { loadWorkspaceForRead, lookupWorkspaceHandle } from "~/lib/workspace-helpers.server";
@@ -29,18 +29,18 @@ export async function loader({ request }: { request: Request }) {
   const format = url.searchParams.get("format") === "text" ? "text" : "json";
 
   const bearer = extractBearer(request);
-  const projectToken = bearer && isProjectToken(bearer) ? await validateProjectToken(bearer) : null;
-  const me = projectToken ? null : await getCurrentPrincipalAsync(request);
-  if (!projectToken && !me) {
+  const hookToken = bearer && isHookToken(bearer) ? await validateHookToken(bearer) : null;
+  const me = hookToken ? null : await getCurrentPrincipalAsync(request);
+  if (!hookToken && !me) {
     return Response.json({ error: "Authentication required." }, { status: 401 });
   }
 
   let workspace = wanted;
-  if (projectToken) {
-    const handle = await lookupWorkspaceHandle(projectToken.workspace_id);
-    if (!handle || (wanted && wanted !== handle && wanted !== projectToken.workspace_id)) {
+  if (hookToken) {
+    const handle = await lookupWorkspaceHandle(hookToken.workspace_id);
+    if (!handle || (wanted && wanted !== handle && wanted !== hookToken.workspace_id)) {
       return Response.json(
-        { error: "Project token is scoped to a different workspace." },
+        { error: "Hook token is scoped to a different workspace." },
         { status: 403 },
       );
     }
@@ -49,10 +49,10 @@ export async function loader({ request }: { request: Request }) {
   if (!workspace) {
     return Response.json({ error: "Name the workspace (workspace=<handle>)." }, { status: 400 });
   }
-  // A project token reads as the person who made it.
+  // A hook token reads as the person who made it.
   const read = await loadWorkspaceForRead(
     workspace,
-    projectToken ? projectToken.created_by_user_id : (me as { id: string }).id,
+    hookToken ? hookToken.created_by_user_id : (me as { id: string }).id,
   );
   const scope = { workspaceId: read.workspace.id, docoIds: read.docos.map((d) => d.id) };
 

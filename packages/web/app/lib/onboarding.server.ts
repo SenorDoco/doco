@@ -17,7 +17,7 @@
 //             already read or wrote in it;
 //   agent   — the person's agent wrote into the workspace's Agents chats Doco
 //             (the instructions ask it to note there that it got them), and
-//             their Doco hook is on: a project token they made for the
+//             their Doco hook is on: a hook token they made for the
 //             workspace, not revoked, has been used (the agent gets it with
 //             doco_hook_token), or they said their agent doesn't run hooks
 //             (decision_01M4C2JDN3EZMA2FR8JPPMT7NN).
@@ -155,11 +155,11 @@ const PROGRESS_SQL = `
               AND ${byAgentOverApiSql("cs")}
          ) AS wrote,
          o.hook_done_at IS NOT NULL OR EXISTS (
-           SELECT 1 FROM project_tokens pt
-            WHERE pt.workspace_id = wu.workspace_id
-              AND pt.created_by_user_id = wu.user_id
-              AND NOT pt.revoked
-              AND pt.last_used_at IS NOT NULL
+           SELECT 1 FROM hook_tokens ht
+            WHERE ht.workspace_id = wu.workspace_id
+              AND ht.created_by_user_id = wu.user_id
+              AND NOT ht.revoked
+              AND ht.last_used_at IS NOT NULL
          ) AS hook
     FROM workspace_users wu
     JOIN workspaces w ON w.id = wu.workspace_id

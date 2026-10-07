@@ -245,17 +245,17 @@ describe("onboarding steps", () => {
     return { done: progress?.steps.find((s) => s.step === "agent")?.done, ...progress?.agent };
   }
 
-  /** Someone makes a project token for a workspace (lib/project-tokens.server). */
+  /** Someone makes a hook token for a workspace (lib/hook-tokens.server). */
   async function makesToken(
     userId: string,
     workspaceId: string,
     opts: { used?: boolean; revoked?: boolean } = {},
   ) {
     await db.query(
-      `INSERT INTO project_tokens (token, workspace_id, created_by_user_id, label, revoked, last_used_at)
+      `INSERT INTO hook_tokens (token, workspace_id, created_by_user_id, label, revoked, last_used_at)
        VALUES ($1, $2, $3, 'Doco hook', $4, $5)`,
       [
-        `doco_pt_${Math.random()}`,
+        `doco_ht_${Math.random()}`,
         workspaceId,
         userId,
         opts.revoked ?? false,

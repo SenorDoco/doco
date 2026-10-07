@@ -35,8 +35,8 @@ vi.mock("@doco/db", () => ({
 vi.mock("~/lib/access-requests.server", () => ({ requestDocoAccess: mocks.requestDocoAccess }));
 vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAgentIdentity }));
 vi.mock("~/lib/agent-debug.server", () => ({ gatherAgentDebug: mocks.gatherAgentDebug }));
-vi.mock("~/lib/project-tokens.server", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/lib/project-tokens.server")>()),
+vi.mock("~/lib/hook-tokens.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/hook-tokens.server")>()),
   hookTokenFor: mocks.hookTokenFor,
 }));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
@@ -258,7 +258,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
       ).result;
 
     beforeEach(() => {
-      mocks.hookTokenFor.mockResolvedValue("doco_pt_alice");
+      mocks.hookTokenFor.mockResolvedValue("doco_ht_alice");
     });
 
     it("hands the person's token for a workspace the connection reaches, with where to save it", async () => {
@@ -269,10 +269,10 @@ describe("POST /mcp (hosted remote MCP)", () => {
         user_id: "user_alice",
       });
       expect(result.isError).toBeUndefined();
-      expect(result.content[0].text).toContain('"acme": "doco_pt_alice"');
+      expect(result.content[0].text).toContain('"acme": "doco_ht_alice"');
       expect(result.content[0].text).toContain("`.gitignore`");
       expect(result.content[0].text).toContain("https://doco.to/agents#hook");
-      expect(result.structuredContent).toEqual({ workspace: "acme", token: "doco_pt_alice" });
+      expect(result.structuredContent).toEqual({ workspace: "acme", token: "doco_ht_alice" });
     });
 
     it("takes the one workspace the connection reaches, and asks for a handle among several", async () => {

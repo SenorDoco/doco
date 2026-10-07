@@ -1,6 +1,6 @@
-// GET/POST/DELETE /api/v1/workspaces/<workspace-handle>/project-tokens.json:
-// a member's read-only project tokens for the workspace, each reading it as
-// them (lib/project-tokens.server). An owner sees and revokes everyone's.
+// GET/POST/DELETE /api/v1/workspaces/<workspace-handle>/hook-tokens.json:
+// a member's read-only hook tokens for the workspace, each reading it as
+// them (lib/hook-tokens.server). An owner sees and revokes everyone's.
 //
 // GET    → list (revoked + active), summaries only (no token bodies).
 // POST   → mint a token (optional `label` in the JSON body). `install_hint`
@@ -13,12 +13,12 @@
 
 import { getPublicBaseUrl } from "@doco/shared";
 import {
-  listProjectTokens,
-  mintProjectToken,
-  projectTokenInstallHint,
-  revokeProjectTokenById,
-} from "~/lib/project-tokens.server";
-import { loadWorkspaceForProjectTokens } from "~/lib/workspace-helpers.server";
+  hookTokenInstallHint,
+  listHookTokens,
+  mintHookToken,
+  revokeHookTokenById,
+} from "~/lib/hook-tokens.server";
+import { loadWorkspaceForHookTokens } from "~/lib/workspace-helpers.server";
 
 export async function loader({
   request,
@@ -27,9 +27,9 @@ export async function loader({
   request: Request;
   params: { workspaceHandle: string };
 }) {
-  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  const member = await loadWorkspaceForHookTokens(request, params.workspaceHandle);
   if (!member.ok) return Response.json({ error: member.error }, { status: member.status });
-  return Response.json({ tokens: await listProjectTokens(member.workspace.id, member.madeBy) });
+  return Response.json({ tokens: await listHookTokens(member.workspace.id, member.madeBy) });
 }
 
 export async function action({
@@ -42,7 +42,7 @@ export async function action({
   if (request.method !== "POST" && request.method !== "DELETE") {
     return Response.json({ error: "method_not_allowed" }, { status: 405 });
   }
-  const member = await loadWorkspaceForProjectTokens(request, params.workspaceHandle);
+  const member = await loadWorkspaceForHookTokens(request, params.workspaceHandle);
   if (!member.ok) return Response.json({ error: member.error }, { status: member.status });
   const { workspace, me, madeBy } = member;
 
@@ -53,7 +53,7 @@ export async function action({
     } catch {
       // An empty body mints a token without a label.
     }
-    const result = await mintProjectToken({
+    const result = await mintHookToken({
       workspace_id: workspace.id,
       created_by_user_id: me.id,
       label: body.label ?? null,
@@ -62,7 +62,7 @@ export async function action({
     return Response.json({
       token: result.full_token,
       summary: result.summary,
-      install_hint: projectTokenInstallHint(
+      install_hint: hookTokenInstallHint(
         getPublicBaseUrl(request),
         workspace.handle,
         result.full_token,
@@ -77,7 +77,7 @@ export async function action({
       { status: 400 },
     );
   }
-  const revoked = await revokeProjectTokenById({
+  const revoked = await revokeHookTokenById({
     workspace_id: workspace.id,
     token_suffix_id: id,
     created_by_user_id: madeBy,
