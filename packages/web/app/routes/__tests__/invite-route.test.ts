@@ -231,4 +231,28 @@ describe("invite page", () => {
     expect(html).not.toContain("Doco keeps people, agents, and work aligned.");
     expect(html.indexOf("How Doco works")).toBeGreaterThan(html.indexOf("Who is redeeming"));
   });
+
+  // Alexander, 2026-10-07: "Why is that invite page so thin?" Its column was
+  // 576px (max-w-xl), so How Doco works stacked its cards there. It is as wide
+  // as the home page's column (768px, max-w-3xl), cards side by side.
+  it("is as wide as the home page", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(InviteLanding, {
+          loaderData: {
+            ok: true,
+            code: "invite_code",
+            target: { level: "workspace", label: "acme" },
+            inviter: { username: "ana" },
+            expires_at: "2026-10-08T15:00:00.000Z",
+            signedIn: null,
+          },
+        }),
+      ),
+    );
+    expect(html).toMatch(/<main class="[^"]*\bmax-w-3xl\b/);
+    expect(html).not.toMatch(/\bmax-w-xl\b/);
+  });
 });

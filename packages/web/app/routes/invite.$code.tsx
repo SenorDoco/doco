@@ -349,7 +349,7 @@ function errorDescription(err: LoaderError["error"]): string {
 
 function InviteMain({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-xl px-6 py-12 w-full space-y-4">
+    <main className="mx-auto max-w-3xl px-6 py-12 w-full space-y-4">
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Invite" }]} />
       {children}
     </main>
