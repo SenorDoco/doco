@@ -10,7 +10,9 @@
 // agent: the person approving its connection to Doco, then its note in the
 // workspace's Agents chats Doco and the first brief of the Doco hook it turns
 // on with the token it gets from doco_hook_token (or the person saying their
-// agent doesn't run hooks).
+// agent doesn't run hooks). Once the last one is done, a dialog over the page
+// says the workspace is set up, and closing it leaves the page without the
+// steps (Alexander, 2026-10-07: a button to the page he was on read wrong).
 
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -19,6 +21,7 @@ import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { BRAND_ICONS, GitHubIcon } from "~/components/brand-icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { ConnectAgentGuide } from "~/components/connect-agent-guide";
+import { Dialog, DialogFooter, closeDialog } from "~/components/dialog";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { cn } from "~/lib/cn";
 import { GITHUB_IMPORTS } from "~/lib/github-imports";
@@ -47,9 +50,18 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
   const [searchParams] = useSearchParams();
   const refusal = REFUSALS[searchParams.get("onboarding") ?? ""];
   const [finished, setFinished] = useState(false);
+  const revalidator = useRevalidator();
   const creator = view.joinedAs === "creator";
 
-  if (finished) return <AllSet view={view} />;
+  // Reloading the page once the dialog closes drops the steps from it.
+  if (finished) {
+    return (
+      <SetUpDialog
+        workspaceHandle={view.workspaceHandle}
+        onClose={() => revalidator.revalidate()}
+      />
+    );
+  }
 
   return (
     <Card aria-label={`Set up ${view.workspaceHandle}`}>
@@ -408,25 +420,30 @@ function DoneSummary({ step, view }: { step: OnboardingStep; view: OnboardingVie
   return null;
 }
 
-function AllSet({ view }: { view: OnboardingView }) {
-  const revalidator = useRevalidator();
+/** The end of the setup: the workspace is set up, and Done closes it. */
+export function SetUpDialog({
+  workspaceHandle,
+  onClose,
+}: {
+  workspaceHandle: string;
+  onClose: () => void;
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <Dialog
+      title={
+        <span className="flex items-center gap-2">
           <CheckCircle2 className="h-5 w-5 text-primary" aria-hidden />
-          {view.workspaceHandle} is set up
-        </CardTitle>
-        <CardDescription>
-          Your agent is working in Doco: it loads the workspace&apos;s context before it answers and
-          records what it decides.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <button type="button" className={PRIMARY} onClick={() => revalidator.revalidate()}>
-          Go to {view.workspaceHandle}
+          {workspaceHandle} is set up
+        </span>
+      }
+      description="Your agent is working in Doco: it loads the workspace's context before it answers and records what it decides."
+      onClose={onClose}
+    >
+      <DialogFooter>
+        <button type="button" data-autofocus className={PRIMARY} onClick={closeDialog}>
+          Done
         </button>
-      </CardContent>
-    </Card>
+      </DialogFooter>
+    </Dialog>
   );
 }
