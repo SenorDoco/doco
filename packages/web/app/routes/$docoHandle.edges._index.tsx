@@ -14,6 +14,7 @@ import { Link } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { loadHostConfig } from "~/lib/host.server";
@@ -97,7 +98,7 @@ export default function EdgesIndex({
 }) {
   const { edges, edgeTypeFilter, handle, ownerSlug } = loaderData;
   return (
-    <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Edges" })}
         title="Edges"
@@ -175,6 +176,6 @@ export default function EdgesIndex({
           )}
         </CardContent>
       </Card>
-    </main>
+    </PageMain>
   );
 }

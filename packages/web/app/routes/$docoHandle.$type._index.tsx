@@ -9,6 +9,7 @@ import { entityUrl, normalizeNodeType } from "@doco/shared";
 import { Link } from "react-router";
 import { Breadcrumb, docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { PageMain } from "~/components/page-main";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/table";
 import { cn } from "~/lib/cn";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
@@ -81,7 +82,7 @@ export default function ListByTypeInDoco({
   const { items, type, ownerSlug, docoSlug, handle, host: _host } = loaderData;
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <Breadcrumb
         items={docoBreadcrumb({ ownerSlug, handle, pageLabel: `${capitalize(type)}s` })}
       />
@@ -118,7 +119,7 @@ export default function ListByTypeInDoco({
           </TableBody>
         </Table>
       </Card>
-    </main>
+    </PageMain>
   );
 }
 

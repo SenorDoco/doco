@@ -17,7 +17,7 @@ import { redirect, useLoaderData } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { OAuthAccessApprovalForm } from "~/components/oauth-access-approval-form";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   type ApprovalDocoOption,
   type ApprovalWorkspaceOption,
@@ -216,7 +216,7 @@ export function meta() {
 export default function AuthorizePage() {
   const data = useLoaderData() as LoaderData;
   return (
-    <SingleColumnPageMain className="py-8 space-y-4">
+    <PageMain className="py-8 space-y-4">
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve access" }]} />
       <Card>
         <CardHeader>
@@ -262,7 +262,7 @@ export default function AuthorizePage() {
           )}
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

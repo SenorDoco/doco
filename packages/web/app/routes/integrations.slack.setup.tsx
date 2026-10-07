@@ -5,7 +5,7 @@ import { Form, redirect } from "react-router";
 import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { type ScopeOption, loadScopeOptions } from "~/lib/api-keys.server";
 import { canSetChannelDefaultAccess } from "~/lib/group-chat-ux";
 import { getCurrentPrincipal } from "~/lib/session.server";
@@ -180,7 +180,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
   }
 
   return (
-    <SingleColumnPageMain className="space-y-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={[
           ...hostBreadcrumb({ pageLabel: "App integrations" }),
@@ -337,7 +337,7 @@ export default function SlackSetupPage({ loaderData }: { loaderData: SlackSetupP
           </CardContent>
         </Card>
       </Form>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

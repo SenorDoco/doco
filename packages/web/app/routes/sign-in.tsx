@@ -2,6 +2,7 @@ import { Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { NarrowPageMain } from "~/components/page-main";
 import { findPrincipalById, getSessionPrincipalId } from "~/lib/session.server";
 
 /**
@@ -38,7 +39,7 @@ export default function SignIn({
 }) {
   const { next } = loaderData;
   return (
-    <main className="mx-auto max-w-md px-6 py-10 space-y-4">
+    <NarrowPageMain className="py-10 space-y-4">
       <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Sign in" }]} />
       <Card>
         <CardHeader>
@@ -61,7 +62,7 @@ export default function SignIn({
           </p>
         </CardContent>
       </Card>
-    </main>
+    </NarrowPageMain>
   );
 }
 

@@ -28,6 +28,7 @@ import { ActivityCard } from "~/components/doco-activity";
 import { DocoListCard, type DocoListEntry } from "~/components/doco-list-card";
 import { OnboardingStepper } from "~/components/onboarding-stepper";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { TopListsSections } from "~/components/top-list";
 import { WorkspaceSummaryCard } from "~/components/workspace-summary-card";
 import {
@@ -277,7 +278,7 @@ export default function WorkspaceHome({
   }));
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-6 space-y-6">
+    <PageMain className="py-6 space-y-6">
       <PageHeader
         breadcrumb={workspaceBreadcrumb({ workspaceSlug: workspace.handle })}
         title={workspace.handle}
@@ -377,7 +378,7 @@ export default function WorkspaceHome({
           </Card>
         </aside>
       </div>
-    </main>
+    </PageMain>
   );
 }
 

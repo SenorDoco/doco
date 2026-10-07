@@ -28,6 +28,7 @@ import {
   buildInstallationPickerChoices,
 } from "~/components/github-repo-picker";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { getDocoLevelRole, listAccessibleDocoIdsForPrincipal } from "~/lib/doco-access.server";
 import {
   buildInstallUrl,
@@ -204,7 +205,7 @@ export default function GitHubSetup() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={hostBreadcrumb({
           section: { label: "App integrations", to: "/integrations" },
@@ -234,7 +235,7 @@ export default function GitHubSetup() {
           installUrl={data.installUrl}
         />
       )}
-    </main>
+    </PageMain>
   );
 }
 

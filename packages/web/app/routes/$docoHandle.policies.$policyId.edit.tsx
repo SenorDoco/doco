@@ -11,6 +11,7 @@ import { Form, Link, redirect, useActionData } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { PolicyFormFields } from "~/components/policy-form-fields";
 import { stampAuthenticatedCreator } from "~/lib/authenticated-creator.server";
 import { authoringContextForRequest } from "~/lib/authoring-source.server";
@@ -134,7 +135,7 @@ export default function EditPolicy({
   const isRetired = lifecycle === "retired";
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={docoBreadcrumb({
           ownerSlug,
@@ -203,6 +204,6 @@ export default function EditPolicy({
           </Form>
         </CardContent>
       </Card>
-    </main>
+    </PageMain>
   );
 }

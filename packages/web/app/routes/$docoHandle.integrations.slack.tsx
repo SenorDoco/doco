@@ -13,6 +13,7 @@ import { Form, redirect, useActionData, useLoaderData, useSearchParams } from "r
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import { monthYear } from "~/lib/month-year";
 import {
@@ -103,7 +104,7 @@ export default function DocoSlackMirrorPage() {
   const flash = searchParams.get("slack");
 
   return (
-    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={docoBreadcrumb({
           ownerSlug,
@@ -145,7 +146,7 @@ export default function DocoSlackMirrorPage() {
           isPrivate={visibility === "private"}
         />
       )}
-    </main>
+    </PageMain>
   );
 }
 

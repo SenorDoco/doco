@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { IntegrationStatusCard } from "~/components/integration-status-card";
 import { AvailableIntegrations, ScopeNavLinks } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { loadDocoRouteForRead } from "~/lib/doco-access.server";
 import {
   type GitHubImportProgress,
@@ -119,7 +119,7 @@ export default function DocoIntegrations() {
   }, [github.importing]);
 
   return (
-    <SingleColumnPageMain className="space-y-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "App integrations" })}
         title="App integrations"
@@ -187,6 +187,6 @@ export default function DocoIntegrations() {
           <AvailableIntegrations pageScope="doco" docoHandle={handle} />
         </section>
       </div>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

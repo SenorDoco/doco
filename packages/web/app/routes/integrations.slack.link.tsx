@@ -4,7 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 import { Link, redirect } from "react-router";
 import { Breadcrumb, hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import {
   getSlackBoundWorkspaceId,
@@ -72,7 +72,7 @@ export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPag
   // anyone links there is always a workspace; name it when we have the handle.
   const workspaceLabel = boundWorkspaceHandle ? `${boundWorkspaceHandle} workspace` : "workspace";
   return (
-    <SingleColumnPageMain className="space-y-6 py-8">
+    <PageMain className="space-y-6 py-8">
       <Breadcrumb
         items={[...hostBreadcrumb({ pageLabel: "App integrations" }), { label: "Slack" }]}
       />
@@ -100,6 +100,6 @@ export default function SlackLinkPage({ loaderData }: { loaderData: SlackLinkPag
           </Link>
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

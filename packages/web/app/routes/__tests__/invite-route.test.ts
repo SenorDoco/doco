@@ -233,8 +233,8 @@ describe("invite page", () => {
   });
 
   // Alexander, 2026-10-07: "Why is that invite page so thin?" Its column was
-  // 576px (max-w-xl), so How Doco works stacked its cards there. It is as wide
-  // as the home page's column (768px, max-w-3xl), cards side by side.
+  // 576px (max-w-xl), so How Doco works stacked its cards there. Then "448px
+  // and 1152 - no 768px": it is a full 1152px page, like the home page.
   it("is as wide as the home page", () => {
     const html = renderToStaticMarkup(
       createElement(
@@ -252,7 +252,7 @@ describe("invite page", () => {
         }),
       ),
     );
-    expect(html).toMatch(/<main class="[^"]*\bmax-w-3xl\b/);
-    expect(html).not.toMatch(/\bmax-w-xl\b/);
+    expect(html).toMatch(/<main class="[^"]*\bmax-w-6xl\b/);
+    expect(html).not.toMatch(/\bmax-w-(xl|3xl)\b/);
   });
 });

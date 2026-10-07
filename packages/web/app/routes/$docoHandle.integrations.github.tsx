@@ -26,6 +26,7 @@ import {
   buildInstallationPickerChoices,
 } from "~/components/github-repo-picker";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { docoPath } from "~/lib/db.server";
 import {
   getDocoLevelRole,
@@ -337,7 +338,7 @@ export default function DocoGitHubIntegration() {
   );
 
   return (
-    <main className="mx-auto max-w-3xl space-y-6 px-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={docoBreadcrumb({
           ownerSlug,
@@ -506,6 +507,6 @@ export default function DocoGitHubIntegration() {
           No repositories are connected yet. A writer on this doco can connect them.
         </p>
       )}
-    </main>
+    </PageMain>
   );
 }

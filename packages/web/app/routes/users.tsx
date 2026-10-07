@@ -24,7 +24,7 @@ import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { UserInviteCards } from "~/components/user-invite-cards";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import { focusFirstError, validateGrantForm } from "~/lib/grant-form-validation";
@@ -365,7 +365,7 @@ export default function UsersPage({
   const existingByPrincipal = useMemo(() => existingGrantsByPrincipal(loaderData), [loaderData]);
 
   return (
-    <SingleColumnPageMain className="py-6 space-y-6">
+    <PageMain className="py-6 space-y-6">
       <PageHeader
         breadcrumb={hostBreadcrumb({ pageLabel: "Collaborators" })}
         title="Collaborators"
@@ -430,7 +430,7 @@ export default function UsersPage({
           existingByPrincipal={existingByPrincipal}
         />
       ) : null}
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

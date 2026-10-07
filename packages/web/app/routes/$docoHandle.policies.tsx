@@ -4,6 +4,7 @@ import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NodeTypeIcon } from "~/components/node-type-icon";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import {
   type PolicyItem,
   type PolicyRowData,
@@ -63,7 +64,7 @@ export default function Policies({
   const { ownerSlug, handle, canEdit, activePolicies, retiredPolicies } = loaderData;
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Policies" })}
         title="Policies"
@@ -92,7 +93,7 @@ export default function Policies({
           showAdd={false}
         />
       ) : null}
-    </main>
+    </PageMain>
   );
 }
 

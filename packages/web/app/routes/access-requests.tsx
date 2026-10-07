@@ -8,7 +8,7 @@
 import { redirect, useLoaderData } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import {
   type OwnerInboxItem,
   approveAccessRequest,
@@ -69,7 +69,7 @@ export function meta() {
 export default function AccessRequestsPage() {
   const { inbox, sent } = useLoaderData() as LoaderData;
   return (
-    <SingleColumnPageMain className="py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={[{ label: "Home", to: "/" }, { label: "Access requests" }]}
         title="Access requests"
@@ -138,6 +138,6 @@ export default function AccessRequestsPage() {
           )}
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

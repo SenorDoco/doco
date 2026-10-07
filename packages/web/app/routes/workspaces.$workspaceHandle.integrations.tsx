@@ -28,7 +28,7 @@ import {
   ScopeNavLinks,
 } from "~/components/integrations-shell";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { loadDocoPicker, loadWorkspaceIntegrationsRollup } from "~/lib/integrations-summary.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { listSlackInstallations } from "~/lib/slack.server";
@@ -98,7 +98,7 @@ export default function WorkspaceIntegrations({
 }) {
   const { workspace, rollup, slack, canManageSlack, docoPicker } = loaderData;
   return (
-    <SingleColumnPageMain className="space-y-6 py-6">
+    <PageMain className="space-y-6 py-6">
       <PageHeader
         breadcrumb={workspaceBreadcrumb({
           workspaceSlug: workspace.handle,
@@ -201,7 +201,7 @@ export default function WorkspaceIntegrations({
           <AvailableIntegrations pageScope="workspace" workspaceHandle={workspace.handle} />
         </section>
       </div>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }
 

@@ -9,6 +9,7 @@ import { NodeTypeBadge } from "~/components/badge";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { PageHeader } from "~/components/page-header";
+import { PageMain } from "~/components/page-main";
 import { activityRowLifecycle, shouldStrikeActivityTarget } from "~/lib/activity-feed";
 import { AUDIT_OP_SET, type AuditOp, readAuditEvents } from "~/lib/audit-log.server";
 import { cn } from "~/lib/cn";
@@ -71,7 +72,7 @@ export default function ActivityPage({
 }: { loaderData: Awaited<ReturnType<typeof loader>> }) {
   const { ownerSlug, docoSlug, handle, events, filters } = loaderData;
   return (
-    <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
+    <PageMain className="space-y-4 py-6">
       <PageHeader
         breadcrumb={docoBreadcrumb({ ownerSlug, handle, pageLabel: "Activity" })}
         title="Activity"
@@ -135,7 +136,7 @@ export default function ActivityPage({
           )}
         </CardContent>
       </Card>
-    </main>
+    </PageMain>
   );
 }
 

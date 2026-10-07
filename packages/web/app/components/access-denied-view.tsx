@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
+import { NarrowPageMain } from "~/components/page-main";
 
 export type AccessDeniedData = {
   kind: "access_denied";
@@ -29,7 +30,7 @@ export function AccessDeniedView({
 }) {
   const { doco_handle, signed_in } = data;
   return (
-    <main className="mx-auto max-w-md px-6 py-10">
+    <NarrowPageMain className="py-10">
       <Card>
         <CardHeader>
           <CardTitle>Private doco</CardTitle>
@@ -81,6 +82,6 @@ export function AccessDeniedView({
           )}
         </CardContent>
       </Card>
-    </main>
+    </NarrowPageMain>
   );
 }

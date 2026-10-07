@@ -5,7 +5,7 @@ import { hostBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent } from "~/components/card";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { PageHeader } from "~/components/page-header";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { DOCO_TEMPLATES, findDocoTemplateMeta } from "~/lib/doco-templates-meta";
 import {
   HANDLE_FORMAT_HELP,
@@ -320,7 +320,7 @@ export default function NewDocoStep1({
   };
 
   return (
-    <SingleColumnPageMain className="py-6 space-y-4">
+    <PageMain className="py-6 space-y-4">
       <PageHeader
         breadcrumb={hostBreadcrumb({
           section: { label: "Docos", to: "/workspaces" },
@@ -539,6 +539,6 @@ export default function NewDocoStep1({
           </Form>
         </CardContent>
       </Card>
-    </SingleColumnPageMain>
+    </PageMain>
   );
 }

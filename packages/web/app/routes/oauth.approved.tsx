@@ -16,7 +16,7 @@
 
 import { useLoaderData } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { SingleColumnPageMain } from "~/components/page-main";
+import { PageMain } from "~/components/page-main";
 import { getClient, peekAuthorizationCode } from "~/lib/oauth-server.server";
 
 interface LoaderData {
@@ -114,7 +114,7 @@ export default function ApprovedPage() {
   )}); }, ${Math.round(REDIRECT_DELAY_SECONDS * 1000)});`;
   return (
     <>
-      <SingleColumnPageMain className="py-8 space-y-4">
+      <PageMain className="py-8 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle>Access approved</CardTitle>
@@ -130,7 +130,7 @@ export default function ApprovedPage() {
             </p>
           </CardContent>
         </Card>
-      </SingleColumnPageMain>
+      </PageMain>
       <script
         // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-side string, JSON-stringified
         dangerouslySetInnerHTML={{ __html: redirectScript }}
