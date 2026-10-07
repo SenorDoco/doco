@@ -30,7 +30,7 @@ describe("Home", () => {
   });
 
   // Alexander, 2026-10-03: the home page's logo is neumorphic, raised out of
-  // the page like the How Doco works plate.
+  // the page.
   it("raises the logo out of the page", async () => {
     const html = await render();
     expect(html).toMatch(/<svg[^>]*class="[^"]*\bdoco-mark-raised\b/);

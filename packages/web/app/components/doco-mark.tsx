@@ -11,7 +11,6 @@ interface DocoMarkProps {
   className?: string;
   active?: boolean;
   ariaLabel?: string;
-  decorative?: boolean;
   /** Neumorphic: solid purple standing out of the page like a key (`.doco-mark-raised`). */
   raised?: boolean;
   variant?: "logo" | "mark";
@@ -22,7 +21,6 @@ export function DocoMark({
   className,
   active = false,
   ariaLabel = "Doco",
-  decorative = false,
   raised = false,
   variant = "logo",
 }: DocoMarkProps) {
@@ -46,11 +44,10 @@ export function DocoMark({
         raised && "doco-mark-raised",
         className,
       )}
-      role={decorative ? undefined : "img"}
-      aria-hidden={decorative ? true : undefined}
-      aria-label={decorative ? undefined : ariaLabel}
+      role="img"
+      aria-label={ariaLabel}
     >
-      {decorative ? null : <title>{ariaLabel}</title>}
+      <title>{ariaLabel}</title>
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200">
           <rect x="0" y="0" width="200" height="200" fill="white" />

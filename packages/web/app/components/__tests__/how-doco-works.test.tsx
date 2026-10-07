@@ -3,117 +3,66 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { HowDocoWorks } from "../how-doco-works";
 
-// Alexander, 2026-10-02: the home page and the invite page explain Doco with
-// one block, a wiring diagram of what Doco is (option A "Flow" in the thread
-// "How Doco works animation proposals"): sources feed the workspace, agents
-// read it, and a return wire carries what agents write back. Later that day
-// he picked, of five neumorphic treatments, C "Plate": one raised plate holds
-// the diagram, with the chips etched into it and the workspace pressed into
-// it, LED pulses on the wires, and key-cap step numbers.
+// Alexander, 2026-10-06: the home page and the invite page explain Doco with
+// three steps instead of the animation, in his words, each led in bold.
 function render(): string {
   return renderToStaticMarkup(createElement(HowDocoWorks));
 }
 
-/** The two diagrams, one laid out for desktop and one upright for phones. */
-function diagrams(html: string): string[] {
+/** The visible text of some markup, entities decoded and spaces collapsed. */
+function text(html: string): string {
   return html
-    .split(/(?=<div class="hdw-dia )/)
-    .filter((part) => part.startsWith('<div class="hdw-dia '));
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&#x27;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
-/** The chips' and the workspace's labels in one diagram, in document order. */
-function labelsIn(diagram: string): string[] {
-  return [
-    ...diagram.matchAll(/<div class="hdw-(?:chip|ws)[^"]*"[^>]*>.*?<span>([^<]*)<\/span>/g),
-  ].map((m) => m[1]);
+
+/** The list items, in order. */
+function items(html: string): string[] {
+  return [...html.matchAll(/<li[^>]*>(.*?)<\/li>/g)].map((m) => m[1]);
 }
 
 describe("How Doco works", () => {
-  // Alexander, 2026-10-02: the headline-sized title was too big; it sits a
-  // step below the headline (text-2xl/3xl).
+  // Alexander, 2026-10-02: the title sits a step below the home page
+  // headline (text-2xl/3xl).
   it("is titled a step smaller than the home page headline", () => {
-    const html = render();
-    expect(html).toMatch(
+    expect(render()).toMatch(
       /<h2[^>]*class="text-lg font-bold leading-tight md:text-xl"[^>]*>How Doco works:<\/h2>/,
     );
   });
 
-  it("names the three steps in order, in Alexander's words", () => {
-    const text = render()
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&#x27;/g, "'")
-      .replace(/\s+/g, " ");
-    const collect = text.indexOf("Collect One workspace brings your team's knowledge together.");
-    const connect = text.indexOf("Connect Your agents read that context as they work.");
-    const capture = text.indexOf("Capture Agents record important decisions.");
-    expect(collect).toBeGreaterThan(-1);
-    expect(connect).toBeGreaterThan(collect);
-    expect(capture).toBeGreaterThan(connect);
+  it("lists Alexander's three steps in order, each led in bold, in his words", () => {
+    const steps = items(render());
+    expect(steps).toHaveLength(3);
+    expect(steps.map((step) => step.match(/<strong[^>]*>(.*?)<\/strong>/)?.[1])).toEqual([
+      "Your knowledge is collected,",
+      "Agents query such knowledge:",
+      "Agents capture more knowledge:",
+    ]);
+    expect(steps.map(text)).toEqual([
+      "1 Your knowledge is collected, including chats, GitHub, Slack, Notion, and AI agents",
+      "2 Agents query such knowledge: when agents work, Doco tells them what to keep in mind for their task at hand",
+      "3 Agents capture more knowledge: important decisions and chats are collected and shared",
+    ]);
   });
 
-  it("starts on the first step, with the sources wired up and lit", () => {
+  // The animation is gone: nothing moves, and nothing looks clickable that
+  // isn't (one clay: only what can be clicked is purple or raised as a key).
+  it("is still: no diagram, nothing to click, the numbers sunk into the page", () => {
     const html = render();
-    expect(html.match(/aria-current="step"/g)).toHaveLength(1);
-    expect(html).toMatch(/aria-current="step"[^>]*>.*?Collect/);
-    expect(html).toMatch(/class="hdw-wire hdw-wire-src hdw-on"/);
-    expect(html).not.toMatch(/class="hdw-wire hdw-wire-agent hdw-on"/);
-    for (const diagram of diagrams(html)) {
-      const lit = [
-        ...diagram.matchAll(/<div class="hdw-chip[^"]*hdw-on"[^>]*>.*?<span>([^<]*)<\/span>/g),
-      ].map((m) => m[1]);
-      expect(lit).toEqual(["People", "GitHub", "Slack", "Notion", "+ more"]);
-    }
+    expect(html).not.toMatch(/<svg|<button|<a |aria-current/);
+    expect(html).not.toMatch(/text-primary|neu-button/);
+    const numbers = [...html.matchAll(/<span[^>]*class="([^"]*)"[^>]*>(\d)<\/span>/g)];
+    expect(numbers.map((m) => m[2])).toEqual(["1", "2", "3"]);
+    for (const [, className] of numbers) expect(className).toMatch(/\bneu-well\b/);
   });
 
-  // Alexander, 2026-10-02: people first among the sources, Claude (not Claude
-  // Code) and Qwen among the agents, and both columns say there are more.
-  it("draws the sources, people first, and the agents, each column ending in more", () => {
-    const both = diagrams(render());
-    expect(both).toHaveLength(2);
-    for (const diagram of both) {
-      const labels = labelsIn(diagram);
-      const sources = ["People", "GitHub", "Slack", "Notion", "+ more"].map((l) =>
-        labels.indexOf(l),
-      );
-      const agents = ["Claude", "Cursor", "Codex", "Qwen"].map((l) => labels.indexOf(l));
-      expect(sources.every((i) => i > -1)).toBe(true);
-      expect(agents.every((i) => i > -1)).toBe(true);
-      expect([...sources]).toEqual([...sources].sort((a, b) => a - b));
-      expect([...agents]).toEqual([...agents].sort((a, b) => a - b));
-      expect(labels.filter((l) => l === "+ more")).toHaveLength(2);
-      expect(labels.lastIndexOf("+ more")).toBeGreaterThan(labels.indexOf("Qwen"));
-      expect(labels).toContain("Your workspace");
-      expect(labels).not.toContain("Claude Code");
-    }
-  });
-
-  it("wires every source and agent to the workspace, and the agents back to it", () => {
-    for (const diagram of diagrams(render())) {
-      expect(diagram.match(/class="hdw-wire hdw-wire-src/g)).toHaveLength(5);
-      expect(diagram.match(/class="hdw-wire hdw-wire-agent/g)).toHaveLength(5);
-      expect(diagram.match(/class="hdw-wire hdw-wire-back/g)).toHaveLength(1);
-    }
-  });
-
-  // Nothing frames the diagrams (Alexander, 2026-10-03: "remove the border
-  // around it"): both sit directly on the page, above the steps. The wires are
-  // an SVG; the chips and the workspace are HTML laid over it, so they can wear
-  // the app's shadows (--neu-key-small, --neu-inset), which SVG shapes cannot.
-  it("sets both diagrams directly on the page, the chips and workspace laid over the wires", () => {
+  // Three columns where there is room (the home page on a computer); one step
+  // under the other in narrower places (phones, the invite page's column).
+  it("sits the steps side by side only when its own width allows", () => {
     const html = render();
-    expect(html).not.toMatch(/hdw-plate/);
-    const description = html.indexOf("</p>") + "</p>".length;
-    expect(html.startsWith('<div class="hdw-dia ', description)).toBe(true);
-    const steps = html.indexOf('class="hdw-steps"');
-    for (const diagram of diagrams(html)) {
-      const at = html.indexOf(diagram);
-      expect(at).toBeGreaterThanOrEqual(description);
-      expect(at).toBeLessThan(steps);
-      const wires = diagram.indexOf("</svg>");
-      expect(diagram.slice(0, wires)).not.toMatch(/<rect/);
-      expect(diagram.indexOf('<div class="hdw-chip')).toBeGreaterThan(wires);
-      expect(diagram.match(/<div class="hdw-chip/g)).toHaveLength(10);
-      expect(diagram.match(/<div class="hdw-ws"/g)).toHaveLength(1);
-      expect(diagram.indexOf('<div class="hdw-ws"')).toBeGreaterThan(wires);
-    }
+    expect(html).toMatch(/<section[^>]*class="[^"]*@container/);
+    expect(html).toMatch(/<ol[^>]*class="[^"]*@2xl:grid-cols-3/);
   });
 });
