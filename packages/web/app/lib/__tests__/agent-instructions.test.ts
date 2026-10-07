@@ -36,66 +36,56 @@ describe("agentInstructions", () => {
     expect(version(agentInstructions("https://doco.example"))).not.toBe(version(text));
   });
 
-  it("asks the user to connect the MCP server when its tools are missing", () => {
-    const check = position("### 1. Check the Doco connection");
-    expect(text).toContain("https://doco.test/mcp");
-    expect(text).toContain("claude mcp add --transport http doco https://doco.test/mcp");
-    expect(position("ask the user to connect Doco's MCP server")).toBeGreaterThan(check);
+  // Alexander, 2026-10-06: agents carry no steps for connecting Doco. They
+  // check the connection and, when it's missing, send the person to the page
+  // that walks them through it for their own agent.
+  it("sends the user to Doco's website to connect Doco, carrying no setup steps itself", () => {
+    const step1 = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
+    expect(step1).toContain(
+      "ask the user to connect Doco by following https://doco.test/agents/connect",
+    );
+    expect(step1).toContain("Never set it up or sign in for them.");
+    expect(text).not.toContain("claude mcp add");
+    expect(text).not.toContain("https://doco.test/mcp");
+    expect(text).not.toMatch(/custom connector|allow rule|OAuth/);
   });
 
   // Alexander, 2026-09-30: the duties only work well when Doco's tools run
-  // without an approval each time, so the connection check covers that too.
-  it("checks Doco's tools are always allowed, and asks the user to set that up if not", () => {
-    const step1 = text.slice(
-      position("### 1. Check the Doco connection"),
-      position("### 2. Pick the project's workspace"),
-    );
-    expect(step1).toContain("Doco's tools must be set to always allow");
-    expect(step1).toContain("a `mcp__doco` allow rule");
-    expect(step1).toContain("if they aren't, or you can't tell, ask the user to set that up");
+  // without an approval each time; how to set that up is on the same page.
+  it("treats tools that ask for approval on every call as a connection to fix", () => {
+    const step1 = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
+    expect(step1).toContain("are missing, or ask for approval on every call, ask the user");
   });
 
-  it("then picks the project's workspace with the user, never creating one", () => {
-    const connect = position("### 1. Check the Doco connection");
-    const pick = position("### 2. Pick the project's workspace");
-    expect(pick).toBeGreaterThan(connect);
-    expect(text).toContain("`list_workspaces`");
-    // No workspaces: a link to create one, and try again.
-    expect(text).toContain("create one at https://doco.test/new-workspace");
+  it("then uses the project's workspace, asking the user only when there is none", () => {
+    const step2 = text.slice(position("2. **Workspace.**"), position("3. **This block.**"));
+    expect(step2).toContain("One project = one workspace");
+    expect(step2).toContain("the `Doco workspace:` line right after this block");
+    expect(step2).toContain("call `list_workspaces`, ask the user which to use");
+    expect(step2).toContain("`Doco workspace: https://doco.test/workspaces/<handle>`");
     // A personal workspace exists for everyone and never stands in for a project.
-    expect(text).toContain("besides the user's personal one");
-    // An invited teammate joins instead of creating.
-    expect(text).toContain("accept the invite a teammate sent");
-    expect(text).toContain("try again once it exists");
-    expect(text).toContain("Agents never create workspaces.");
-    // Already connected: keep it or change it.
-    expect(text).toContain("ask whether to keep it or change it");
-    // Not connected: which workspace, or a link to create a new one.
-    expect(text).toContain("ask the user which of the listed workspaces to use");
-    expect(text).toContain("Doco workspace: https://doco.test/workspaces/<workspace-handle>");
+    expect(step2).toContain("none besides their personal one");
+    // No workspace: a link to create one, or the invite a teammate sent.
+    expect(step2).toContain("send them to https://doco.test/new-workspace");
+    expect(step2).toContain("the invite a teammate sent");
+    expect(step2).toContain("agents never create workspaces");
   });
 
   it("has the agent create the workspace's missing Docos itself, not send the user to the site", () => {
-    expect(text).toContain("`doco_create`");
-    expect(text).toContain("in the workspace on the `Doco workspace:` line");
-    expect(text).toContain("Never ask the user to create a Doco");
+    expect(text).toContain("Create a Doco the workspace lacks yourself, with `doco_create`");
+    expect(text).toContain("never ask the user to.");
   });
 
   // Alexander, 2026-10-02: every session, an agent whose project lacks the
   // block or holds an older one saves the latest itself, then tells the user.
   it("keeps the latest block in the project every session, then tells the user", () => {
-    const keep = position("### 3. Keep this block in the project");
-    expect(keep).toBeGreaterThan(position("### 2. Pick the project's workspace"));
-    expect(position("Do step 3 when the project's copy of this block is missing")).toBeLessThan(
-      position("### 1. Check the Doco connection"),
-    );
+    expect(text).toContain("Check these at the start of each session and fix what is missing.");
+    const step3 = text.slice(position("3. **This block.**"));
     // A copy from before versions starts `<!-- doco:begin -->`: outdated.
-    expect(text).toContain(
+    expect(step3).toContain(
       "is missing, has no version, or its `doco:begin` version differs from the one Doco's connector sent (else https://doco.test/agents)",
     );
-    expect(text.slice(keep)).toContain(
-      "replacing any older copy between the markers, then tell the user",
-    );
+    expect(step3).toContain("replace it between the markers and tell the user");
   });
 
   // Alexander, 2026-10-02: agents drift from instructions read once a
@@ -105,12 +95,12 @@ describe("agentInstructions", () => {
   // briefs the agent too; /agents#hook shows how to install it.
   it("reminds the agent of Doco before every reply, through the Doco hook where the client has hooks", () => {
     expect(position(`Before every reply, recall: \`${DOCO_REMINDER}\``)).toBeLessThan(
-      position("### 1. Check the Doco connection"),
+      position("### Setup"),
     );
-    const step3 = text.slice(position("### 3. Keep this block in the project"));
-    expect(step3).toContain("Then install the Doco hook as https://doco.test/agents#hook shows");
-    expect(step3).toContain("briefs the agent before each prompt and file edit");
-    expect(text).toContain("or when a client with hooks lacks the Doco hook");
+    const step3 = text.slice(position("3. **This block.**"));
+    expect(step3).toContain(
+      "Where the client has hooks, install the Doco hook as https://doco.test/agents#hook shows",
+    );
   });
 
   // Alexander, 2026-10-02 (decision_01M3YYQ1JRBS04Z99KEP869F26): duty 1 is one
@@ -137,16 +127,11 @@ describe("agentInstructions", () => {
   // Alexander, 2026-09-30: an agent with the Doco connector skipped every duty
   // because the repo's CLAUDE.md lacked this block (it sat in AGENTS.md on an
   // unmerged PR) and the connector's copy read as setup to run only when asked.
-  // The duties lead, hold without a repo copy, and only setup waits for the user.
+  // The duties lead and hold without a repo copy; setup follows them.
   it("leads with the duties, which hold even without a copy in the repo", () => {
-    expect(position("### Every session")).toBeLessThan(
-      position("### 1. Check the Doco connection"),
-    );
+    expect(position("### Every session")).toBeLessThan(position("### Setup"));
     expect(text).toContain(
       "Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block.",
-    );
-    expect(text).toContain(
-      "Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.",
     );
   });
 
@@ -178,9 +163,10 @@ describe("agentInstructions", () => {
   });
 
   // Claude Code keeps only the first 4096 characters of an MCP server's
-  // instructions, and the hosted server sends this block whole.
-  it("fits whole in the instructions an MCP client keeps", () => {
-    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(4096);
+  // instructions, and the hosted server sends this block whole. Alexander,
+  // 2026-10-06: shorter and simpler, once setup moved to the website.
+  it("fits whole in the instructions an MCP client keeps, with room to spare", () => {
+    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3000);
   });
 
   // Claude Code loads CLAUDE.md, not AGENTS.md: a block kept only in AGENTS.md
@@ -194,13 +180,6 @@ describe("agentInstructions", () => {
   // agent. It stands alone, with no second protocol document behind it.
   it("stands alone: no link to another protocol document", () => {
     expect(text).not.toMatch(/protocol/i);
-  });
-
-  // What the hosted MCP server used to add on its own now lives here, since
-  // the server hands agents this same block.
-  it("orients with doco_whoami and leaves sign-in to the MCP client", () => {
-    expect(text).toMatch(/`doco_whoami` shows who the agent acts as/);
-    expect(text).toMatch(/never drive OAuth by hand/);
   });
 
   // Alexander, 2026-09-30: agents keep their own voice in replies; the

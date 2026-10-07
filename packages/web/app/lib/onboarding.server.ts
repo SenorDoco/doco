@@ -1,9 +1,10 @@
-// Getting a workspace going. Its owners walk three steps on its page: connect
-// GitHub, connect other sources of knowledge (or skip them), ask their agent to
-// start using Doco. Everyone else in it walks only the last. The workspace page
-// (and its card on the list) keeps the person on the first step not done until
-// every one is. Whoever creates a workspace or joins it from an invite gets a
-// reminder email 15 minutes later if a step is still open.
+// Getting a workspace going. Its owners walk four steps on its page: connect
+// GitHub, connect other sources of knowledge (or skip them), connect Doco to
+// their agent, ask their agent to start using Doco. Everyone else in it walks
+// only the last two. The workspace page (and its card on the list) keeps the
+// person on the first step not done until every one is. Whoever creates a
+// workspace or joins it from an invite gets a reminder email 15 minutes later
+// if a step is still open.
 //
 // Each step reads as done from what the database already holds:
 //   github  — a Doco in the workspace is connected to a GitHub repository or
@@ -11,6 +12,9 @@
 //   sources — the person finished the step (with what they connected) or
 //             skipped it, or agents already work in the workspace (a
 //             workspace that far along is past connecting its sources);
+//   mcp     — the person approved an agent's connection that reaches the
+//             workspace and hasn't been revoked or run out, or their agent
+//             already read or wrote in it;
 //   agent   — the person's agent wrote into the workspace's Agents chats Doco
 //             (the instructions ask it to note there that it got them).
 // Every member of a workspace walks them, except in their personal workspace
@@ -73,9 +77,28 @@ export async function finishSourcesStep(
 // A GitHub connection is a repository or a whole organization on any live Doco
 // of the workspace. An agent is anyone working over the MCP server or the API
 // (never the website, Slack or Doco's own imports, such as GitHub's): any
-// agent's read or write in the workspace finishes the other sources; the agent
-// step needs the person's own agent to write in one of the workspace's Agents
-// chats Docos.
+// agent's read or write in the workspace finishes the other sources, and the
+// person's own finishes connecting Doco to their agent, as does a connection
+// they approved (an OAuth refresh token reaching every workspace of theirs,
+// this one, or a Doco in it); the agent step needs the person's own agent to
+// write in one of the workspace's Agents chats Docos.
+function agentWorkedSql(byThePerson = false): string {
+  const by = byThePerson ? " AND cs.actor = wu.user_id" : "";
+  const queriedBy = byThePerson ? " AND q.actor = wu.user_id" : "";
+  return `(EXISTS (
+             SELECT 1 FROM changesets cs
+               JOIN docos d ON d.id = cs.doco_id
+              WHERE d.workspace_id = wu.workspace_id
+                AND d.deleted_at IS NULL${by}
+                AND ${byAgentOverApiSql("cs")}
+           )
+           OR EXISTS (
+             SELECT 1 FROM query_events q
+              WHERE q.workspace_id = wu.workspace_id${queriedBy}
+                AND ${byAgentOverApiSql("q")}
+           ))`;
+}
+
 const PROGRESS_SQL = `
   SELECT wu.workspace_id, w.handle AS workspace_handle, wu.user_id,
          COALESCE(o.joined_as, CASE WHEN wu.role = 'owner' THEN 'creator' ELSE 'invitee' END)
@@ -87,19 +110,21 @@ const PROGRESS_SQL = `
               AND (COALESCE(d.data->'github_integration'->'connections', '[]'::jsonb) <> '[]'::jsonb
                 OR COALESCE(d.data->'github_integration'->'installations', '[]'::jsonb) <> '[]'::jsonb)
          ) AS github,
-         o.sources_done_at IS NOT NULL
-           OR EXISTS (
-             SELECT 1 FROM changesets cs
-               JOIN docos d ON d.id = cs.doco_id
-              WHERE d.workspace_id = wu.workspace_id
-                AND d.deleted_at IS NULL
-                AND ${byAgentOverApiSql("cs")}
-           )
-           OR EXISTS (
-             SELECT 1 FROM query_events q
-              WHERE q.workspace_id = wu.workspace_id
-                AND ${byAgentOverApiSql("q")}
-           ) AS sources,
+         o.sources_done_at IS NOT NULL OR ${agentWorkedSql()} AS sources,
+         EXISTS (
+           SELECT 1 FROM oauth_refresh_tokens rt
+            WHERE rt.user_id = wu.user_id
+              AND NOT rt.revoked
+              AND rt.expires_at > now()
+              AND (rt.grant_type = 'actor'
+                OR wu.workspace_id = ANY (rt.granted_workspace_ids)
+                OR EXISTS (
+                  SELECT 1 FROM docos d
+                   WHERE d.id = ANY (rt.granted_doco_ids)
+                     AND d.workspace_id = wu.workspace_id
+                     AND d.deleted_at IS NULL
+                ))
+         ) OR ${agentWorkedSql(true)} AS mcp,
          EXISTS (
            SELECT 1 FROM changesets cs
              JOIN docos d ON d.id = cs.doco_id
@@ -123,6 +148,7 @@ interface ProgressRow {
   joined_as: JoinedAs;
   github: boolean;
   sources: boolean;
+  mcp: boolean;
   agent: boolean;
 }
 

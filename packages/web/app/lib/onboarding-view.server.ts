@@ -5,6 +5,7 @@
 // came with an Agents chats Doco its own, so the agent has somewhere to write.
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
+import { type AgentGuide, agentConnectGuides } from "./agent-connect-guides";
 import { agentInstructionsForWorkspace } from "./agent-instructions";
 import { findDocoTemplateMeta } from "./doco-templates-meta";
 import { githubAppConfigured } from "./github-app.server";
@@ -42,6 +43,10 @@ export interface OnboardingView {
     docoHandle: string | null;
     connected: boolean;
   }>;
+  mcp: {
+    /** How to connect Doco to each agent, for the one the person picks. */
+    guides: AgentGuide[];
+  };
   agent: {
     /** The message to send the agent (agentInstructionsForWorkspace). */
     instructions: string;
@@ -62,6 +67,7 @@ export async function loadOnboardingView(opts: {
   const pending = progress ? pendingStep(progress) : null;
   if (!progress || !pending) return null;
 
+  const baseUrl = getPublicBaseUrl(request);
   const creator = progress.joinedAs === "creator";
   const importDocos = creator ? ((await listImportDocos([workspace.id]))[workspace.id] ?? {}) : {};
   const agentsChats =
@@ -116,8 +122,9 @@ export async function loadOnboardingView(opts: {
         ),
       },
       sources,
+      mcp: { guides: agentConnectGuides(baseUrl) },
       agent: {
-        instructions: agentInstructionsForWorkspace(getPublicBaseUrl(request), workspace.handle),
+        instructions: agentInstructionsForWorkspace(baseUrl, workspace.handle),
         agentsChatsHandle: (agentsChats ?? (await docoFor("agents-chats")))?.handle ?? null,
       },
     };

@@ -1,21 +1,22 @@
 // The steps of getting a workspace going, shared by the page that walks them
 // (components/onboarding-stepper.tsx), the reminder email
 // (lib/onboarding-emails.ts) and what reads them as done
-// (lib/onboarding.server.ts). Whoever creates a workspace walks all three;
-// whoever joins it from an invite only asks their agent.
+// (lib/onboarding.server.ts). Whoever creates a workspace walks all four;
+// whoever joins it from an invite connects their agent and asks it.
 
-export type OnboardingStep = "github" | "sources" | "agent";
+export type OnboardingStep = "github" | "sources" | "mcp" | "agent";
 export type JoinedAs = "creator" | "invitee";
 
 /** The steps each kind of person walks, in order. */
 export const ONBOARDING_STEPS: Record<JoinedAs, readonly OnboardingStep[]> = {
-  creator: ["github", "sources", "agent"],
-  invitee: ["agent"],
+  creator: ["github", "sources", "mcp", "agent"],
+  invitee: ["mcp", "agent"],
 };
 
 export const STEP_TITLES: Record<OnboardingStep, string> = {
   github: "Connect GitHub",
   sources: "Connect other sources of knowledge",
+  mcp: "Connect Doco to your agent",
   agent: "Ask your agent to start using Doco",
 };
 

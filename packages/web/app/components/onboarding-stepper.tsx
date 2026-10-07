@@ -1,11 +1,13 @@
 // The steps that get a workspace going, on top of its page until every one is
-// done: connect GitHub, connect other sources of knowledge (or skip them), ask
-// your agent to start using Doco. Someone who joined from an invite only has
-// the last. The page keeps the person on the first step not done. Connecting
-// GitHub goes through the GitHub setup (routes/integrations.github.tsx), which
-// asks which repositories to bring; the other steps are one click each
-// (routes/workspaces.$workspaceHandle.onboarding.tsx) and come back here saying
-// what happened, and the agent step waits in view for the agent's note in the
+// done: connect GitHub, connect other sources of knowledge (or skip them),
+// connect Doco to your agent, ask your agent to start using Doco. Someone who
+// joined from an invite only has the last two. The page keeps the person on
+// the first step not done. Connecting GitHub goes through the GitHub setup
+// (routes/integrations.github.tsx), which asks which repositories to bring;
+// the other sources are one click each
+// (routes/workspaces.$workspaceHandle.onboarding.tsx) and come back here
+// saying what happened. The last two wait in view for what happens in the
+// agent: the person approving its connection to Doco, then its note in the
 // workspace's Agents chats Doco.
 
 import { CheckCircle2 } from "lucide-react";
@@ -14,6 +16,7 @@ import { Form, Link, useFetcher, useRevalidator, useSearchParams } from "react-r
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { BRAND_ICONS, GitHubIcon } from "~/components/brand-icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { cn } from "~/lib/cn";
 import { GITHUB_IMPORTS } from "~/lib/github-imports";
@@ -35,7 +38,7 @@ const REFUSALS: Record<string, string> = {
   unknown: "That didn't work. Try again.",
 };
 
-/** How often the agent step asks whether the agent has written yet. */
+/** How often a step waiting on the agent asks whether it has moved on. */
 const AGENT_POLL_MS = 4000;
 
 export function OnboardingStepper({ view }: { view: OnboardingView }) {
@@ -54,8 +57,8 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
         </CardTitle>
         <CardDescription>
           {creator
-            ? "Three steps to shared knowledge and context for your team and its agents."
-            : `You joined ${view.workspaceHandle}. One step left: ask your agent to start using Doco here.`}
+            ? "Four steps to shared knowledge and context for your team and its agents."
+            : `You joined ${view.workspaceHandle}. Two steps left: connect Doco to your agent, then ask it to start using Doco here.`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-0">
@@ -141,7 +144,43 @@ function StepBody({
   const action = `/workspaces/${view.workspaceHandle}/onboarding`;
   if (step === "github") return <GitHubStep view={view} />;
   if (step === "sources") return <SourcesStep view={view} action={action} />;
+  if (step === "mcp") return <McpStep view={view} action={action} onFinished={onFinished} />;
   return <AgentStep view={view} action={action} onFinished={onFinished} />;
+}
+
+/**
+ * Ask where the steps stand every few seconds while one waits on the agent,
+ * and move on the moment it does: to the next step, or to all set.
+ */
+function useWaitForAgent(view: OnboardingView, action: string, onFinished: () => void) {
+  const fetcher = useFetcher<{ pending: OnboardingStep | null }>();
+  const revalidator = useRevalidator();
+
+  const load = fetcher.load;
+  useEffect(() => {
+    const timer = setInterval(() => load(action), AGENT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [load, action]);
+
+  const pending = fetcher.data?.pending;
+  const revalidate = revalidator.revalidate;
+  useEffect(() => {
+    if (pending === undefined || pending === view.pending) return;
+    if (pending === null) onFinished();
+    else revalidate();
+  }, [pending, view.pending, onFinished, revalidate]);
+}
+
+function Waiting({ children }: { children: React.ReactNode }) {
+  return (
+    <output className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span
+        aria-hidden
+        className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+      />
+      <span>{children}</span>
+    </output>
+  );
 }
 
 function GitHubStep({ view }: { view: OnboardingView }) {
@@ -244,6 +283,30 @@ function SourcesStep({ view, action }: { view: OnboardingView; action: string })
   );
 }
 
+function McpStep({
+  view,
+  action,
+  onFinished,
+}: {
+  view: OnboardingView;
+  action: string;
+  onFinished: () => void;
+}) {
+  useWaitForAgent(view, action, onFinished);
+  return (
+    <div className="space-y-4 text-sm">
+      <p className="text-muted-foreground">
+        Add Doco to the agent you use, so it can read and write in {view.workspaceHandle}. When Doco
+        asks what the agent may reach, include {view.workspaceHandle}.
+      </p>
+      <ConnectAgentGuide guides={view.mcp.guides} />
+      <Waiting>
+        Waiting for you to approve Doco from your agent. This page moves on by itself once you do.
+      </Waiting>
+    </div>
+  );
+}
+
 function AgentStep({
   view,
   action,
@@ -253,24 +316,13 @@ function AgentStep({
   action: string;
   onFinished: () => void;
 }) {
-  const fetcher = useFetcher<{ pending: OnboardingStep | null }>();
+  useWaitForAgent(view, action, onFinished);
   const where = view.agent.agentsChatsHandle ?? `${view.workspaceHandle}'s Agents chats Doco`;
-
-  const load = fetcher.load;
-  useEffect(() => {
-    const timer = setInterval(() => load(action), AGENT_POLL_MS);
-    return () => clearInterval(timer);
-  }, [load, action]);
-
-  useEffect(() => {
-    if (fetcher.data && fetcher.data.pending === null) onFinished();
-  }, [fetcher.data, onFinished]);
-
   return (
     <div className="space-y-3 text-sm">
       <p className="text-muted-foreground">
-        Copy this message and send it to your agent (Claude Code, Claude, ChatGPT, Cursor or any
-        other). It connects your agent to Doco, works in {view.workspaceHandle}, and notes in{" "}
+        Copy this message and send it to your agent. It has your agent start using Doco in{" "}
+        {view.workspaceHandle} and note in{" "}
         <span className="font-mono text-foreground">{where}</span> that it received the
         instructions. That note finishes this step.
       </p>
@@ -278,16 +330,10 @@ function AgentStep({
         title="Message for your agent"
         instructions={view.agent.instructions}
       />
-      <output className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span
-          aria-hidden
-          className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-        />
-        <span>
-          Waiting for your agent to write in <span className="font-mono">{where}</span>. This page
-          moves on by itself once it does.
-        </span>
-      </output>
+      <Waiting>
+        Waiting for your agent to write in <span className="font-mono">{where}</span>. This page
+        moves on by itself once it does.
+      </Waiting>
     </div>
   );
 }

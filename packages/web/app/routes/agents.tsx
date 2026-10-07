@@ -1,6 +1,7 @@
 import { getPublicBaseUrl } from "@doco/shared";
+import { Link } from "react-router";
 import { AgentInstructionsBlock, CopyButton } from "~/components/agent-instructions-block";
-import { agentInstructions } from "~/lib/agent-instructions";
+import { CONNECT_AGENT_PATH, agentInstructions } from "~/lib/agent-instructions";
 import { hookInstallSnippets } from "~/lib/doco-hook-install";
 
 /**
@@ -26,10 +27,16 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
     <main className="px-6 py-12 md:py-16">
       <div className="mx-auto max-w-3xl space-y-12">
         <h1 className="sr-only">Instructions for agents</h1>
-        <AgentInstructionsBlock
-          title="To use Doco with your agent(s), give them these instructions:"
-          instructions={loaderData.instructions}
-        />
+        <div className="space-y-6">
+          <p className="text-sm text-muted-foreground">
+            First, <Link to={CONNECT_AGENT_PATH}>connect Doco to your agent</Link>: step by step for
+            Claude, ChatGPT, Cursor and more.
+          </p>
+          <AgentInstructionsBlock
+            title="To use Doco with your agent(s), give them these instructions:"
+            instructions={loaderData.instructions}
+          />
+        </div>
         <section id="hook" className="flex min-w-0 flex-col gap-4">
           <h2 className="text-sm font-semibold">Then install the Doco hook:</h2>
           <p className="text-sm text-muted-foreground">

@@ -17,27 +17,28 @@ describe("welcomeEmail", () => {
     expect(email.html).toContain('href="https://doco.test/workspaces/acme"');
   });
 
-  it("names the three steps that set it up", () => {
+  it("names the four steps that set it up", () => {
     expect(email.text).toContain(
-      "Three steps set it up: connect GitHub, connect other sources of knowledge, and ask your agent to start using Doco.",
+      "Four steps set it up: connect GitHub, connect other sources of knowledge, connect Doco to your agent, and ask your agent to start using Doco.",
     );
   });
 });
 
 describe("reminderEmail", () => {
-  it("invites the creator to finish the three simple steps, marking the done ones", () => {
+  it("invites the creator to finish the four simple steps, marking the done ones", () => {
     const email = reminderEmail({
       ...base,
       steps: [
         { step: "github", done: true },
         { step: "sources", done: false },
+        { step: "mcp", done: false },
         { step: "agent", done: false },
       ],
     });
     expect(email.subject).toBe("Finish setting up acme on Doco");
-    expect(email.text).toContain("acme is three simple steps from");
+    expect(email.text).toContain("acme is four simple steps from");
     expect(email.text).toContain(
-      "1. Connect GitHub (done)\n2. Connect other sources of knowledge\n",
+      "1. Connect GitHub (done)\n2. Connect other sources of knowledge\n3. Connect Doco to your agent\n4. Ask your agent to start using Doco\n",
     );
     expect(email.text).toContain("https://doco.test/workspaces/acme");
     expect(email.text).not.toContain("doco:begin");
@@ -49,6 +50,7 @@ describe("reminderEmail", () => {
       steps: [
         { step: "github", done: true },
         { step: "sources", done: true },
+        { step: "mcp", done: true },
         { step: "agent", done: false },
       ],
     });
@@ -56,8 +58,27 @@ describe("reminderEmail", () => {
     expect(email.text).toContain(agentInstructionsForWorkspace("https://doco.test", "acme"));
   });
 
-  it("hands someone who joined from an invite the agent's message right away", () => {
-    const email = reminderEmail({ ...base, steps: [{ step: "agent", done: false }] });
+  it("sends someone who joined from an invite to connect their agent first", () => {
+    const email = reminderEmail({
+      ...base,
+      steps: [
+        { step: "mcp", done: false },
+        { step: "agent", done: false },
+      ],
+    });
+    expect(email.text).toContain("acme is two simple steps from");
+    expect(email.text).toContain("1. Connect Doco to your agent\n");
+    expect(email.text).not.toContain("doco:begin");
+  });
+
+  it("hands over the agent's message, escaped, once their agent is connected", () => {
+    const email = reminderEmail({
+      ...base,
+      steps: [
+        { step: "mcp", done: true },
+        { step: "agent", done: false },
+      ],
+    });
     expect(email.text).toContain(agentInstructionsForWorkspace("https://doco.test", "acme"));
     // In HTML the message is escaped and keeps its line breaks.
     expect(email.html).toContain("&lt;!-- doco:begin v");

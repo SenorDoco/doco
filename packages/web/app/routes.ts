@@ -22,6 +22,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  * Hosted-multi-tenant route table:
  *
  *   /                              host home: the agent instructions, the same for everyone
+ *   /agents                        the instructions to give an agent; /agents/connect connects Doco to one
  *   /workspaces                    signed-in home: one card per workspace (/dashboard redirects here)
  *   /feedback                      owner-only bug/idea report review page (clears the header flags)
  *   /mentor/feedback               legacy redirect → /feedback
@@ -142,6 +143,9 @@ export default [
   route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
   // The Doco hook script, which /agents tells a project to save.
   route("agents/doco-hook.mjs", "routes/agents.doco-hook[.]mjs.tsx"),
+  // How a person connects Doco to their agent, step by step for each agent.
+  // The agent instructions send people here when Doco's tools are missing.
+  route("agents/connect", "routes/agents.connect.tsx"),
   // Self-service create. The doco-create flow starts with one form,
   // then continues under :docoHandle/welcome.
   route("new-doco", "routes/new-doco.tsx"),

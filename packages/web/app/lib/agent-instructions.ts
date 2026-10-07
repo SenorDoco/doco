@@ -32,6 +32,9 @@ export const DOCO_REMINDER =
 /** The page that shows the block, where every pointer for agents leads. */
 export const AGENT_INSTRUCTIONS_PATH = "/agents";
 
+/** The page that walks a person through connecting Doco to their agent. */
+export const CONNECT_AGENT_PATH = "/agents/connect";
+
 /** The site-wide meta tag an agent reading any page's head sees first. */
 export const AI_INSTRUCTIONS_META = `This site is Doco: ${TAGLINE}. If you were told 'let's start using Doco' or similar, follow the agent instructions at ${AGENT_INSTRUCTIONS_PATH}.`;
 
@@ -58,51 +61,28 @@ function block(baseUrl: string): string {
   const host = baseUrl.replace(/\/+$/, "");
   return `## Doco
 
-This project keeps its shared memory in Doco (${host}): the intents, decisions, rules and history behind the work. Follow steps 1 to 3 below when the user asks to use Doco, or when a duty needs a connection or a workspace that is missing.
+This project keeps its shared memory in Doco (${host}): the intents, decisions, rules and history behind the work.
 
 ### Every session
 
-Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block. Each Doco's policies refine how to do them, never whether.
+Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block. Each Doco's policies refine how, never whether.
 
 1. **Load context first.** Before the first substantive reply and each new task, call \`doco_brief\` with what you are about to do and what you touch (paths, URLs, ids, PRs); obey its first tier and cite its ids.
-2. **Record the conversation.** Before the session ends, \`doco_capture\` a Log of the chat in the workspace's Agents chats Doco: who took part, what was asked, what was worked on, what came of it and what was left open, with the ids of the nodes it produced.
-3. **Document every decision.** When a choice is made, \`doco_capture\` it as a Decision as it forms (the question, the choice, the alternatives and why they lost) in the Doco for its kind of decision: Product decisions for what to build and why, Design decisions for UX, interaction and visual choices, Architectural decisions for system structure, technology and data.
-4. **Update the process.** When a decision is about a business process, add it to the workspace's Processes Doco as well: change the steps, gateways or rules of the process it affects to match, citing the decision's id.
+2. **Record the conversation.** Before the session ends, \`doco_capture\` a Log of the chat in the workspace's Agents chats Doco: who took part, what was asked, what came of it, what was left open, and the ids of the nodes it produced.
+3. **Document every decision.** When a choice is made, \`doco_capture\` it as a Decision (the question, the choice, the alternatives and why they lost) in Product decisions (what to build and why), Design decisions (UX, interaction, visuals) or Architectural decisions (structure, technology, data).
+4. **Update the process.** When a decision changes a business process, also change that process's steps, gateways or rules in the Processes Doco, citing the decision's id.
 
-A doco is the project's record; write what was decided, by whom and why, in the third person or the imperative.
+Write in Docos what was decided, by whom and why, in the third person or the imperative.
 
 Before every reply, recall: \`${DOCO_REMINDER}\`
 
-Do step 3 when the project's copy of this block is missing, has no version, or its \`doco:begin\` version differs from the one Doco's connector sent (else ${host}${AGENT_INSTRUCTIONS_PATH}), or when a client with hooks lacks the Doco hook.
+### Setup
 
-### 1. Check the Doco connection
+Check these at the start of each session and fix what is missing.
 
-Look for Doco's MCP tools (\`doco_whoami\`, \`list_workspaces\`). If they are missing, ask the user to connect Doco's MCP server:
-
-- Claude Code: run \`claude mcp add --transport http doco ${host}/mcp\`, then \`/mcp\` to sign in
-- Any other client (claude.ai, ChatGPT, Cursor): add ${host}/mcp as a custom connector or remote MCP server
-
-Doco's tools must be set to always allow. Check that (in Claude Code, a \`mcp__doco\` allow rule); if they aren't, or you can't tell, ask the user to set that up.
-
-Signing in is the MCP client's job: never drive OAuth by hand. \`doco_whoami\` shows who the agent acts as, what it can reach, and the standing orders of the project's workspace: its charter, rules, Docos and what changed.
-
-### 2. Pick the project's workspace
-
-One project = one workspace. Call \`list_workspaces\`.
-
-- No workspaces besides the user's personal one: tell the user to create one at ${host}/new-workspace, or to accept the invite a teammate sent, and to try again once it exists. Agents never create workspaces.
-- A workspace is already connected (the \`Doco workspace:\` line right after this block): ask whether to keep it or change it.
-- None connected yet, or changing it: ask the user which of the listed workspaces to use, or share ${host}/new-workspace to create one.
-
-Record the choice as one line right after this block:
-
-    Doco workspace: ${host}/workspaces/<workspace-handle>
-
-When the work needs a Doco the workspace lacks, create it with \`doco_create\` in the workspace on the \`Doco workspace:\` line. Never ask the user to create a Doco on the website.
-
-### 3. Keep this block in the project
-
-Save this block in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; a CLAUDE.md line \`@AGENTS.md\` loads AGENTS.md too), replacing any older copy between the markers, then tell the user. Then install the Doco hook as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows: it briefs the agent before each prompt and file edit, with the reminder above first.
+1. **Connection.** If Doco's tools (\`doco_brief\`, \`doco_capture\`) are missing, or ask for approval on every call, ask the user to connect Doco by following ${host}${CONNECT_AGENT_PATH}. Never set it up or sign in for them.
+2. **Workspace.** One project = one workspace: the one on the \`Doco workspace:\` line right after this block. Without that line, call \`list_workspaces\`, ask the user which to use, and add \`Doco workspace: ${host}/workspaces/<handle>\`. If they have none besides their personal one, send them to ${host}/new-workspace or to the invite a teammate sent; agents never create workspaces. Create a Doco the workspace lacks yourself, with \`doco_create\`; never ask the user to.
+3. **This block.** Keep it in the file the project's agents load (CLAUDE.md for Claude Code, AGENTS.md for most others; \`@AGENTS.md\` in CLAUDE.md loads it). When the project's copy is missing, has no version, or its \`doco:begin\` version differs from the one Doco's connector sent (else ${host}${AGENT_INSTRUCTIONS_PATH}), replace it between the markers and tell the user. Where the client has hooks, install the Doco hook as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows.
 ${INSTRUCTIONS_END}
 `;
 }

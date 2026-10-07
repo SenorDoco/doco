@@ -1,7 +1,8 @@
-// Whoever creates a workspace walks three steps (connect GitHub, connect other
-// sources or skip them, ask their agent to start using Doco); whoever joins it
-// from an invite walks only the last. Members of a workspace made before the
-// steps existed walk them too: its owners all three, everyone else the last.
+// Whoever creates a workspace walks four steps (connect GitHub, connect other
+// sources or skip them, connect Doco to their agent, ask their agent to start
+// using Doco); whoever joins it from an invite walks only the last two. Members
+// of a workspace made before the steps existed walk them too: its owners all
+// four, everyone else the last two.
 // Each step reads as done from what the database already holds. PGlite runs
 // the real schema.
 import type { PGlite } from "@electric-sql/pglite";
@@ -70,17 +71,53 @@ async function githubImports(docoId: string, authorId: string) {
   ]);
 }
 
+/** The person approves an agent's connection in Doco (/oauth/authorize). */
+async function approves(
+  userId: string,
+  grant: {
+    grant_type?: "actor" | "regular";
+    granted_workspace_ids?: string[];
+    granted_doco_ids?: string[];
+    revoked?: boolean;
+    expires_at?: string;
+  },
+) {
+  await db.exec(`
+    INSERT INTO oauth_clients (client_id, client_name, redirect_uris)
+    VALUES ('client_claude', 'Claude Code', ARRAY['http://localhost/callback'])
+    ON CONFLICT DO NOTHING;
+  `);
+  await db.query(
+    `INSERT INTO oauth_refresh_tokens
+       (token, client_id, user_id, granted_doco_ids, granted_workspace_ids, grant_type, revoked, expires_at)
+     VALUES ($1, 'client_claude', $2, $3, $4, $5, $6, $7)`,
+    [
+      `refresh_${Math.random()}`,
+      userId,
+      grant.granted_doco_ids ?? [],
+      grant.granted_workspace_ids ?? [],
+      grant.grant_type ?? "regular",
+      grant.revoked ?? false,
+      grant.expires_at ?? new Date(Date.now() + 86_400_000).toISOString(),
+    ],
+  );
+}
+
 describe("onboarding steps", () => {
-  it("walks the owners of a workspace made before the steps through all three", async () => {
+  it("walks the owners of a workspace made before the steps through all four", async () => {
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", false],
+      ["mcp", false],
       ["agent", false],
     ]);
   });
 
-  it("walks its other members only through asking their agent", async () => {
-    expect(await steps(bo)).toEqual([["agent", false]]);
+  it("walks its other members only through connecting and asking their agent", async () => {
+    expect(await steps(bo)).toEqual([
+      ["mcp", false],
+      ["agent", false],
+    ]);
   });
 
   it("has no steps for someone outside the workspace, or who left it", async () => {
@@ -102,18 +139,22 @@ describe("onboarding steps", () => {
     expect([...(await loadUnfinishedOnboarding(c, "user_ana")).keys()]).toEqual(["workspace_acme"]);
   });
 
-  it("walks the creator through GitHub, other sources and their agent, in that order", async () => {
+  it("walks the creator through GitHub, other sources, connecting their agent and asking it, in that order", async () => {
     await startOnboarding(c, { ...ana, joinedAs: "creator" });
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", false],
+      ["mcp", false],
       ["agent", false],
     ]);
   });
 
-  it("walks an invited person only through asking their agent", async () => {
+  it("walks an invited person only through connecting and asking their agent", async () => {
     await startOnboarding(c, { ...bo, joinedAs: "invitee" });
-    expect(await steps(bo)).toEqual([["agent", false]]);
+    expect(await steps(bo)).toEqual([
+      ["mcp", false],
+      ["agent", false],
+    ]);
   });
 
   it("never restarts a creator's steps when they join again from an invite", async () => {
@@ -157,6 +198,7 @@ describe("onboarding steps", () => {
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", true],
+      ["mcp", false],
       ["agent", false],
     ]);
   });
@@ -169,6 +211,7 @@ describe("onboarding steps", () => {
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", true],
+      ["mcp", false],
       ["agent", false],
     ]);
   });
@@ -191,6 +234,7 @@ describe("onboarding steps", () => {
     expect(await steps(ana)).toEqual([
       ["github", true],
       ["sources", false],
+      ["mcp", false],
       ["agent", false],
     ]);
   });
@@ -198,13 +242,19 @@ describe("onboarding steps", () => {
   it("finishes the agent step once the person's agent writes into Agents chats", async () => {
     await startOnboarding(c, { ...bo, joinedAs: "invitee" });
     await agentWrites("doco_chats", "user_bo", "mcp");
-    expect(await steps(bo)).toEqual([["agent", true]]);
+    expect(await steps(bo)).toEqual([
+      ["mcp", true],
+      ["agent", true],
+    ]);
   });
 
   it("counts an agent on the API too", async () => {
     await startOnboarding(c, { ...bo, joinedAs: "invitee" });
     await agentWrites("doco_chats", "user_bo", "api");
-    expect(await steps(bo)).toEqual([["agent", true]]);
+    expect(await steps(bo)).toEqual([
+      ["mcp", true],
+      ["agent", true],
+    ]);
   });
 
   it("doesn't count the person on the website, someone else's agent, or another Doco", async () => {
@@ -212,7 +262,51 @@ describe("onboarding steps", () => {
     await agentWrites("doco_chats", "user_bo", "ui");
     await agentWrites("doco_chats", "user_ana", "mcp");
     await agentWrites("doco_decisions", "user_bo", "mcp");
-    expect(await steps(bo)).toEqual([["agent", false]]);
+    expect((await steps(bo))?.[1]).toEqual(["agent", false]);
+  });
+
+  // Alexander, 2026-10-06: connecting Doco to the agent is a step of its own,
+  // done the moment the person approves the agent's connection in Doco.
+  it("connects the person's agent once they approve a connection that reaches the workspace", async () => {
+    await startOnboarding(c, { ...bo, joinedAs: "invitee" });
+    expect((await steps(bo))?.[0]).toEqual(["mcp", false]);
+    await approves("user_bo", { grant_type: "actor" });
+    expect(await steps(bo)).toEqual([
+      ["mcp", true],
+      ["agent", false],
+    ]);
+  });
+
+  it("counts a connection granted this workspace, or a Doco in it", async () => {
+    await approves("user_bo", { granted_workspace_ids: ["workspace_acme"] });
+    expect((await steps(bo))?.[0]).toEqual(["mcp", true]);
+    await db.exec("DELETE FROM oauth_refresh_tokens");
+    await approves("user_bo", { granted_doco_ids: ["doco_decisions"] });
+    expect((await steps(bo))?.[0]).toEqual(["mcp", true]);
+  });
+
+  it("doesn't count a connection revoked, run out, elsewhere, or someone else's", async () => {
+    await db.exec(
+      `INSERT INTO workspaces (id, handle, name) VALUES ('workspace_zeta', 'zeta', 'zeta')`,
+    );
+    await approves("user_bo", { grant_type: "actor", revoked: true });
+    await approves("user_bo", { grant_type: "actor", expires_at: "2020-01-01T00:00:00Z" });
+    await approves("user_bo", { granted_workspace_ids: ["workspace_zeta"] });
+    await approves("user_ana", { grant_type: "actor" });
+    expect((await steps(bo))?.[0]).toEqual(["mcp", false]);
+  });
+
+  it("counts the person's agent reading the workspace as connected", async () => {
+    await db.query(
+      "INSERT INTO query_events (workspace_id, actor, source, metadata) VALUES ($1, $2, $3, $4)",
+      ["workspace_acme", "user_ana", "mcp", JSON.stringify(CONTEXT.mcp)],
+    );
+    expect((await steps(bo))?.[0]).toEqual(["mcp", false]);
+    await db.query(
+      "INSERT INTO query_events (workspace_id, actor, source, metadata) VALUES ($1, $2, $3, $4)",
+      ["workspace_acme", "user_bo", "mcp", JSON.stringify(CONTEXT.mcp)],
+    );
+    expect((await steps(bo))?.[0]).toEqual(["mcp", true]);
   });
 
   it("keeps the person on the first step not done", async () => {
