@@ -598,7 +598,7 @@ Response:
 {
   "token":   "doco_pt_<base64url-32-bytes>",
   "summary": { ... metadata, no token body ... },
-  "install_hint": "<markdown for the user>"
+  "install_hint": "<markdown: where to save the token and turn on the hook>"
 }
 \`\`\`
 

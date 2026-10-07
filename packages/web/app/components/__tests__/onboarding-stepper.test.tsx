@@ -15,6 +15,7 @@ const CREATOR: OnboardingView = {
     { step: "sources", done: false },
     { step: "mcp", done: false },
     { step: "agent", done: false },
+    { step: "hook", done: false },
   ],
   pending: "github",
   github: { available: true, docos: [] },
@@ -50,6 +51,7 @@ const ON_SOURCES: OnboardingView = {
     { step: "sources", done: false },
     { step: "mcp", done: false },
     { step: "agent", done: false },
+    { step: "hook", done: false },
   ],
   pending: "sources",
   github: {
@@ -68,6 +70,7 @@ const ON_MCP: OnboardingView = {
     { step: "sources", done: true },
     { step: "mcp", done: false },
     { step: "agent", done: false },
+    { step: "hook", done: false },
   ],
   pending: "mcp",
 };
@@ -79,8 +82,21 @@ const ON_AGENT: OnboardingView = {
     { step: "sources", done: true },
     { step: "mcp", done: true },
     { step: "agent", done: false },
+    { step: "hook", done: false },
   ],
   pending: "agent",
+};
+
+const ON_HOOK: OnboardingView = {
+  ...ON_SOURCES,
+  steps: [
+    { step: "github", done: true },
+    { step: "sources", done: true },
+    { step: "mcp", done: true },
+    { step: "agent", done: true },
+    { step: "hook", done: false },
+  ],
+  pending: "hook",
 };
 
 const INVITEE: OnboardingView = {
@@ -116,11 +132,12 @@ describe("OnboardingStepper", () => {
   it("starts a workspace's creator on connecting GitHub, which asks which repositories", () => {
     const html = render(CREATOR);
     expect(html).toContain("Set up acme");
-    expect(html).toContain("Four steps to shared knowledge");
+    expect(html).toContain("Five steps to shared knowledge");
     expect(html).toContain("Connect GitHub");
     expect(html).toContain("Connect other sources of knowledge");
     expect(html).toContain("Connect Doco to your agent");
     expect(html).toContain("Ask your agent to start using Doco");
+    expect(html).toContain("Turn on the Doco hook");
     const step = currentStep(html);
     // The GitHub setup: it creates the workspace's GitHub Docos and has the
     // person pick every repository of an organization, or the ones they want.
@@ -192,18 +209,43 @@ describe("OnboardingStepper", () => {
     expect(html).not.toContain("Skipped");
   });
 
+  // Alexander, 2026-10-07 (decision_01M4BK9TWE3SYDC1X2D8SB67Y2): the owners'
+  // last step turns on the Doco hook, which needs a project token only an
+  // owner can create.
+  it("turns on the hook with a project token the owner confirms, or skips it", () => {
+    const step = currentStep(render(ON_HOOK));
+    expect(step).toContain("Turn on the Doco hook");
+    expect(step).toContain("before each prompt and each file edit");
+    expect(step).toContain("Claude Code, Codex and Gemini CLI");
+    const checkbox = step.match(/<input type="checkbox"[^>]*>/)?.[0];
+    expect(checkbox).toContain('name="confirm_repo_readable"');
+    expect(checkbox).toContain('required=""');
+    expect(step).toContain("will be able to read every Doco in acme");
+    expect(step).toMatch(
+      /<button type="submit" value="hook-token"[^>]*name="intent">Create project token/,
+    );
+    expect(step).toMatch(
+      /<button type="submit" value="finish-hook" formNoValidate=""[^>]*name="intent">/,
+    );
+    expect(step).toContain("My agent doesn&#x27;t run hooks");
+  });
+
   it("walks someone who joined from an invite only through connecting and asking their agent", () => {
     const html = render(INVITEE);
     expect(html).toContain("Get started in acme");
     expect(html).toContain("Two steps left");
     expect(html).not.toContain("Connect GitHub");
     expect(html).not.toContain("Connect other sources of knowledge");
+    expect(html).not.toContain("Turn on the Doco hook");
     expect(currentStep(html)).toContain("Which agent do you use?");
   });
 
   it("explains a step that came back refused", () => {
     expect(render(CREATOR, "/workspaces/acme?onboarding=not_owner")).toContain(
-      "Only an owner of this workspace can connect its sources.",
+      "Only an owner of this workspace can take this step.",
+    );
+    expect(render(ON_HOOK, "/workspaces/acme?onboarding=unconfirmed")).toContain(
+      "Check the box first",
     );
   });
 });

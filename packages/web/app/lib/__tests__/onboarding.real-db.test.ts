@@ -1,8 +1,9 @@
-// Whoever creates a workspace walks four steps (connect GitHub, connect other
+// Whoever creates a workspace walks five steps (connect GitHub, connect other
 // sources or skip them, connect Doco to their agent, ask their agent to start
-// using Doco); whoever joins it from an invite walks only the last two. Members
-// of a workspace made before the steps existed walk them too: its owners all
-// four, everyone else the last two.
+// using Doco, turn on the Doco hook or skip it); whoever joins it from an
+// invite walks only connecting and asking their agent. Members of a workspace
+// made before the steps existed walk them too: its owners all five, everyone
+// else those two.
 // Each step reads as done from what the database already holds. PGlite runs
 // the real schema.
 import type { PGlite } from "@electric-sql/pglite";
@@ -11,7 +12,7 @@ import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 import { pendingStep } from "../onboarding-steps";
 import {
   claimDueReminders,
-  finishSourcesStep,
+  finishStep,
   loadOnboardingProgress,
   loadUnfinishedOnboarding,
   startOnboarding,
@@ -104,12 +105,13 @@ async function approves(
 }
 
 describe("onboarding steps", () => {
-  it("walks the owners of a workspace made before the steps through all four", async () => {
+  it("walks the owners of a workspace made before the steps through all five", async () => {
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", false],
       ["mcp", false],
       ["agent", false],
+      ["hook", false],
     ]);
   });
 
@@ -139,13 +141,14 @@ describe("onboarding steps", () => {
     expect([...(await loadUnfinishedOnboarding(c, "user_ana")).keys()]).toEqual(["workspace_acme"]);
   });
 
-  it("walks the creator through GitHub, other sources, connecting their agent and asking it, in that order", async () => {
+  it("walks the creator through GitHub, other sources, connecting their agent, asking it and its hook, in that order", async () => {
     await startOnboarding(c, { ...ana, joinedAs: "creator" });
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", false],
       ["mcp", false],
       ["agent", false],
+      ["hook", false],
     ]);
   });
 
@@ -189,17 +192,18 @@ describe("onboarding steps", () => {
 
   it("finishes the other sources once the person finishes or skips them", async () => {
     await startOnboarding(c, { ...ana, joinedAs: "creator" });
-    await finishSourcesStep(c, ana);
+    await finishStep(c, { ...ana, step: "sources" });
     expect((await steps(ana))?.[1]).toEqual(["sources", true]);
   });
 
   it("finishes the other sources for an owner of a workspace made before the steps", async () => {
-    await finishSourcesStep(c, ana);
+    await finishStep(c, { ...ana, step: "sources" });
     expect(await steps(ana)).toEqual([
       ["github", false],
       ["sources", true],
       ["mcp", false],
       ["agent", false],
+      ["hook", false],
     ]);
   });
 
@@ -213,6 +217,7 @@ describe("onboarding steps", () => {
       ["sources", true],
       ["mcp", false],
       ["agent", false],
+      ["hook", false],
     ]);
   });
 
@@ -236,6 +241,7 @@ describe("onboarding steps", () => {
       ["sources", false],
       ["mcp", false],
       ["agent", false],
+      ["hook", false],
     ]);
   });
 
@@ -309,9 +315,61 @@ describe("onboarding steps", () => {
     expect((await steps(bo))?.[0]).toEqual(["mcp", true]);
   });
 
+  /** An owner creates a project token for the workspace (lib/project-tokens.server). */
+  async function mintsToken(workspaceId: string, opts: { used?: boolean; revoked?: boolean } = {}) {
+    await db.query(
+      `INSERT INTO project_tokens (token, workspace_id, created_by_user_id, label, revoked, last_used_at)
+       VALUES ($1, $2, 'user_ana', 'Doco hook', $3, $4)`,
+      [
+        `doco_pt_${Math.random()}`,
+        workspaceId,
+        opts.revoked ?? false,
+        opts.used ? new Date().toISOString() : null,
+      ],
+    );
+  }
+
+  // Alexander, 2026-10-07 (decision_01M4BK9TWE3SYDC1X2D8SB67Y2): turning on the
+  // Doco hook is the owners' last step, done once the hook reaches Doco with
+  // one of the workspace's project tokens.
+  it("turns on the hook once a project token of the workspace is used", async () => {
+    await startOnboarding(c, { ...ana, joinedAs: "creator" });
+    await mintsToken("workspace_acme");
+    expect((await steps(ana))?.[4]).toEqual(["hook", false]);
+    await mintsToken("workspace_acme", { used: true });
+    expect((await steps(ana))?.[4]).toEqual(["hook", true]);
+  });
+
+  it("doesn't count a revoked token, or another workspace's", async () => {
+    await db.exec(
+      `INSERT INTO workspaces (id, handle, name) VALUES ('workspace_zeta', 'zeta', 'zeta')`,
+    );
+    await mintsToken("workspace_acme", { used: true, revoked: true });
+    await mintsToken("workspace_zeta", { used: true });
+    expect((await steps(ana))?.[4]).toEqual(["hook", false]);
+  });
+
+  it("ends the hook step when the owner's agent doesn't run hooks", async () => {
+    await startOnboarding(c, { ...ana, joinedAs: "creator" });
+    await finishStep(c, { ...ana, step: "hook" });
+    expect((await steps(ana))?.[4]).toEqual(["hook", true]);
+  });
+
+  it("ends the hook step for an owner of a workspace made before the steps", async () => {
+    await finishStep(c, { ...ana, step: "hook" });
+    expect(await steps(ana)).toEqual([
+      ["github", false],
+      ["sources", false],
+      ["mcp", false],
+      ["agent", false],
+      ["hook", true],
+    ]);
+    expect(await claimDueReminders(c, new Date(Date.now() + 60 * 60_000))).toEqual([]);
+  });
+
   it("keeps the person on the first step not done", async () => {
     await startOnboarding(c, { ...ana, joinedAs: "creator" });
-    await finishSourcesStep(c, ana);
+    await finishStep(c, { ...ana, step: "sources" });
     const progress = await loadOnboardingProgress(c, ana);
     expect(progress && pendingStep(progress)).toBe("github");
   });
@@ -353,7 +411,7 @@ describe("claimDueReminders", () => {
   });
 
   it("never reminds the members of a workspace made before the steps", async () => {
-    await finishSourcesStep(c, ana);
+    await finishStep(c, { ...ana, step: "sources" });
     expect(await claimDueReminders(c, new Date(now.getTime() + 60 * 60_000))).toEqual([]);
   });
 

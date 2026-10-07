@@ -6,12 +6,14 @@
 // POST   → mint a token. Requires `confirm_repo_readable: true` in the JSON
 //          body: the owner acknowledges that anyone with read access to the
 //          repository the token is committed to will read every Doco of the
-//          workspace.
+//          workspace. `install_hint` is the message for the agent: where to
+//          save the token and how to turn on the Doco hook.
 // DELETE → revoke a token by its 8-character id (?id=…). Idempotent.
 //
 // Errors: 401 anonymous, 403 not an owner, 404 no such workspace, 400 POST
 // without the confirmation or DELETE without ?id=.
 
+import { getPublicBaseUrl } from "@doco/shared";
 import {
   listProjectTokens,
   mintProjectToken,
@@ -71,7 +73,11 @@ export async function action({
     return Response.json({
       token: result.full_token,
       summary: result.summary,
-      install_hint: projectTokenInstallHint(workspace.handle, result.full_token),
+      install_hint: projectTokenInstallHint(
+        getPublicBaseUrl(request),
+        workspace.handle,
+        result.full_token,
+      ),
     });
   }
 
