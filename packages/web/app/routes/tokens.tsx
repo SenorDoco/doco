@@ -14,9 +14,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { hostBreadcrumb } from "~/components/breadcrumb";
+import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
 import { SingleColumnPageMain } from "~/components/page-main";
+import { agentConnectGuides } from "~/lib/agent-connect-guides";
 import { agentInstructions } from "~/lib/agent-instructions";
 import {
   type ApiKeyGrantInput,
@@ -364,53 +366,19 @@ export function ExistingTokensPanel({
   );
 }
 
-// A code box with its own Copy button. The MCP URL and the per-client
-// setup commands are all things you paste somewhere, so each is copyable.
-function CopyableCode({ value, testid }: { value: string; testid?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="relative">
-      <pre
-        className="min-h-12 overflow-x-auto whitespace-pre rounded-md bg-input px-4 py-3 pr-24 font-mono text-sm leading-6"
-        data-testid={testid}
-      >
-        <code>{value}</code>
-      </pre>
-      <button
-        type="button"
-        data-testid={testid ? `${testid}-copy` : undefined}
-        onClick={() => {
-          if (typeof navigator !== "undefined" && navigator.clipboard) {
-            void navigator.clipboard.writeText(value).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }
-        }}
-        className="neu-button absolute right-3 top-3 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-      >
-        {copied ? "Copied!" : "Copy"}
-      </button>
-    </div>
-  );
-}
-
 export function ManualMcpPanel({ host }: { host: string }) {
-  const baseUrl = host.replace(/\/+$/, "");
   // ONE hosted MCP endpoint at /mcp. Connect once; the token's grant is the
   // scope (one workspace, several, or specific docos — list_workspaces
-  // enumerates the reach). No per-workspace URL to pick.
-  const url = `${baseUrl}/mcp`;
+  // enumerates the reach). The steps differ per agent, so the person picks
+  // theirs, as on /agents/connect and in a workspace's onboarding.
+  const baseUrl = host.replace(/\/+$/, "");
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
-      {/* Step 1 — connect the MCP: the URL */}
+      {/* Step 1 — connect Doco to the person's agent */}
       <div className="space-y-3">
-        <h2 className="text-base font-semibold">1. Connect the MCP to your environment</h2>
-        <div className="space-y-1.5">
-          <p className="text-xs text-muted-foreground">Your MCP URL</p>
-          <CopyableCode value={url} testid="mcp-url" />
-        </div>
+        <h2 className="text-base font-semibold">1. Connect Doco to your agent</h2>
+        <ConnectAgentGuide guides={agentConnectGuides(baseUrl)} />
       </div>
 
       {/* Step 2 — the one agent-instructions template, as on /agents */}

@@ -41,7 +41,10 @@ describe("loadOnboardingView", () => {
       workspaceHandle: ACME.handle,
       userId: "user_bo",
       joinedAs: "invitee",
-      steps: [{ step: "agent", done: false }],
+      steps: [
+        { step: "mcp", done: true },
+        { step: "agent", done: false },
+      ],
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_bo" });
     expect(mocks.ensureWorkspaceDoco).toHaveBeenCalledWith({
@@ -62,6 +65,7 @@ describe("loadOnboardingView", () => {
       steps: [
         { step: "github", done: false },
         { step: "sources", done: false },
+        { step: "mcp", done: false },
         { step: "agent", done: false },
       ],
     });

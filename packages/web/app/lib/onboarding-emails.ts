@@ -1,8 +1,8 @@
 // The emails that get a workspace going: the welcome its creator gets the
 // moment it exists, and the reminder 15 minutes later while a step is still
-// open. When asking the agent is all that's left (always, for someone who
-// joined from an invite), the reminder carries the message to send the agent
-// itself, the same one the workspace page hands over. Pure.
+// open. When asking the agent is all that's left, the reminder carries the
+// message to send the agent itself, the same one the workspace page hands
+// over. Pure.
 
 import { agentInstructionsForWorkspace } from "./agent-instructions";
 import { emailHtml } from "./email-html";
@@ -11,9 +11,15 @@ import { ONBOARDING_STEPS, STEP_TITLES, type StepState } from "./onboarding-step
 
 type Message = Omit<Email, "to">;
 
+function upperFirst(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
 function lowerFirst(text: string): string {
   return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
+
+const COUNTS = ["no", "one", "two", "three", "four", "five"];
 
 function workspaceUrl(baseUrl: string, handle: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/workspaces/${handle}`;
@@ -22,10 +28,8 @@ function workspaceUrl(baseUrl: string, handle: string): string {
 export function welcomeEmail(opts: { baseUrl: string; workspaceHandle: string }): Message {
   const url = workspaceUrl(opts.baseUrl, opts.workspaceHandle);
   const intro = `Your workspace ${opts.workspaceHandle} is ready. It holds the shared knowledge and context your team and its agents build on.`;
-  const [github, sources, agent] = ONBOARDING_STEPS.creator.map((step) =>
-    lowerFirst(STEP_TITLES[step]),
-  );
-  const steps = `Three steps set it up: ${github}, ${sources}, and ${agent}.`;
+  const titles = ONBOARDING_STEPS.creator.map((step) => lowerFirst(STEP_TITLES[step]));
+  const steps = `${upperFirst(COUNTS[titles.length])} steps set it up: ${new Intl.ListFormat("en", { type: "conjunction" }).format(titles)}.`;
   return {
     subject: `Welcome to ${opts.workspaceHandle} on Doco`,
     text: `${intro}\n\n${steps}\n\nOpen ${opts.workspaceHandle}: ${url}\n`,
@@ -44,7 +48,7 @@ export function reminderEmail(opts: {
   const open = opts.steps.filter((s) => !s.done);
   if (open.length === 1 && open[0].step === "agent") {
     const instructions = agentInstructionsForWorkspace(opts.baseUrl, opts.workspaceHandle);
-    const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it the message below: it connects your agent to Doco and has it note in ${opts.workspaceHandle}'s Agents chats Doco that it received the instructions.`;
+    const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it the message below: it has your agent start using Doco there and note in ${opts.workspaceHandle}'s Agents chats Doco that it received the instructions.`;
     const after = `You can also copy the message from ${opts.workspaceHandle}: ${url}`;
     return {
       subject: `Ask your agent to start using Doco in ${opts.workspaceHandle}`,
@@ -52,7 +56,7 @@ export function reminderEmail(opts: {
       html: emailHtml([intro, { pre: instructions }, after]),
     };
   }
-  const intro = `${opts.workspaceHandle} is three simple steps from shared knowledge and context for your team and its agents:`;
+  const intro = `${opts.workspaceHandle} is ${COUNTS[opts.steps.length]} simple steps from shared knowledge and context for your team and its agents:`;
   const lines = opts.steps.map(
     (s, i) => `${i + 1}. ${STEP_TITLES[s.step]}${s.done ? " (done)" : ""}`,
   );

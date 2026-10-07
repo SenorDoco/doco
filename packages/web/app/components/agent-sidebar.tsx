@@ -31,6 +31,7 @@ import {
   perspectiveParam,
   requestRetiresResource,
 } from "~/lib/agent-follow-target";
+import { CONNECT_AGENT_PATH } from "~/lib/agent-instructions";
 import { DOCO_CHANGED_EVENT } from "~/lib/change-cursor";
 import { cn } from "~/lib/cn";
 import { type GraphReferenceGroup, readGraphReferenceGroups } from "~/lib/graph-references";
@@ -197,15 +198,15 @@ export function mergeCreatedConversationListItem(
 /**
  * One-line explainer pinned at the top of the rail, directly under the
  * "Señor Doco" header: the in-product assistant runs on Sonnet and only
- * handles simple work, so it points users at the Tokens/MCP page (`/tokens`)
- * to connect their own agent for anything harder.
+ * handles simple work, so it points users at the steps for connecting their
+ * own agent (/agents/connect) for anything harder.
  */
 export function SenorDocoExplainer() {
   return (
     <div className="shrink-0 border-b border-border px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
       Señor Doco uses Sonnet and can only handle simple requests. Want to collaborate with your own
       agent?{" "}
-      <Link to="/tokens" className="font-semibold">
+      <Link to={CONNECT_AGENT_PATH} className="font-semibold">
         Connect the MCP
       </Link>
       .

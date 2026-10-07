@@ -141,11 +141,11 @@ describe("SenorDocoExplainer", () => {
     expect(markup()).toContain("Señor Doco uses Sonnet and can only handle simple requests");
   });
 
-  it("invites collaboration via the MCP, linking the tokens page", () => {
+  it("invites collaboration via the MCP, linking the steps to connect an agent", () => {
     const html = markup();
     expect(html).toContain("Want to collaborate with your own agent?");
     const anchor = html.match(/<a [^>]*>Connect the MCP<\/a>/)?.[0] ?? "";
-    expect(anchor).toContain('href="/tokens"');
+    expect(anchor).toContain('href="/agents/connect"');
   });
 
   it("separates from the header with the one faint divider line, not a hard stroke", () => {

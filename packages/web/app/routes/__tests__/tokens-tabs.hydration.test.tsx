@@ -46,7 +46,7 @@ describe("Tokens/MCP tabs hydrate and respond to clicks", () => {
     });
 
     // Default tab is "Add MCP" — its panel shows the connect-MCP heading.
-    expect(container.textContent).toContain("Connect the MCP to your environment");
+    expect(container.textContent).toContain("Connect Doco to your agent");
     expect(container.textContent).not.toContain("Existing tokens.");
 
     const existingTab = container.querySelector<HTMLButtonElement>(
@@ -61,6 +61,6 @@ describe("Tokens/MCP tabs hydrate and respond to clicks", () => {
     // After clicking "Existing tokens", the panel must switch: the empty-state
     // line for that tab appears and the connect-MCP heading is gone.
     expect(container.textContent).toContain("No active tokens yet.");
-    expect(container.textContent).not.toContain("Connect the MCP to your environment");
+    expect(container.textContent).not.toContain("Connect Doco to your agent");
   });
 });

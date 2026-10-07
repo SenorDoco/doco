@@ -210,62 +210,26 @@ describe("/tokens page action", () => {
     expect(actorScopeLabel(null)).toBe("All your workspaces");
   });
 
-  it("shows ONE /mcp connector URL describing the multi-workspace reach (no picker)", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, { host: "https://doco.test" }),
-    );
-
-    // The two steps now carry the headings; the old panel title is gone.
-    expect(markup).not.toContain("Connect an agent to Doco");
-    expect(markup).toContain("1. Connect the MCP to your environment");
-    // One endpoint at /mcp — no per-workspace picker, no workspace in the URL.
-    expect(markup).toContain("https://doco.test/mcp");
-    expect(markup).not.toContain("per workspace");
-    expect(markup).not.toContain("Select a workspace");
-    expect(markup).not.toContain("WORKSPACE_ID");
-    expect(markup).not.toContain("/workspace_");
-    expect(markup).not.toContain("can never touch two");
-    expect(markup).not.toContain("doco_select_workspace");
-    // The stale "one Doco at a time" reach prose is gone (the grant is the scope).
-    expect(markup).not.toMatch(/one Doco at a time/i);
-    // The per-client picker is gone — just the URL connects the MCP now.
-    expect(markup).not.toContain("Pick your client for step-by-step setup.");
-    expect(markup).not.toContain("claude.ai · Claude Desktop · Claude mobile · Cursor");
-    expect(markup).not.toContain("ChatGPT & other clients");
-    expect(markup).not.toContain("mcp-provider-");
-    // Step 2: the same instructions /agents gives, from the one
-    // template, not a page-specific prompt.
-    expect(markup).toContain("2. Give your agent these instructions");
-    expect(markup).toContain("### 1. Check the Doco connection");
-    expect(markup).toContain('id="instructions"');
-    expect(markup).not.toContain("Search Doco first");
-    expect(markup).not.toContain("Know your default scope");
-    // The standalone read/write + OAuth capabilities line was dropped.
-    expect(markup).not.toContain("Read and write on one OAuth 2.1 token");
-  });
-
-  it("trims a trailing slash on the host when building the /mcp URL", () => {
+  // Alexander, 2026-10-06: connecting Doco differs per agent, so the person
+  // says which agent they use and gets its steps, as on /agents/connect.
+  it("connects Doco to the agent the person picks, then hands over the instructions", () => {
     const markup = renderToStaticMarkup(
       createElement(ManualMcpPanel, { host: "https://doco.test/" }),
     );
-    expect(markup).toContain("https://doco.test/mcp");
-    expect(markup).not.toContain("https://doco.test//mcp");
-  });
-
-  it("renders the MCP URL copy row with room for a primary copy button", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, { host: "https://doco.test" }),
-    );
-
-    const urlBlock = markup.match(/<pre class="([^"]*)" data-testid="mcp-url">/)?.[1] ?? "";
-    const copyButton =
-      markup.match(/<button type="button" data-testid="mcp-url-copy" class="([^"]*)">/)?.[1] ?? "";
-
-    expect(urlBlock).toContain("text-sm");
-    expect(urlBlock).toContain("py-3");
-    expect(urlBlock).toContain("pr-24");
-    expect(copyButton).toContain("bg-primary");
-    expect(copyButton).toContain("text-primary-foreground");
+    expect(markup).toContain("1. Connect Doco to your agent");
+    expect(markup).toContain("Which agent do you use?");
+    expect(markup).toContain(">Claude Code</button>");
+    expect(markup).toContain(">Cursor</button>");
+    // One endpoint at /mcp — no per-workspace picker, no workspace in the URL.
+    expect(markup).not.toContain("Select a workspace");
+    expect(markup).not.toContain("/workspace_");
+    expect(markup).not.toContain("doco_select_workspace");
+    // Step 2: the same instructions /agents gives, from the one
+    // template, not a page-specific prompt.
+    expect(markup).toContain("2. Give your agent these instructions");
+    expect(markup).toContain("### Every session");
+    expect(markup).toContain('id="instructions"');
+    expect(markup).not.toContain("https://doco.test//");
   });
 });
 
