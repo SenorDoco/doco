@@ -9,7 +9,7 @@
 // older one itself.
 //
 // This is the one agent-instructions template in Doco. The /agents page, each
-// workspace's onboarding and Invite agent page, the onboarding reminder email,
+// workspace's onboarding and Invite agent dialog, the onboarding reminder email,
 // the Tokens page, the hosted MCP server's instructions and the agent
 // bootstrap all hand over this block; everything else that talks to agents
 // points at /agents.
@@ -103,7 +103,7 @@ function version(text: string): string {
  * onboarding step), then the same block, then the line that connects the
  * project to the workspace. The request and the line sit outside the block,
  * so the block an MCP client keeps stays the same everywhere and under its
- * length cap. A workspace's onboarding, its Invite agent page and the reminder
+ * length cap. A workspace's onboarding, its Invite agent dialog and the reminder
  * email all hand over this text.
  */
 export function agentInstructionsForWorkspace(baseUrl: string, workspaceHandle: string): string {
