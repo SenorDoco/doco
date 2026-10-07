@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useFetcher } from "react-router";
-import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
 import { GrantPicker } from "~/components/grant-picker";
+import { PersonInviteDialog } from "~/components/invite-dialog";
 import { focusFirstError, validateGrantForm } from "~/lib/grant-form-validation";
 import { type ComposedGrant, type DocoRole, catalogFromOptions } from "~/lib/grant-picker";
 import type {
@@ -61,6 +61,7 @@ function InviteHumanCard({
   void defaultSelection;
   const [grants, setGrants] = useState<ComposedGrant[]>([]);
   const [grantError, setGrantError] = useState<string | null>(null);
+  const [closedInviteUrl, setClosedInviteUrl] = useState<string | null>(null);
   const grantsRef = useRef<HTMLDivElement>(null);
 
   const noTargets = catalog.targets.length === 0;
@@ -119,13 +120,11 @@ function InviteHumanCard({
         </p>
       ) : null}
 
-      {inviteResult ? (
-        <CollaborationInvitePrompt
+      {inviteResult && inviteResult.invite_url !== closedInviteUrl ? (
+        <PersonInviteDialog
           inviteUrl={inviteResult.invite_url}
-          testId="invite-result"
-          promptTestId="invite-url"
-          copyButtonTestId="invite-copy"
           note="Single-use, expires in 72 hours."
+          onClose={() => setClosedInviteUrl(inviteResult.invite_url)}
         />
       ) : null}
     </div>

@@ -2,15 +2,14 @@
 //
 // Lists all invites (pending / consumed / expired / revoked) and lets
 // any user with access to this doco mint a new one with one click.
-// The just-minted invite's URL is highlighted at the top with a
-// copy-friendly text field.
+// The just-minted invite opens in the invite dialog, ready to copy.
 
 import type { EntityId } from "@doco/shared";
 import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import { docoBreadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { CollaborationInvitePrompt } from "~/components/collaboration-invite-prompt";
+import { PersonInviteDialog } from "~/components/invite-dialog";
 import { PageHeader } from "~/components/page-header";
 import { DocoPageMain } from "~/components/page-main";
 import { rootDir } from "~/lib/db.server";
@@ -135,6 +134,7 @@ export default function Invites({
   const { ownerSlug, docoSlug, handle, invites, canMint } = loaderData;
   const navigation = useNavigation();
   const minting = navigation.state === "submitting";
+  const [closedInviteUrl, setClosedInviteUrl] = useState<string | null>(null);
 
   return (
     <DocoPageMain className="py-6 space-y-5">
@@ -201,14 +201,15 @@ export default function Invites({
           {actionData && "error" in actionData ? (
             <p className="mt-3 text-sm text-destructive">{actionData.error}</p>
           ) : null}
-          {actionData && "ok" in actionData && actionData.invite_url ? (
-            <div className="mt-4 rounded-md border border-primary bg-primary/5 p-3">
-              <p className="mb-3 text-sm font-semibold">Fresh invite</p>
-              <CollaborationInvitePrompt
-                inviteUrl={actionData.invite_url}
-                note={<>Single-use, expires {new Date(actionData.expires_at).toLocaleString()}.</>}
-              />
-            </div>
+          {actionData &&
+          "ok" in actionData &&
+          actionData.invite_url &&
+          actionData.invite_url !== closedInviteUrl ? (
+            <PersonInviteDialog
+              inviteUrl={actionData.invite_url}
+              note={<>Single-use, expires {new Date(actionData.expires_at).toLocaleString()}.</>}
+              onClose={() => setClosedInviteUrl(actionData.invite_url)}
+            />
           ) : null}
         </CardContent>
       </Card>

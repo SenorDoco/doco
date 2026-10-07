@@ -13,7 +13,7 @@ vi.mock("~/lib/users.server", () => ({
   handleUserInviteAction: mocks.handleUserInviteAction,
 }));
 
-vi.mock("~/components/collaboration-invite-prompt", () => ({
+vi.mock("~/lib/invite-prompts", () => ({
   buildHumanInvitePrompt: (url: string) => `Open this URL: ${url}`,
 }));
 

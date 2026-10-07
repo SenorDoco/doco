@@ -151,7 +151,6 @@ export default [
   // Per-Workspace home — mirrors the Doco home page but aggregates across
   // every Doco the workspace owns (docos list, node-type/lifecycle facets,
   // activity heatmap + feed, top contributors, members).
-  route("workspaces/:workspaceHandle/agent", "routes/workspaces.$workspaceHandle.agent.tsx"),
   route(
     "workspaces/:workspaceHandle/onboarding",
     "routes/workspaces.$workspaceHandle.onboarding.tsx",

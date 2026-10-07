@@ -20,7 +20,7 @@
 //   403 — caller has no access to the workspace/doco, or tried to grant a
 //         role higher than their own
 
-import { buildHumanInvitePrompt } from "~/components/collaboration-invite-prompt";
+import { buildHumanInvitePrompt } from "~/lib/invite-prompts";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { handleUserInviteAction } from "~/lib/users.server";
 

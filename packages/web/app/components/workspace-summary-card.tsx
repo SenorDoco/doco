@@ -1,14 +1,18 @@
 // One workspace at a glance: the icons of its Docos, any integration or agent
 // gone unexpectedly quiet, the three things to do next (add a Doco or a source
-// of knowledge, invite a person, invite an agent) and when it last saw
-// activity. The Workspaces page lists one per workspace, with the way back to
+// of knowledge, invite a person, invite an agent: the message that asks an
+// agent to start using Doco in this workspace, in the invite dialog) and when
+// it last saw activity. The Workspaces page lists one per workspace, with the way back to
 // the person's open onboarding step; each workspace's own page shows its card
 // under the steps.
 
+import { useState } from "react";
 import { Link } from "react-router";
 import { Card, CardContent } from "~/components/card";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
+import { InviteDialog } from "~/components/invite-dialog";
 import { SilenceAlertList } from "~/components/silence-alerts";
+import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import { timeAgo } from "~/lib/time-ago";
 import type { WorkspaceSummary } from "~/lib/workspace-summaries.server";
 
@@ -24,15 +28,19 @@ export interface WorkspaceSetup {
 
 export function WorkspaceSummaryCard({
   workspace,
+  baseUrl,
   showName = true,
   setup,
 }: {
   workspace: WorkspaceSummary;
+  /** Doco's public URL, which the agent's message points at. */
+  baseUrl: string;
   /** The workspace's own page already names it in the header. */
   showName?: boolean;
   setup?: WorkspaceSetup;
 }) {
   const member = workspace.role !== null;
+  const [invitingAgent, setInvitingAgent] = useState(false);
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -94,10 +102,19 @@ export function WorkspaceSummaryCard({
               </Link>
             </>
           ) : null}
-          <Link to={`/workspaces/${workspace.handle}/agent`} className={BUTTON}>
+          <button type="button" onClick={() => setInvitingAgent(true)} className={BUTTON}>
             Invite agent
-          </Link>
+          </button>
         </div>
+        {invitingAgent ? (
+          <InviteDialog
+            title="Send this prompt to your agent"
+            description={`It asks your agent to start using Doco in ${workspace.handle}.`}
+            message={agentInstructionsForWorkspace(baseUrl, workspace.handle)}
+            copyLabel="Copy prompt"
+            onClose={() => setInvitingAgent(false)}
+          />
+        ) : null}
         <LastActivityLine at={workspace.lastActivityAt} />
       </CardContent>
     </Card>
