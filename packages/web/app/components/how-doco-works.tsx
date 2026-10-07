@@ -19,7 +19,7 @@ const STEPS = [
 /**
  * How Doco works, on the home page and under the invite card: three numbered
  * steps, each a title over its text. Side by side where the block is wide
- * enough (the home page on a computer), one under the other elsewhere. The
+ * enough (both pages on a computer), one under the other on phones. The
  * numbers are sunk into the page, not raised as keys, since nothing here can
  * be clicked.
  */
