@@ -7,7 +7,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InviteDialog, PersonInviteDialog } from "../invite-dialog";
+import { AgentInviteDialog, PersonInviteDialog } from "../invite-dialog";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,68 +34,89 @@ const button = (text: string) =>
     | HTMLButtonElement
     | undefined;
 
-describe("InviteDialog", () => {
-  it("opens as a modal holding only the message and a copy button named for the recipient", async () => {
-    await act(async () =>
+describe("PersonInviteDialog", () => {
+  const render = (onClose = () => {}) =>
+    act(async () =>
       root.render(
-        <InviteDialog
-          title="Send this prompt to your agent"
-          message="Start using Doco"
-          copyLabel="Copy prompt"
-          onClose={() => {}}
+        <PersonInviteDialog
+          inviteUrl="https://doco.test/invite/abc"
+          note="Single-use, expires in 72 hours."
+          onClose={onClose}
         />,
       ),
     );
+
+  it("opens as a modal holding the person's invite and Copy invite", async () => {
+    await render();
     expect(dialog().open).toBe(true);
-    expect(dialog().textContent).toContain("Send this prompt to your agent");
-    expect(dialog().querySelector("pre")?.textContent).toBe("Start using Doco");
-    expect(button("Copy prompt")).toBeDefined();
-    expect(document.activeElement).toBe(button("Copy prompt"));
+    expect(dialog().textContent).toContain("Send this invite to the person");
+    expect(dialog().querySelector("pre")?.textContent).toBe(
+      "Let's share knowledge on Doco. Open this URL and accept the invite:\n\nhttps://doco.test/invite/abc",
+    );
+    expect(dialog().textContent).toContain("Single-use, expires in 72 hours.");
+    expect(button("Copy prompt")).toBeUndefined();
+    expect(document.activeElement).toBe(button("Copy invite"));
   });
 
-  it("copies the message and says so", async () => {
-    await act(async () =>
-      root.render(
-        <InviteDialog
-          title="t"
-          message="Start using Doco"
-          copyLabel="Copy prompt"
-          onClose={() => {}}
-        />,
-      ),
+  it("copies the invite and says so", async () => {
+    await render();
+    await act(async () => button("Copy invite")?.click());
+    expect(writeText).toHaveBeenCalledWith(
+      "Let's share knowledge on Doco. Open this URL and accept the invite:\n\nhttps://doco.test/invite/abc",
     );
-    await act(async () => button("Copy prompt")?.click());
-    expect(writeText).toHaveBeenCalledWith("Start using Doco");
     expect(button("Copied!")).toBeDefined();
   });
 
   it("closes from its Close button", async () => {
     const onClose = vi.fn();
-    await act(async () =>
-      root.render(<InviteDialog title="t" message="m" copyLabel="Copy prompt" onClose={onClose} />),
-    );
+    await render(onClose);
     const close = container.querySelector('button[aria-label="Close"]') as HTMLButtonElement;
     await act(async () => close.click());
     expect(onClose).toHaveBeenCalled();
   });
 });
 
-describe("PersonInviteDialog", () => {
-  it("hands over the person's invite with Copy invite", async () => {
-    await act(async () =>
+// Alexander, 2026-10-07: inviting an agent takes the same two steps as a
+// workspace's setup does for an invitee: connect Doco to your agent, with the
+// same per-agent guide, then send it the prompt.
+describe("AgentInviteDialog", () => {
+  const render = () =>
+    act(async () =>
       root.render(
-        <PersonInviteDialog
-          inviteUrl="https://doco.test/invite/abc"
-          note="Single-use, expires in 72 hours."
+        <AgentInviteDialog
+          workspaceHandle="torre"
+          baseUrl="https://doco.test"
           onClose={() => {}}
         />,
       ),
     );
-    expect(dialog().querySelector("pre")?.textContent).toBe(
-      "Let's share knowledge on Doco. Open this URL and accept the invite:\n\nhttps://doco.test/invite/abc",
+
+  it("opens on connecting Doco to the agent, with the per-agent guide", async () => {
+    await render();
+    expect(dialog().open).toBe(true);
+    expect(dialog().textContent).toContain("Step 1 of 2: Connect Doco to your agent");
+    expect(dialog().textContent).toContain("Which agent do you use?");
+    expect(dialog().textContent).toContain("Already connected? Go on to step 2.");
+    await act(async () => button("Claude Code")?.click());
+    expect(dialog().textContent).toContain(
+      "claude mcp add --transport http --scope user doco https://doco.test/mcp",
     );
-    expect(dialog().textContent).toContain("Single-use, expires in 72 hours.");
-    expect(button("Copy invite")).toBeDefined();
     expect(button("Copy prompt")).toBeUndefined();
+  });
+
+  it("goes on to the prompt, which it copies, and back", async () => {
+    await render();
+    await act(async () => button("Next")?.click());
+    expect(dialog().textContent).toContain("Step 2 of 2: Ask your agent to start using Doco");
+    expect(dialog().querySelector("pre")?.textContent).toContain(
+      "Doco workspace: https://doco.test/workspaces/torre",
+    );
+    expect(document.activeElement).toBe(button("Copy prompt"));
+    await act(async () => button("Copy prompt")?.click());
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining("Doco workspace: https://doco.test/workspaces/torre"),
+    );
+    await act(async () => button("Back")?.click());
+    expect(dialog().textContent).toContain("Which agent do you use?");
   });
 });

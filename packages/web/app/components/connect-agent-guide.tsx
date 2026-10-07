@@ -1,8 +1,8 @@
 // Connecting Doco to the agent a person uses: they pick their agent, and the
 // steps for it follow, each page to open in a new tab and each thing to paste
-// with a Copy button. A workspace's onboarding, /agents/connect and the Tokens
-// page's Add MCP tab all show it; agents carry none of these steps, their
-// instructions send the person to /agents/connect.
+// with a Copy button. A workspace's onboarding, its Invite agent dialog,
+// /agents/connect and the Tokens page's Add MCP tab all show it; agents carry
+// none of these steps, their instructions send the person to /agents/connect.
 
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";

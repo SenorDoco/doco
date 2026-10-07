@@ -6,7 +6,8 @@
 //
 // Agents carry none of this: their instructions (lib/agent-instructions.ts)
 // send the person to /agents/connect. The page, a workspace's onboarding and
-// the Tokens page's Add MCP tab show these guides (components/connect-agent-guide.tsx).
+// Invite agent dialog, and the Tokens page's Add MCP tab show these guides
+// (components/connect-agent-guide.tsx).
 // Pure.
 
 export interface GuideStep {
