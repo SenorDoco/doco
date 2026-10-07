@@ -51,8 +51,8 @@ describe("How Doco works", () => {
     for (const [, className] of numbers) expect(className).toMatch(/\bneu-well\b/);
   });
 
-  // Three columns where there is room (the home page on a computer); one step
-  // under the other in narrower places (phones, the invite page's column).
+  // Three columns where there is room (the home page and the invite page on a
+  // computer); one step under the other on phones.
   it("sits the steps side by side only when its own width allows", () => {
     const html = render();
     expect(html).toMatch(/<section[^>]*class="[^"]*@container/);
