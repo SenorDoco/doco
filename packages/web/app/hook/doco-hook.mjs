@@ -11,13 +11,14 @@
 //     the file about to change, once per session and file.
 //
 // The brief comes from GET <origin>/api/v1/brief.json (the standing orders
-// from /api/v1/standing-orders.json) with a project token
-// (DOCO_TOKEN, or .doco/project-tokens.json keyed by workspace handle) or an
+// from /api/v1/standing-orders.json) with a hook token
+// (.doco/hook-tokens.json keyed by workspace handle, or DOCO_TOKEN) or an
 // OAuth token (DOCO_ACCESS). The workspace and the origin come from the
 // `Doco workspace:` line of AGENTS.md or CLAUDE.md, or DOCO_WORKSPACE and
 // DOCO_ORIGIN. The output is the hookSpecificOutput.additionalContext JSON
 // every client reads. Without a token (the file stays out of git, so a fresh
-// clone has none), it tells the agent to get its person's from Doco's
+// clone has none), or with one Doco refuses (revoked, or a project token from
+// before hook tokens), it tells the agent to get its person's from Doco's
 // doco_hook_token, at session start and after the reminder on a prompt.
 // Anything that fails, including the deadline, fails open: the reminder
 // alone on a prompt, nothing on a file or at session start; exit 0 either
@@ -78,9 +79,9 @@ export function readProjectWorkspace(cwd) {
   return { root: found.dir, origin: null, workspace: null };
 }
 
-/** The token committed at .doco/project-tokens.json, for the workspace or the only one. */
-export function readProjectToken(cwd, workspace) {
-  const found = findUp(cwd, [join(".doco", "project-tokens.json")]);
+/** The token saved at .doco/hook-tokens.json, for the workspace or the only one. */
+export function readHookToken(cwd, workspace) {
+  const found = findUp(cwd, [join(".doco", "hook-tokens.json")]);
   if (!found) return null;
   try {
     const entries = Object.entries(JSON.parse(readFileSync(found.path, "utf8")));
@@ -99,7 +100,8 @@ export function resolveConfig(env, cwd) {
     root: project?.root ?? resolve(cwd),
     origin: (env.DOCO_ORIGIN || project?.origin || DEFAULT_ORIGIN).replace(/\/+$/, ""),
     workspace,
-    token: env.DOCO_TOKEN || env.DOCO_ACCESS || readProjectToken(cwd, workspace),
+    // The saved token first: it is the one doco_hook_token gave the agent.
+    token: readHookToken(cwd, workspace) || env.DOCO_TOKEN || env.DOCO_ACCESS || null,
     timeoutMs: Number(env.DOCO_HOOK_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS,
     budget: Number(env.DOCO_BRIEF_BUDGET) || PROMPT_BUDGET,
   };
@@ -189,9 +191,10 @@ async function fetchBrief(url, config) {
       headers: { Authorization: `Bearer ${config.token}`, Accept: "text/plain" },
       signal: controller.signal,
     });
+    if (res.status === 401) return { refused: true };
     if (!res.ok) return null;
     const text = (await res.text()).trim();
-    return text || null;
+    return text ? { text } : null;
   } finally {
     clearTimeout(timer);
   }
@@ -213,19 +216,23 @@ export async function main(stdinText, env = process.env, cwd = process.cwd()) {
     });
   const onPrompt = PROMPT_EVENTS.has(String(event.hook_event_name));
   if (!request) return onPrompt ? output(DOCO_REMINDER) : null;
-  if (!config.token) {
+  // Without a token Doco takes, the agent gets its person's from doco_hook_token.
+  const askForToken = (why) => {
     if (FILE_EVENTS.has(String(event.hook_event_name))) return null;
-    const note = `The Doco hook has no token here: call doco_hook_token${config.workspace ? ` for ${config.workspace}` : ""}, save the token as it says, and the hook briefs you from the next prompt on.`;
+    const note = `${why}: call doco_hook_token${config.workspace ? ` for ${config.workspace}` : ""}, save the token as it says, and the hook briefs you from the next prompt on.`;
     return output(onPrompt ? `${DOCO_REMINDER}\n\n${note}` : note);
-  }
+  };
+  if (!config.token) return askForToken("The Doco hook has no token here");
   const cache = request.cacheKey ? cacheFile(event.session_id, request.cacheKey) : null;
   if (cache && freshInCache(cache)) return null;
-  let brief = null;
+  let fetched = null;
   try {
-    brief = await fetchBrief(request.url, config);
+    fetched = await fetchBrief(request.url, config);
   } catch (error) {
     process.stderr.write(`Doco hook: ${error instanceof Error ? error.message : String(error)}\n`);
   }
+  if (fetched?.refused) return askForToken("Doco refused the Doco hook's token");
+  const brief = fetched?.text ?? null;
   if (brief && cache) {
     try {
       mkdirSync(dirname(cache), { recursive: true });

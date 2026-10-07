@@ -3,7 +3,7 @@
 // The single source of truth for the policies + workspace constitutions an
 // agent is handed. Every agent surface renders from THIS so they can never
 // silently diverge:
-//   - GET /api/v1/agent-bootstrap.json (external / OAuth / project-token agents)
+//   - GET /api/v1/agent-bootstrap.json (external / OAuth / hook-token agents)
 //   - the in-page Señor Doco sidebar (packages/web/app/lib/agent-chat.server.ts)
 //
 // Before this module existed, the sidebar had its own parallel context builder
@@ -25,8 +25,8 @@ import {
   listReadableDocosInWorkspace,
   oauthTokenGrantsDoco,
 } from "./doco-access.server";
+import type { HookToken } from "./hook-tokens.server";
 import type { ValidAccessToken } from "./oauth-server.server";
-import type { ProjectToken } from "./project-tokens.server";
 
 export type { WorkspaceConstitution };
 
@@ -178,12 +178,10 @@ export async function loadWorkspaceConstitutionsForPrincipal(
   );
 }
 
-/** A project token reads one workspace as the person who made it: its
+/** A hook token reads one workspace as the person who made it: its
  *  constitution, and the goal and policies of each Doco they can read there
  *  that has either. */
-export async function loadBootstrapForProjectToken(
-  token: ProjectToken,
-): Promise<BootstrapManifest> {
+export async function loadBootstrapForHookToken(token: HookToken): Promise<BootstrapManifest> {
   const workspaceConstitutions = await getWorkspaceConstitutionsByIds([token.workspace_id]);
   const readable = await listReadableDocosInWorkspace(token.workspace_id, token.created_by_user_id);
   const docoPolicies: DocoPolicySet[] = [];

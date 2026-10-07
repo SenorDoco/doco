@@ -6,7 +6,7 @@ const base = {
   origin: "https://doco.to",
   principal: null,
   oauthGrant: null,
-  projectTokenGrant: null,
+  hookTokenGrant: null,
   docoPolicies: [],
   workspaceConstitutions: [],
 };
@@ -18,11 +18,11 @@ describe("buildAgentBootstrapBody", () => {
     expect(keys.indexOf("workspace_constitutions")).toBeLessThan(keys.indexOf("doco_policies"));
   });
 
-  it("emits the SAME field order on the project-token path and the oauth path", () => {
+  it("emits the SAME field order on the hook-token path and the oauth path", () => {
     const tokenPath = Object.keys(
       buildAgentBootstrapBody({
         ...base,
-        projectTokenGrant: { workspace_id: "workspace_x", role: "reader" },
+        hookTokenGrant: { workspace_id: "workspace_x", role: "reader" },
       }),
     );
     const oauthPath = Object.keys(

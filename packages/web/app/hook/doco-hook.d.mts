@@ -14,7 +14,7 @@ export interface HookConfig {
 export function readProjectWorkspace(
   cwd: string,
 ): { root: string; origin: string | null; workspace: string | null } | null;
-export function readProjectToken(cwd: string, workspace: string | null): string | null;
+export function readHookToken(cwd: string, workspace: string | null): string | null;
 export function resolveConfig(env: Record<string, string | undefined>, cwd: string): HookConfig;
 export function requestFor(
   event: Record<string, unknown>,

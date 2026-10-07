@@ -194,7 +194,7 @@ describe("OnboardingStepper", () => {
     expect(step).toContain("Waiting for your agent&#x27;s note in");
     expect(step).toContain("acme-agents-chats");
     expect(step).toContain("and the hook&#x27;s first brief");
-    expect(step).not.toContain("project token");
+    expect(step).not.toContain("hook token");
     expect(step).not.toContain('type="checkbox"');
     // Done without a source connected: skipped, or agents already work here.
     expect(html).toContain(

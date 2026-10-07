@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   getCurrentPrincipalAsync: vi.fn(),
   extractBearer: vi.fn(),
   listVisibleDocoIdsForRequest: vi.fn(),
-  isProjectToken: vi.fn(),
-  validateProjectToken: vi.fn(),
+  isHookToken: vi.fn(),
+  validateHookToken: vi.fn(),
   listReadableDocosInWorkspace: vi.fn(),
   loadAgentDisplayIdentity: vi.fn(),
   recordQuery: vi.fn(),
@@ -26,9 +26,9 @@ vi.mock("~/lib/doco-access.server", () => ({
   listVisibleDocoIdsForRequest: mocks.listVisibleDocoIdsForRequest,
   listReadableDocosInWorkspace: mocks.listReadableDocosInWorkspace,
 }));
-vi.mock("~/lib/project-tokens.server", () => ({
-  isProjectToken: mocks.isProjectToken,
-  validateProjectToken: mocks.validateProjectToken,
+vi.mock("~/lib/hook-tokens.server", () => ({
+  isHookToken: mocks.isHookToken,
+  validateHookToken: mocks.validateHookToken,
 }));
 vi.mock("~/lib/agent-identity.server", () => ({
   loadAgentDisplayIdentity: mocks.loadAgentDisplayIdentity,
@@ -112,7 +112,7 @@ describe("GET /api/v1/brief.json", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.extractBearer.mockReturnValue(null);
-    mocks.isProjectToken.mockReturnValue(false);
+    mocks.isHookToken.mockReturnValue(false);
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_alice" });
     mocks.listVisibleDocoIdsForRequest.mockResolvedValue(["doco_1", "doco_2"]);
     mocks.loadAgentDisplayIdentity.mockResolvedValue({ indicator_prefix: "[🔮 Doco @alice]" });
@@ -121,7 +121,7 @@ describe("GET /api/v1/brief.json", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it("needs a signed-in principal or a project token", async () => {
+  it("needs a signed-in principal or a hook token", async () => {
     mocks.getCurrentPrincipalAsync.mockResolvedValue(null);
     const res = await get("about=x");
     expect(res.status).toBe(401);
@@ -172,15 +172,15 @@ describe("GET /api/v1/brief.json", () => {
   });
 
   // decision_01M4C2J610DPD028P55Q8X6VG2: a token reads as the person who made it.
-  it("gives a project token the Docos its maker can read in its workspace, with no actor", async () => {
-    mocks.extractBearer.mockReturnValue("doco_pt_x");
-    mocks.isProjectToken.mockReturnValue(true);
-    mocks.validateProjectToken.mockResolvedValue({
+  it("gives a hook token the Docos its maker can read in its workspace, with no actor", async () => {
+    mocks.extractBearer.mockReturnValue("doco_ht_x");
+    mocks.isHookToken.mockReturnValue(true);
+    mocks.validateHookToken.mockResolvedValue({
       workspace_id: "workspace_9",
       created_by_user_id: "user_maker",
     });
     mocks.listReadableDocosInWorkspace.mockResolvedValue([{ id: "doco_9" }, { id: "doco_10" }]);
-    const res = await get("about=x", { authorization: "Bearer doco_pt_x" });
+    const res = await get("about=x", { authorization: "Bearer doco_ht_x" });
     expect(res.status).toBe(200);
     expect(mocks.getCurrentPrincipalAsync).not.toHaveBeenCalled();
     expect(mocks.listReadableDocosInWorkspace).toHaveBeenCalledWith("workspace_9", "user_maker");

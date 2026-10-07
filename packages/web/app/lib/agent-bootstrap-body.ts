@@ -1,4 +1,4 @@
-// The agent-bootstrap JSON body, shaped in ONE place so the project-token path
+// The agent-bootstrap JSON body, shaped in ONE place so the hook-token path
 // and the OAuth/cookie path can never drift in field set or ORDER.
 //
 // The workspace constitution leads: it's the governing charter for the workspace's work that an
@@ -14,7 +14,7 @@ export function buildAgentBootstrapBody<P, G, T>(input: {
   origin: string;
   principal: P;
   oauthGrant: G;
-  projectTokenGrant: T;
+  hookTokenGrant: T;
   docoPolicies: DocoPolicySet[];
   workspaceConstitutions: WorkspaceConstitution[];
 }) {
@@ -24,7 +24,7 @@ export function buildAgentBootstrapBody<P, G, T>(input: {
     agent_instructions_url: new URL(AGENT_INSTRUCTIONS_PATH, input.origin).toString(),
     agent_instructions: agentInstructions(input.origin),
     oauth_grant: input.oauthGrant,
-    project_token_grant: input.projectTokenGrant,
+    hook_token_grant: input.hookTokenGrant,
     doco_policies: input.docoPolicies,
   };
 }

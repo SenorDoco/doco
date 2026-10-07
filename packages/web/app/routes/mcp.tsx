@@ -20,7 +20,7 @@ import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { type IdentityGrant, loadAgentIdentity } from "~/lib/agent-identity.server";
 import { agentInstructions, agentInstructionsPointer } from "~/lib/agent-instructions";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
-import { hookTokenFor, projectTokenInstallHint } from "~/lib/project-tokens.server";
+import { hookTokenFor, hookTokenInstallHint } from "~/lib/hook-tokens.server";
 import { isSuperadmin } from "~/lib/session.server";
 import { type McpContext, gateUserMcp } from "~/lib/user-mcp.server";
 import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -415,7 +415,7 @@ const WHOAMI_TOOL = {
 const HOOK_TOKEN_TOOL = {
   name: "doco_hook_token",
   description: [
-    "The user's own project token for the Doco hook in a workspace this",
+    "The user's own token for the Doco hook in a workspace this",
     "connection reaches, with where to save it. The hook briefs the agent from",
     "the workspace before each prompt and each file edit. The token reads,",
     "read-only, what the user can read there, as them, so it stays out of git;",
@@ -951,7 +951,7 @@ async function runDocoWhoami(request: Request, args: Record<string, unknown>): P
 }
 
 // doco_hook_token: the person's token for the Doco hook in the project's
-// workspace (lib/project-tokens.server hookTokenFor). The token reads all the
+// workspace (lib/hook-tokens.server hookTokenFor). The token reads all the
 // person can read there, so the connection must reach the whole workspace:
 // a connection limited to some Docos never hands out more than it reaches.
 async function runDocoHookToken(
@@ -977,7 +977,7 @@ async function runDocoHookToken(
     content: [
       {
         type: "text",
-        text: projectTokenInstallHint(getPublicBaseUrl(request), workspace.label, token),
+        text: hookTokenInstallHint(getPublicBaseUrl(request), workspace.label, token),
       },
     ],
     structuredContent: { workspace: workspace.label, token },

@@ -24,9 +24,9 @@ describe("doco noun is lowercase app-wide (brand + sentence-initial stay capital
     expect(src).toContain("Doco's goal</CardTitle>");
   });
 
-  it("project tokens page", () => {
-    const src = read("workspaces.$workspaceHandle.project-tokens.tsx");
-    expect(src).toContain("Your project tokens");
+  it("hook tokens page", () => {
+    const src = read("workspaces.$workspaceHandle.hook-tokens.tsx");
+    expect(src).toContain("Your hook tokens");
     expect(src).not.toContain("this Doco");
     expect(src).not.toContain("every Doco");
   });

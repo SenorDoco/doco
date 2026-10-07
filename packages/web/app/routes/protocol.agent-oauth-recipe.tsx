@@ -556,13 +556,13 @@ error="insufficient_scope"\`. The operation→role table:
   - Admin (Doco settings, invites, role changes, granting agent
     access, editing policies) requires \`owner\`
 
-## Project tokens: read-only, as the person, no OAuth
+## Hook tokens: read-only, as the person, no OAuth
 
 OAuth tokens expire and live inside the agent's client, out of a
-hook's reach. A project token is a read-only credential that reads
+hook's reach. A hook token is a read-only credential that reads
 one workspace as the member who made it: the Docos they can read
 there, checked on every request, so it loses what they lose. The
-Doco hook reads it from \`.doco/project-tokens.json\` or
+Doco hook reads it from \`.doco/hook-tokens.json\` or
 \`DOCO_TOKEN\`.
 
 ### Get the hook's token
@@ -574,11 +574,11 @@ clone or container calls it again and gets the same token back.
 
 ### Or mint one
 
-Any member, at \`${baseUrl}/workspaces/<workspace-handle>/project-tokens\`
+Any member, at \`${baseUrl}/workspaces/<workspace-handle>/hook-tokens\`
 or through the API:
 
 \`\`\`
-POST ${baseUrl}/api/v1/workspaces/<workspace-handle>/project-tokens.json
+POST ${baseUrl}/api/v1/workspaces/<workspace-handle>/hook-tokens.json
 Authorization: Bearer doco_at_<member's-oauth-token>
 Content-Type: application/json
 
@@ -589,7 +589,7 @@ Response (the token body is shown this once):
 
 \`\`\`
 {
-  "token":   "doco_pt_<base64url-32-bytes>",
+  "token":   "doco_ht_<base64url-32-bytes>",
   "summary": { ... metadata, no token body ... },
   "install_hint": "<markdown: where to save the token and turn on the hook>"
 }
@@ -597,12 +597,12 @@ Response (the token body is shown this once):
 
 ### Save it, out of git
 
-Save the token at \`.doco/project-tokens.json\` in the repo root and
+Save the token at \`.doco/hook-tokens.json\` in the repo root and
 add that file to \`.gitignore\`: whoever holds it reads as the person.
 
 \`\`\`json
 {
-  "<workspace-handle>": "doco_pt_<token>"
+  "<workspace-handle>": "doco_ht_<token>"
 }
 \`\`\`
 
@@ -610,7 +610,7 @@ add that file to \`.gitignore\`: whoever holds it reads as the person.
 
 \`\`\`
 GET ${baseUrl}/api/v1/brief.json?about=<what you are about to do>
-Authorization: Bearer doco_pt_<token>
+Authorization: Bearer doco_ht_<token>
 \`\`\`
 
 The token is fixed at **reader** role. Writes (POST/PATCH/DELETE)
@@ -618,7 +618,7 @@ fail with HTTP 403 \`insufficient_scope\`. The bootstrap
 (\`GET /api/v1/agent-bootstrap.json\`) returns the workspace's
 constitution and the policies of the Docos the person can read, with
 \`principal: null\` and a
-\`project_token_grant: { workspace_id, role: "reader" }\` marker so
+\`hook_token_grant: { workspace_id, role: "reader" }\` marker so
 agents know which path they're on.
 
 ### Revoke
@@ -626,19 +626,19 @@ agents know which path they're on.
 Same page or:
 
 \`\`\`
-DELETE ${baseUrl}/api/v1/workspaces/<workspace-handle>/project-tokens.json?id=<8-char-suffix>
+DELETE ${baseUrl}/api/v1/workspaces/<workspace-handle>/hook-tokens.json?id=<8-char-suffix>
 Authorization: Bearer doco_at_<member's-oauth-token>
 \`\`\`
 
 A member revokes their own tokens; an owner revokes anyone's.
 Revoking takes effect immediately.
 
-### Don't conflate project tokens with OAuth
+### Don't conflate hook tokens with OAuth
 
-\`doco_pt_…\` and \`doco_at_…\` are different credentials. Project
+\`doco_ht_…\` and \`doco_at_…\` are different credentials. Hook
 tokens have no refresh, no expiry and no write scope. If your runtime
 needs to capture nodes or edit the Doco, OAuth is still the path —
-project tokens cannot widen.
+hook tokens cannot widen.
 
 ## Refreshing
 

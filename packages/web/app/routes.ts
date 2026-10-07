@@ -39,7 +39,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  *   /workspaces/<workspace-handle>/onboarding  the steps' one-click actions (POST) and where they stand (GET, polled)
  *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace
  *   /workspaces/<workspace-handle>/settings    per-Workspace settings (owner only; danger-zone deletion)
- *   /workspaces/<workspace-handle>/project-tokens  a member's read-only tokens, reading the workspace as them (owners see everyone's)
+ *   /workspaces/<workspace-handle>/hook-tokens  a member's read-only tokens, reading the workspace as them (owners see everyone's)
  *   /<doco-handle>                 per-Doco recent + search input (a codebase or Notion Doco redirects to its reader)
  *   /<doco-handle>/code/<owner>/<repo>/<path>  codebase reader: repositories, a folder, a file (?q= searches)
  *   /<doco-handle>/pages/<page-id>  Notion reader: home, a page (?q= searches)
@@ -161,12 +161,12 @@ export default [
   ),
   route("workspaces/:workspaceHandle/settings", "routes/workspaces.$workspaceHandle.settings.tsx"),
   route(
-    "workspaces/:workspaceHandle/project-tokens",
-    "routes/workspaces.$workspaceHandle.project-tokens.tsx",
+    "workspaces/:workspaceHandle/hook-tokens",
+    "routes/workspaces.$workspaceHandle.hook-tokens.tsx",
   ),
   route(
-    "api/v1/workspaces/:workspaceHandle/project-tokens.json",
-    "routes/api.v1.workspaces.$workspaceHandle.project-tokens[.]json.tsx",
+    "api/v1/workspaces/:workspaceHandle/hook-tokens.json",
+    "routes/api.v1.workspaces.$workspaceHandle.hook-tokens[.]json.tsx",
   ),
   route(
     "workspaces/:workspaceHandle/integrations",

@@ -7,8 +7,8 @@ const mocks = vi.hoisted(() => ({
   composeStandingOrders: vi.fn(),
   getCurrentPrincipalAsync: vi.fn(),
   extractBearer: vi.fn(),
-  isProjectToken: vi.fn(),
-  validateProjectToken: vi.fn(),
+  isHookToken: vi.fn(),
+  validateHookToken: vi.fn(),
   loadWorkspaceForRead: vi.fn(),
   lookupWorkspaceHandle: vi.fn(),
   recordQuery: vi.fn(),
@@ -22,9 +22,9 @@ vi.mock("~/lib/session.server", () => ({
   getCurrentPrincipalAsync: mocks.getCurrentPrincipalAsync,
   extractBearer: mocks.extractBearer,
 }));
-vi.mock("~/lib/project-tokens.server", () => ({
-  isProjectToken: mocks.isProjectToken,
-  validateProjectToken: mocks.validateProjectToken,
+vi.mock("~/lib/hook-tokens.server", () => ({
+  isHookToken: mocks.isHookToken,
+  validateHookToken: mocks.validateHookToken,
 }));
 vi.mock("~/lib/workspace-helpers.server", () => ({
   loadWorkspaceForRead: mocks.loadWorkspaceForRead,
@@ -64,7 +64,7 @@ describe("GET /api/v1/standing-orders.json", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.extractBearer.mockReturnValue(null);
-    mocks.isProjectToken.mockReturnValue(false);
+    mocks.isHookToken.mockReturnValue(false);
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_alice" });
     mocks.loadWorkspaceForRead.mockResolvedValue({
       workspace: { id: "workspace_1", handle: "acme" },
@@ -114,10 +114,10 @@ describe("GET /api/v1/standing-orders.json", () => {
   });
 
   // decision_01M4C2J610DPD028P55Q8X6VG2: a token reads as the person who made it.
-  it("gives a project token its own workspace as its maker reads it, and no other", async () => {
-    mocks.extractBearer.mockReturnValue("doco_pt_x");
-    mocks.isProjectToken.mockReturnValue(true);
-    mocks.validateProjectToken.mockResolvedValue({
+  it("gives a hook token its own workspace as its maker reads it, and no other", async () => {
+    mocks.extractBearer.mockReturnValue("doco_ht_x");
+    mocks.isHookToken.mockReturnValue(true);
+    mocks.validateHookToken.mockResolvedValue({
       workspace_id: "workspace_9",
       created_by_user_id: "user_maker",
     });
@@ -127,7 +127,7 @@ describe("GET /api/v1/standing-orders.json", () => {
       myRole: "reader",
       docos: [{ id: "doco_9" }],
     });
-    const res = await get("format=text", { authorization: "Bearer doco_pt_x" });
+    const res = await get("format=text", { authorization: "Bearer doco_ht_x" });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/plain");
     expect(await res.text()).toBe(ORDERS.text);
@@ -138,7 +138,7 @@ describe("GET /api/v1/standing-orders.json", () => {
       docoIds: ["doco_9"],
     });
     expect(mocks.recordQuery.mock.calls[0][2]).toBeNull();
-    expect((await get("workspace=nine", { authorization: "Bearer doco_pt_x" })).status).toBe(200);
-    expect((await get("workspace=other", { authorization: "Bearer doco_pt_x" })).status).toBe(403);
+    expect((await get("workspace=nine", { authorization: "Bearer doco_ht_x" })).status).toBe(200);
+    expect((await get("workspace=other", { authorization: "Bearer doco_ht_x" })).status).toBe(403);
   });
 });

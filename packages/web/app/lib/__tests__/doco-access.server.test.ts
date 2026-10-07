@@ -4,7 +4,7 @@ import type { ValidAccessToken } from "../oauth-server.server";
 const mocks = vi.hoisted(() => ({
   getDocoByIdOrHandle: vi.fn(),
   readDocoMetadata: vi.fn(),
-  validateProjectToken: vi.fn(),
+  validateHookToken: vi.fn(),
   getDocoUserGrant: vi.fn(),
   getWorkspaceGrant: vi.fn(),
   getPrincipalById: vi.fn(),
@@ -42,9 +42,9 @@ vi.mock("../oauth-server.server", () => ({
   validateAccessToken: mocks.validateAccessToken,
 }));
 vi.mock("../doco-metadata.server", () => ({ readDocoMetadata: mocks.readDocoMetadata }));
-vi.mock("../project-tokens.server", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../project-tokens.server")>()),
-  validateProjectToken: mocks.validateProjectToken,
+vi.mock("../hook-tokens.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hook-tokens.server")>()),
+  validateHookToken: mocks.validateHookToken,
 }));
 vi.mock("../query-log.server", () => ({ recordQuery: vi.fn(async () => {}) }));
 
@@ -551,9 +551,9 @@ describe('legacy defer-scope ("*") token grants nothing now', () => {
   });
 });
 
-// decision_01M4C2J610DPD028P55Q8X6VG2: a project token reads, and only reads,
+// decision_01M4C2J610DPD028P55Q8X6VG2: a hook token reads, and only reads,
 // what the person who made it can read in its workspace.
-describe("loadDocoForRead with a project token", () => {
+describe("loadDocoForRead with a hook token", () => {
   const MAKER = "user_maker";
   function doco(visibility: "private" | "public") {
     mocks.getDocoByIdOrHandle.mockResolvedValue({
@@ -571,7 +571,7 @@ describe("loadDocoForRead with a project token", () => {
   }
   function read(minRole?: "reader" | "writer") {
     const request = new Request("https://doco.test/acme-decisions/api/decisions.json", {
-      headers: { Authorization: "Bearer doco_pt_x" },
+      headers: { Authorization: "Bearer doco_ht_x" },
     });
     return loadDocoForRead(request, "acme-decisions", minRole);
   }
@@ -585,8 +585,8 @@ describe("loadDocoForRead with a project token", () => {
   }
 
   beforeEach(() => {
-    mocks.validateProjectToken.mockResolvedValue({
-      token: "doco_pt_x",
+    mocks.validateHookToken.mockResolvedValue({
+      token: "doco_ht_x",
       workspace_id: "workspace_acme",
       created_by_user_id: MAKER,
     });
@@ -618,8 +618,8 @@ describe("loadDocoForRead with a project token", () => {
 
   it("refuses another workspace's Doco", async () => {
     doco("public");
-    mocks.validateProjectToken.mockResolvedValue({
-      token: "doco_pt_x",
+    mocks.validateHookToken.mockResolvedValue({
+      token: "doco_ht_x",
       workspace_id: "workspace_other",
       created_by_user_id: MAKER,
     });

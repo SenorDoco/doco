@@ -177,7 +177,7 @@ export async function summarizeActivity(
     for (const r of rows) {
       if (log === "writes" && imported(r.source, r.metadata)) continue;
       total += r.n;
-      // A project token or an anonymous reader has no person to list.
+      // A hook token or an anonymous reader has no person to list.
       if (!r.user_id || !r.username) continue;
       const via = agentName(r.source, r.metadata);
       const lastAt = new Date(r.last_at).toISOString();
