@@ -19,7 +19,7 @@ function lowerFirst(text: string): string {
   return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
 
-const COUNTS = ["no", "one", "two", "three", "four", "five"];
+const COUNTS = ["no", "one", "two", "three", "four"];
 
 function workspaceUrl(baseUrl: string, handle: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/workspaces/${handle}`;
@@ -47,7 +47,7 @@ export function reminderEmail(opts: {
   const url = workspaceUrl(opts.baseUrl, opts.workspaceHandle);
   if (pendingStep(opts) === "agent") {
     const instructions = agentInstructionsForWorkspace(opts.baseUrl, opts.workspaceHandle);
-    const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it the message below: it has your agent start using Doco there and note in ${opts.workspaceHandle}'s Agents chats Doco that it received the instructions.`;
+    const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it the message below: it has your agent start using Doco there, note in ${opts.workspaceHandle}'s Agents chats Doco that it received the instructions, and turn on the Doco hook.`;
     const after = `You can also copy the message from ${opts.workspaceHandle}: ${url}`;
     return {
       subject: `Ask your agent to start using Doco in ${opts.workspaceHandle}`,

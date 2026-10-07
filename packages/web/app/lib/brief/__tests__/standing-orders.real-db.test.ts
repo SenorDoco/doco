@@ -61,7 +61,11 @@ describe("composeStandingOrders", () => {
   it("compiles the constitution, the rules, the Doco map and the changes of one workspace", async () => {
     const orders = await composeStandingOrders(
       c,
-      { workspaceId: "workspace_1", origin: ORIGIN, docoIds: null },
+      {
+        workspaceId: "workspace_1",
+        origin: ORIGIN,
+        docoIds: ["doco_dec", "doco_glossary", "doco_other"],
+      },
       { now: () => NOW },
     );
     expect(orders?.constitution).toBe("Ship small pull requests.");
@@ -173,7 +177,7 @@ describe("composeStandingOrders", () => {
 
     const beta = await composeStandingOrders(
       c,
-      { workspaceId: "workspace_2", origin: ORIGIN, docoIds: null },
+      { workspaceId: "workspace_2", origin: ORIGIN, docoIds: ["doco_beta"] },
       { since: "not a date", now: () => NOW },
     );
     expect(beta?.constitution).toBeNull();
@@ -187,7 +191,7 @@ describe("composeStandingOrders", () => {
       await composeStandingOrders(c, {
         workspaceId: "workspace_none",
         origin: ORIGIN,
-        docoIds: null,
+        docoIds: [],
       }),
     ).toBeNull();
   });

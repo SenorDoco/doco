@@ -20,9 +20,13 @@ import {
   withClient,
 } from "@doco/db";
 import { type PolicyPredicate, agentInstructionOf } from "@doco/shared";
-import { canAccessDoco, oauthTokenGrantsDoco } from "./doco-access.server";
+import {
+  canAccessDoco,
+  listReadableDocosInWorkspace,
+  oauthTokenGrantsDoco,
+} from "./doco-access.server";
 import type { ValidAccessToken } from "./oauth-server.server";
-import { type ProjectToken, queryProjectTokenDocos } from "./project-tokens.server";
+import type { ProjectToken } from "./project-tokens.server";
 
 export type { WorkspaceConstitution };
 
@@ -174,15 +178,21 @@ export async function loadWorkspaceConstitutionsForPrincipal(
   );
 }
 
-/** A project token reads one workspace: its constitution, and the goal and
- *  policies of each of its Docos that has either. */
+/** A project token reads one workspace as the person who made it: its
+ *  constitution, and the goal and policies of each Doco they can read there
+ *  that has either. */
 export async function loadBootstrapForProjectToken(
   token: ProjectToken,
 ): Promise<BootstrapManifest> {
   const workspaceConstitutions = await getWorkspaceConstitutionsByIds([token.workspace_id]);
+  const readable = await listReadableDocosInWorkspace(token.workspace_id, token.created_by_user_id);
   const docoPolicies: DocoPolicySet[] = [];
   await withClient(async (c) => {
-    for (const d of await queryProjectTokenDocos(c, token.workspace_id)) {
+    const docos = await c.query<{ id: string; handle: string; goal: string; owner_id: string }>(
+      "SELECT id, handle, goal, owner_id FROM docos WHERE id = ANY($1::text[]) ORDER BY handle",
+      [readable.map((d) => d.id)],
+    );
+    for (const d of docos.rows) {
       const policies = await queryPolicyArticles(c, d.id);
       if (policies.length === 0 && d.goal.length === 0) continue;
       docoPolicies.push({

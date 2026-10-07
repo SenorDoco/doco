@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ValidAccessToken } from "../oauth-server.server";
 
 const mocks = vi.hoisted(() => ({
+  getDocoByIdOrHandle: vi.fn(),
+  readDocoMetadata: vi.fn(),
+  validateProjectToken: vi.fn(),
   getDocoUserGrant: vi.fn(),
   getWorkspaceGrant: vi.fn(),
   getPrincipalById: vi.fn(),
@@ -15,7 +18,7 @@ vi.mock("@doco/db", () => {
   const rank = (role: "owner" | "writer" | "reader" | null | undefined) =>
     role === "owner" ? 2 : role === "writer" ? 1 : role === "reader" ? 0 : -1;
   return {
-    getDocoByIdOrHandle: vi.fn(),
+    getDocoByIdOrHandle: mocks.getDocoByIdOrHandle,
     getDocoUserGrant: mocks.getDocoUserGrant,
     getDocoUserRole: vi.fn(),
     getWorkspaceGrant: mocks.getWorkspaceGrant,
@@ -38,6 +41,12 @@ vi.mock("@doco/db", () => {
 vi.mock("../oauth-server.server", () => ({
   validateAccessToken: mocks.validateAccessToken,
 }));
+vi.mock("../doco-metadata.server", () => ({ readDocoMetadata: mocks.readDocoMetadata }));
+vi.mock("../project-tokens.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../project-tokens.server")>()),
+  validateProjectToken: mocks.validateProjectToken,
+}));
+vi.mock("../query-log.server", () => ({ recordQuery: vi.fn(async () => {}) }));
 
 import {
   SENOR_DOCO_ROLE_CEILING,
@@ -50,6 +59,7 @@ import {
   isSenorDocoRequest,
   listAccessibleDocoIdsInWorkspace,
   listVisibleDocoIdsForRequest,
+  loadDocoForRead,
   oauthTokenGrantsDoco,
   tokenReachableWorkspaceIdsForRequest,
   tokenReachableWorkspaceIdsFromGrant,
@@ -538,5 +548,81 @@ describe('legacy defer-scope ("*") token grants nothing now', () => {
     expect(
       filterDocosToWorkspaceBoundary(["doco_torre1"], owners, token({ granted_doco_ids: ["*"] })),
     ).toEqual([]);
+  });
+});
+
+// decision_01M4C2J610DPD028P55Q8X6VG2: a project token reads, and only reads,
+// what the person who made it can read in its workspace.
+describe("loadDocoForRead with a project token", () => {
+  const MAKER = "user_maker";
+  function doco(visibility: "private" | "public") {
+    mocks.getDocoByIdOrHandle.mockResolvedValue({
+      id: "doco_1",
+      handle: "acme-decisions",
+      owner_id: "workspace_acme",
+      workspace_id: "workspace_acme",
+      owner_slug: "acme",
+    });
+    mocks.readDocoMetadata.mockResolvedValue({
+      ownerId: "workspace_acme",
+      visibility,
+      docoId: "doco_1",
+    });
+  }
+  function read(minRole?: "reader" | "writer") {
+    const request = new Request("https://doco.test/acme-decisions/api/decisions.json", {
+      headers: { Authorization: "Bearer doco_pt_x" },
+    });
+    return loadDocoForRead(request, "acme-decisions", minRole);
+  }
+  async function status(promise: Promise<unknown>): Promise<number> {
+    try {
+      await promise;
+      return 200;
+    } catch (thrown) {
+      return (thrown as Response).status;
+    }
+  }
+
+  beforeEach(() => {
+    mocks.validateProjectToken.mockResolvedValue({
+      token: "doco_pt_x",
+      workspace_id: "workspace_acme",
+      created_by_user_id: MAKER,
+    });
+  });
+
+  it("reads a private Doco its maker can read", async () => {
+    doco("private");
+    mocks.getWorkspaceGrant.mockImplementation(async (_workspace: string, principal: string) =>
+      principal === MAKER ? { role: "reader", writeTypes: [] } : null,
+    );
+    await expect(read()).resolves.toMatchObject({ me: null, canonicalHandle: "acme-decisions" });
+  });
+
+  it("refuses a private Doco its maker can't read, such as after they left the workspace", async () => {
+    doco("private");
+    expect(await status(read())).toBe(403);
+  });
+
+  it("reads a public Doco, which anyone reads", async () => {
+    doco("public");
+    expect(await status(read())).toBe(200);
+  });
+
+  it("never writes, even for an owner's token", async () => {
+    doco("private");
+    mocks.getWorkspaceGrant.mockResolvedValue({ role: "owner", writeTypes: ["*"] });
+    expect(await status(read("writer"))).toBe(403);
+  });
+
+  it("refuses another workspace's Doco", async () => {
+    doco("public");
+    mocks.validateProjectToken.mockResolvedValue({
+      token: "doco_pt_x",
+      workspace_id: "workspace_other",
+      created_by_user_id: MAKER,
+    });
+    expect(await status(read())).toBe(403);
   });
 });

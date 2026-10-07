@@ -15,7 +15,6 @@ const CREATOR: OnboardingView = {
     { step: "sources", done: false },
     { step: "mcp", done: false },
     { step: "agent", done: false },
-    { step: "hook", done: false },
   ],
   pending: "github",
   github: { available: true, docos: [] },
@@ -41,6 +40,8 @@ const CREATOR: OnboardingView = {
   agent: {
     instructions: agentInstructionsForWorkspace("https://doco.to", "acme"),
     agentsChatsHandle: "acme-agents-chats",
+    wrote: false,
+    hook: false,
   },
 };
 
@@ -51,7 +52,6 @@ const ON_SOURCES: OnboardingView = {
     { step: "sources", done: false },
     { step: "mcp", done: false },
     { step: "agent", done: false },
-    { step: "hook", done: false },
   ],
   pending: "sources",
   github: {
@@ -70,7 +70,6 @@ const ON_MCP: OnboardingView = {
     { step: "sources", done: true },
     { step: "mcp", done: false },
     { step: "agent", done: false },
-    { step: "hook", done: false },
   ],
   pending: "mcp",
 };
@@ -82,21 +81,8 @@ const ON_AGENT: OnboardingView = {
     { step: "sources", done: true },
     { step: "mcp", done: true },
     { step: "agent", done: false },
-    { step: "hook", done: false },
   ],
   pending: "agent",
-};
-
-const ON_HOOK: OnboardingView = {
-  ...ON_SOURCES,
-  steps: [
-    { step: "github", done: true },
-    { step: "sources", done: true },
-    { step: "mcp", done: true },
-    { step: "agent", done: true },
-    { step: "hook", done: false },
-  ],
-  pending: "hook",
 };
 
 const INVITEE: OnboardingView = {
@@ -132,12 +118,12 @@ describe("OnboardingStepper", () => {
   it("starts a workspace's creator on connecting GitHub, which asks which repositories", () => {
     const html = render(CREATOR);
     expect(html).toContain("Set up acme");
-    expect(html).toContain("Five steps to shared knowledge");
+    expect(html).toContain("Four steps to shared knowledge");
     expect(html).toContain("Connect GitHub");
     expect(html).toContain("Connect other sources of knowledge");
     expect(html).toContain("Connect Doco to your agent");
     expect(html).toContain("Ask your agent to start using Doco");
-    expect(html).toContain("Turn on the Doco hook");
+    expect(html).not.toContain("Turn on the Doco hook");
     const step = currentStep(html);
     // The GitHub setup: it creates the workspace's GitHub Docos and has the
     // person pick every repository of an organization, or the ones they want.
@@ -194,14 +180,22 @@ describe("OnboardingStepper", () => {
     expect(step).toContain("Waiting for you to approve Doco from your agent");
   });
 
-  it("gives the message for the agent with a copy button and waits for its note", () => {
+  // decision_01M4C2JDN3EZMA2FR8JPPMT7NN: the one message also turns on the
+  // Doco hook, so the step waits for the agent's note and the hook's first
+  // brief, and says which is still missing.
+  it("gives the message for the agent with a copy button and waits for its note and its hook", () => {
     const html = render(ON_AGENT);
     const step = currentStep(html);
     expect(step).toContain("Message for your agent");
     expect(step).toContain("Copy");
     expect(step).toContain("in the workspace acme");
-    expect(step).toContain("Waiting for your agent to write in");
+    expect(step).toContain("turn on the Doco hook");
+    expect(step).toContain("before each prompt and each file edit");
+    expect(step).toContain("Waiting for your agent&#x27;s note in");
     expect(step).toContain("acme-agents-chats");
+    expect(step).toContain("and the hook&#x27;s first brief");
+    expect(step).not.toContain("project token");
+    expect(step).not.toContain('type="checkbox"');
     // Done without a source connected: skipped, or agents already work here.
     expect(html).toContain(
       "No other sources connected. Connect them any time from App integrations.",
@@ -209,24 +203,18 @@ describe("OnboardingStepper", () => {
     expect(html).not.toContain("Skipped");
   });
 
-  // Alexander, 2026-10-07 (decision_01M4BK9TWE3SYDC1X2D8SB67Y2): the owners'
-  // last step turns on the Doco hook, which needs a project token only an
-  // owner can create.
-  it("turns on the hook with a project token the owner confirms, or skips it", () => {
-    const step = currentStep(render(ON_HOOK));
-    expect(step).toContain("Turn on the Doco hook");
-    expect(step).toContain("before each prompt and each file edit");
-    expect(step).toContain("Claude Code, Codex and Gemini CLI");
-    const checkbox = step.match(/<input type="checkbox"[^>]*>/)?.[0];
-    expect(checkbox).toContain('name="confirm_repo_readable"');
-    expect(checkbox).toContain('required=""');
-    expect(step).toContain("will be able to read every Doco in acme");
-    expect(step).toMatch(
-      /<button type="submit" value="hook-token"[^>]*name="intent">Create project token/,
-    );
-    expect(step).toMatch(
-      /<button type="submit" value="finish-hook" formNoValidate=""[^>]*name="intent">/,
-    );
+  it("says which of the two is still missing", () => {
+    const wrote = currentStep(render({ ...ON_AGENT, agent: { ...ON_AGENT.agent, wrote: true } }));
+    expect(wrote).toContain("Your agent wrote in");
+    expect(wrote).toContain("Waiting for the hook&#x27;s first brief");
+    const hooked = currentStep(render({ ...ON_AGENT, agent: { ...ON_AGENT.agent, hook: true } }));
+    expect(hooked).toContain("The hook is on. Waiting for your agent to write in");
+    expect(hooked).not.toContain("run hooks");
+  });
+
+  it("lets the person skip the hook when their agent doesn't run hooks", () => {
+    const step = currentStep(render(ON_AGENT));
+    expect(step).toContain('<input type="hidden" name="intent" value="finish-hook"/>');
     expect(step).toContain("My agent doesn&#x27;t run hooks");
   });
 
@@ -243,9 +231,6 @@ describe("OnboardingStepper", () => {
   it("explains a step that came back refused", () => {
     expect(render(CREATOR, "/workspaces/acme?onboarding=not_owner")).toContain(
       "Only an owner of this workspace can take this step.",
-    );
-    expect(render(ON_HOOK, "/workspaces/acme?onboarding=unconfirmed")).toContain(
-      "Check the box first",
     );
   });
 });

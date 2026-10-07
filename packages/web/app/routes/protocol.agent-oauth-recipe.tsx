@@ -556,43 +556,36 @@ error="insufficient_scope"\`. The operation→role table:
   - Admin (Doco settings, invites, role changes, granting agent
     access, editing policies) requires \`owner\`
 
-## Project tokens — committable, read-only, no OAuth
+## Project tokens: read-only, as the person, no OAuth
 
-OAuth tokens are per-user secrets. A project maps to one workspace,
-and when every doco in that workspace may be read by anyone who can
-read the project's repository, a workspace **owner** can mint a
-"project token" and commit it to the repository. The Doco hook and
-any agent cloning the repository then read the workspace without
-OAuth.
+OAuth tokens expire and live inside the agent's client, out of a
+hook's reach. A project token is a read-only credential that reads
+one workspace as the member who made it: the Docos they can read
+there, checked on every request, so it loses what they lose. The
+Doco hook reads it from \`.doco/project-tokens.json\` or
+\`DOCO_TOKEN\`.
 
-### When to suggest this to the user
+### Get the hook's token
 
-After completing OAuth once, mention it as one of two options for
-avoiding the auth dance on every fresh container / new clone (the
-other is setting \`DOCO_ACCESS\` as a runtime environment variable).
-Don't make the choice for the user — surface both, let them pick.
+Call the MCP tool \`doco_hook_token\` with the workspace's handle. It
+returns the person's token for the hook in that workspace, made the
+first time and the same one after, with where to save it. A fresh
+clone or container calls it again and gets the same token back.
 
-### Mint flow (workspace owner only, requires explicit confirmation)
+### Or mint one
 
-1. Open \`${baseUrl}/workspaces/<workspace-handle>/project-tokens\`.
-2. Check the box acknowledging that anyone with read access to a
-   repository where this token is committed will be able to read
-   every doco in the workspace. The mint button stays disabled until
-   you do.
-3. Click "Mint project token". The full token body is shown
-   **once** — copy it now. The page never displays the body again.
-
-The API equivalent:
+Any member, at \`${baseUrl}/workspaces/<workspace-handle>/project-tokens\`
+or through the API:
 
 \`\`\`
 POST ${baseUrl}/api/v1/workspaces/<workspace-handle>/project-tokens.json
-Authorization: Bearer doco_at_<owner's-oauth-token>
+Authorization: Bearer doco_at_<member's-oauth-token>
 Content-Type: application/json
 
-{ "confirm_repo_readable": true, "label": "optional label" }
+{ "label": "optional label" }
 \`\`\`
 
-Response:
+Response (the token body is shown this once):
 
 \`\`\`
 {
@@ -602,18 +595,16 @@ Response:
 }
 \`\`\`
 
-### Commit it
+### Save it, out of git
 
-Save the token at \`.doco/project-tokens.json\` in the repo root:
+Save the token at \`.doco/project-tokens.json\` in the repo root and
+add that file to \`.gitignore\`: whoever holds it reads as the person.
 
 \`\`\`json
 {
   "<workspace-handle>": "doco_pt_<token>"
 }
 \`\`\`
-
-Commit and push. The Doco hook reads it from there when no
-\`DOCO_TOKEN\` is set in the environment.
 
 ### Use it
 
@@ -622,11 +613,11 @@ GET ${baseUrl}/api/v1/brief.json?about=<what you are about to do>
 Authorization: Bearer doco_pt_<token>
 \`\`\`
 
-The token is fixed at **reader** role on every live doco of one
-workspace. Writes (POST/PATCH/DELETE) fail with HTTP 403
-\`insufficient_scope\`. The bootstrap
+The token is fixed at **reader** role. Writes (POST/PATCH/DELETE)
+fail with HTTP 403 \`insufficient_scope\`. The bootstrap
 (\`GET /api/v1/agent-bootstrap.json\`) returns the workspace's
-constitution and its docos' policies with \`principal: null\` and a
+constitution and the policies of the Docos the person can read, with
+\`principal: null\` and a
 \`project_token_grant: { workspace_id, role: "reader" }\` marker so
 agents know which path they're on.
 
@@ -636,18 +627,18 @@ Same page or:
 
 \`\`\`
 DELETE ${baseUrl}/api/v1/workspaces/<workspace-handle>/project-tokens.json?id=<8-char-suffix>
-Authorization: Bearer doco_at_<owner's-oauth-token>
+Authorization: Bearer doco_at_<member's-oauth-token>
 \`\`\`
 
-Revoking takes effect immediately. The committed token in the repo
-becomes inert — remove or replace it in the next commit.
+A member revokes their own tokens; an owner revokes anyone's.
+Revoking takes effect immediately.
 
 ### Don't conflate project tokens with OAuth
 
 \`doco_pt_…\` and \`doco_at_…\` are different credentials. Project
-tokens have no refresh, no expiry, no user identity, no
-write scope. If your runtime needs to capture nodes or edit the
-Doco, OAuth is still the path — project tokens cannot widen.
+tokens have no refresh, no expiry and no write scope. If your runtime
+needs to capture nodes or edit the Doco, OAuth is still the path —
+project tokens cannot widen.
 
 ## Refreshing
 

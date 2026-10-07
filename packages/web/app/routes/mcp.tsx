@@ -17,9 +17,10 @@ import { getDocoByIdOrHandle, getWorkspaceConstitutionsByIds } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { gatherAgentDebug } from "~/lib/agent-debug.server";
-import { loadAgentIdentity } from "~/lib/agent-identity.server";
+import { type IdentityGrant, loadAgentIdentity } from "~/lib/agent-identity.server";
 import { agentInstructions, agentInstructionsPointer } from "~/lib/agent-instructions";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
+import { hookTokenFor, projectTokenInstallHint } from "~/lib/project-tokens.server";
 import { isSuperadmin } from "~/lib/session.server";
 import { type McpContext, gateUserMcp } from "~/lib/user-mcp.server";
 import { resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
@@ -411,6 +412,28 @@ const WHOAMI_TOOL = {
   },
 };
 
+const HOOK_TOKEN_TOOL = {
+  name: "doco_hook_token",
+  description: [
+    "The user's own project token for the Doco hook in a workspace this",
+    "connection reaches, with where to save it. The hook briefs the agent from",
+    "the workspace before each prompt and each file edit. The token reads,",
+    "read-only, what the user can read there, as them, so it stays out of git;",
+    "every call returns the same token, so a fresh clone or container gets it",
+    "back with one call.",
+  ].join("\n"),
+  inputSchema: {
+    type: "object",
+    properties: {
+      workspace: {
+        type: "string",
+        description:
+          "The project's workspace handle (the `Doco workspace:` line of its AGENTS.md); default: the one workspace this connection reaches, if there is one.",
+      },
+    },
+  },
+};
+
 const LIST_WORKSPACES_TOOL = {
   name: "list_workspaces",
   description: [
@@ -494,6 +517,7 @@ const TOOLS = [
   CHANGESET_TOOL,
   POLICY_TOOL,
   CREATE_TOOL,
+  HOOK_TOKEN_TOOL,
   REQUEST_ACCESS_TOOL,
   AGENT_DEBUG_TOOL,
 ];
@@ -881,11 +905,7 @@ async function runDocoWhoami(request: Request, args: Record<string, unknown>): P
   // constitution line, the same charter the in-page Señor Doco and the
   // agent-bootstrap manifest surface.
   const named = String(args.workspace ?? "").trim();
-  const project = named
-    ? (workspaces.find((w) => w.label === named || w.id === named) ?? null)
-    : workspaces.length === 1
-      ? workspaces[0]
-      : null;
+  const project = projectWorkspace(workspaces, named);
   let standingOrders: unknown = null;
   if (named && !project) {
     lines.push("", `This connection reaches no workspace named ${named}.`);
@@ -928,6 +948,47 @@ async function runDocoWhoami(request: Request, args: Record<string, unknown>): P
       standing_orders: standingOrders,
     },
   };
+}
+
+// doco_hook_token: the person's token for the Doco hook in the project's
+// workspace (lib/project-tokens.server hookTokenFor). The token reads all the
+// person can read there, so the connection must reach the whole workspace:
+// a connection limited to some Docos never hands out more than it reaches.
+async function runDocoHookToken(
+  request: Request,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const identity = await loadAgentIdentity(request);
+  if (!identity) return toolError("Not authenticated.");
+  const workspaces = (identity.grants ?? []).filter((g) => g.scope === "workspace");
+  const named = String(args.workspace ?? "").trim();
+  const workspace = projectWorkspace(workspaces, named);
+  if (!workspace) {
+    return toolError(
+      named
+        ? `This connection doesn't reach the whole workspace ${named}, and the hook's token reads all of it the user can. Ask the user to connect Doco again and include ${named} when Doco asks what the agent may reach.`
+        : workspaces.length > 1
+          ? "This connection reaches several workspaces: name the project's (workspace=<handle>), from the `Doco workspace:` line of its AGENTS.md."
+          : "This connection reaches no whole workspace. Ask the user to connect Doco again and include the project's workspace when Doco asks what the agent may reach.",
+    );
+  }
+  const token = await hookTokenFor({ workspace_id: workspace.id, user_id: identity.user_id });
+  return {
+    content: [
+      {
+        type: "text",
+        text: projectTokenInstallHint(getPublicBaseUrl(request), workspace.label, token),
+      },
+    ],
+    structuredContent: { workspace: workspace.label, token },
+  };
+}
+
+/** The project's workspace among those a connection reaches whole: the one
+ *  named (by handle or id), or else the only one. */
+function projectWorkspace(workspaces: IdentityGrant[], named: string): IdentityGrant | null {
+  if (named) return workspaces.find((w) => w.label === named || w.id === named) ?? null;
+  return workspaces.length === 1 ? workspaces[0] : null;
 }
 
 // Not a delegate: requesting access is a first-party action.
@@ -1035,6 +1096,8 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
           return rpcResult(message.id, await runDocoPolicy(request, args));
         case "doco_create":
           return rpcResult(message.id, await runDocoCreate(request, args));
+        case "doco_hook_token":
+          return rpcResult(message.id, await runDocoHookToken(request, args));
         case "doco_request_access":
           return rpcResult(message.id, await runDocoRequestAccess(ctx, args));
         case "doco_agent_debug":

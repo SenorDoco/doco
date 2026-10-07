@@ -154,14 +154,15 @@ export async function ensureWorkspaceDoco(opts: {
 }
 
 /**
- * The workspace behind a handle and the caller as one of its owners, for the
- * pages and APIs only owners may use; otherwise the status and the reason.
+ * The workspace behind a handle and the caller as one of its members, for its
+ * project tokens: an owner sees and revokes everyone's (`madeBy` null), any
+ * other member their own; otherwise the status and the reason.
  */
-export async function loadWorkspaceForOwner(
+export async function loadWorkspaceForProjectTokens(
   request: Request,
   workspaceHandle: string,
 ): Promise<
-  | { ok: true; workspace: WorkspacePublicRow; me: CurrentPrincipal }
+  | { ok: true; workspace: WorkspacePublicRow; me: CurrentPrincipal; madeBy: string | null }
   | { ok: false; status: 401 | 403 | 404; error: string }
 > {
   const workspace = await resolveWorkspaceByHandle(workspaceHandle);
@@ -169,9 +170,10 @@ export async function loadWorkspaceForOwner(
     return { ok: false, status: 404, error: `Workspace "${workspaceHandle}" not found.` };
   }
   const me = await getCurrentPrincipalAsync(request);
-  if (!me) return { ok: false, status: 401, error: "Sign in to manage this workspace." };
-  if ((await getWorkspaceRole(workspace.id, me.id)) !== "owner") {
-    return { ok: false, status: 403, error: "Only workspace owners can manage project tokens." };
+  if (!me) return { ok: false, status: 401, error: "Sign in to manage your project tokens." };
+  const role = await getWorkspaceRole(workspace.id, me.id);
+  if (!role) {
+    return { ok: false, status: 403, error: "Only members of this workspace have project tokens." };
   }
-  return { ok: true, workspace, me };
+  return { ok: true, workspace, me, madeBy: role === "owner" ? null : me.id };
 }

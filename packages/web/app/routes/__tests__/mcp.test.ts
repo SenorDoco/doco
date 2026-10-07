@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceConstitutionsByIds: vi.fn(),
   getDocoByIdOrHandle: vi.fn(),
   gatherAgentDebug: vi.fn(),
+  hookTokenFor: vi.fn(),
   fetchMock: vi.fn(),
 }));
 
@@ -34,6 +35,10 @@ vi.mock("@doco/db", () => ({
 vi.mock("~/lib/access-requests.server", () => ({ requestDocoAccess: mocks.requestDocoAccess }));
 vi.mock("~/lib/agent-identity.server", () => ({ loadAgentIdentity: mocks.loadAgentIdentity }));
 vi.mock("~/lib/agent-debug.server", () => ({ gatherAgentDebug: mocks.gatherAgentDebug }));
+vi.mock("~/lib/project-tokens.server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/project-tokens.server")>()),
+  hookTokenFor: mocks.hookTokenFor,
+}));
 vi.mock("../$docoHandle.search[.]json", () => ({ loader: mocks.searchLoader }));
 vi.mock("../api.v1.brief[.]json", () => ({ loader: mocks.briefLoader }));
 vi.mock("../api.v1.standing-orders[.]json", () => ({ loader: mocks.standingOrdersLoader }));
@@ -218,9 +223,78 @@ describe("POST /mcp (hosted remote MCP)", () => {
       "doco_changeset",
       "doco_policy",
       "doco_create",
+      "doco_hook_token",
       "doco_request_access",
       "doco_agent_debug",
     ]);
+  });
+
+  // decision_01M4C2J610DPD028P55Q8X6VG2: any member's agent gets its person's
+  // token for the Doco hook, the same one every call, without a person typing it.
+  describe("doco_hook_token", () => {
+    const identity = (grants: Json[]) => ({
+      user_id: "user_alice",
+      username: "alice",
+      type: "person",
+      credential: null,
+      indicator_prefix: "[🔮 Doco @alice]",
+      grants,
+    });
+    const acme = { scope: "workspace", id: WORKSPACE, label: "acme", role: "reader" };
+    const beta = { scope: "workspace", id: "workspace_beta", label: "beta", role: "writer" };
+    const hookToken = async (args: Record<string, unknown> = {}) =>
+      (
+        (await (
+          await call(
+            {
+              jsonrpc: "2.0",
+              id: 60,
+              method: "tools/call",
+              params: { name: "doco_hook_token", arguments: args },
+            },
+            BEARER,
+          )
+        ).json()) as Json
+      ).result;
+
+    beforeEach(() => {
+      mocks.hookTokenFor.mockResolvedValue("doco_pt_alice");
+    });
+
+    it("hands the person's token for a workspace the connection reaches, with where to save it", async () => {
+      mocks.loadAgentIdentity.mockResolvedValue(identity([acme, beta]));
+      const result = await hookToken({ workspace: "acme" });
+      expect(mocks.hookTokenFor).toHaveBeenCalledWith({
+        workspace_id: WORKSPACE,
+        user_id: "user_alice",
+      });
+      expect(result.isError).toBeUndefined();
+      expect(result.content[0].text).toContain('"acme": "doco_pt_alice"');
+      expect(result.content[0].text).toContain("`.gitignore`");
+      expect(result.content[0].text).toContain("https://doco.to/agents#hook");
+      expect(result.structuredContent).toEqual({ workspace: "acme", token: "doco_pt_alice" });
+    });
+
+    it("takes the one workspace the connection reaches, and asks for a handle among several", async () => {
+      mocks.loadAgentIdentity.mockResolvedValue(identity([acme]));
+      expect((await hookToken()).structuredContent.workspace).toBe("acme");
+
+      mocks.loadAgentIdentity.mockResolvedValue(identity([acme, beta]));
+      const several = await hookToken();
+      expect(several.isError).toBe(true);
+      expect(several.content[0].text).toContain("workspace=<handle>");
+      expect(mocks.hookTokenFor).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses a workspace the connection doesn't reach whole, since the token reads all of it", async () => {
+      mocks.loadAgentIdentity.mockResolvedValue(
+        identity([{ scope: "doco", id: "doco_1", label: "acme/proj1", role: "owner" }]),
+      );
+      const result = await hookToken({ workspace: "acme" });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("doesn't reach the whole workspace acme");
+      expect(mocks.hookTokenFor).not.toHaveBeenCalled();
+    });
   });
 
   it("doco_agent_debug is denied for non-superadmin credentials", async () => {

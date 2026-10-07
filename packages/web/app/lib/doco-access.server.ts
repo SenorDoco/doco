@@ -38,8 +38,7 @@ import { type CurrentPrincipal, extractBearer, getCurrentPrincipalAsync } from "
  * ceiling it would inherit that human's full role, `owner` included.
  * Product rule: the agent must never exceed this. Owner-tier operations
  * (editing policies, changing settings, deleting Docos, owner-level invites,
- * managing project tokens, and creating Docos/workspaces) stay human-only on
- * both surfaces.
+ * and creating Docos/workspaces) stay human-only on both surfaces.
  */
 export const SENOR_DOCO_ROLE_CEILING: DocoRole = "writer";
 
@@ -665,8 +664,8 @@ export async function canAdminDoco(
 /**
  * Admin gate that also enforces the Señor Doco ceiling: the agent never
  * administers a Doco — even an unclaimed host-bootstrap one — regardless of
- * the underlying human's role. Owner-gated admin routes (project tokens, and
- * settings via `loadDocoForAdmin`) call this instead of `canAdminDoco`.
+ * the underlying human's role. Owner-gated admin routes (settings via
+ * `loadDocoForAdmin`) call this instead of `canAdminDoco`.
  */
 export async function canAdminDocoForRequest(
   request: Request,
@@ -814,12 +813,13 @@ export async function loadDocoForRead(
   const meta = await readDocoMetadata(dir);
   if (!meta) throw notFoundForAccessDenied(handleOrId, "");
 
-  // Project-token short-circuit. A project token reads every Doco of one
-  // workspace at reader role and carries no user identity, so the standard
-  // "validate-bearer then check principal access" path does not apply.
-  // Resolve and gate it here before falling through to the OAuth/cookie path.
+  // Project-token short-circuit. A project token reads, at reader role, what
+  // its maker can read in its workspace; it isn't a session of theirs, so the
+  // standard "validate-bearer then check principal access" path does not
+  // apply. Resolve and gate it here before falling through to OAuth/cookie.
   const projectTokenResult = await tryProjectTokenAccess(request, {
     workspaceId: row.workspace_id,
+    meta,
     minRole,
   });
   if (projectTokenResult.handled) {
@@ -870,16 +870,20 @@ export async function loadDocoForRead(
  * the rest of the access check.
  *
  * Throws a 401/403 Response when the bearer was a project token but
- * the grant did not match (wrong Doco, revoked, or trying to write
- * with a reader-only token). That short-circuits with the right
- * RFC 6750 framing.
+ * the grant did not match (revoked, another workspace's Doco, a Doco its
+ * maker can't read, or trying to write with a reader-only token). That
+ * short-circuits with the right RFC 6750 framing.
  *
  * Returns `{ handled: false }` when there is no project-token bearer
  * present — the caller falls through to OAuth + cookie logic.
  */
 async function tryProjectTokenAccess(
   request: Request,
-  args: { workspaceId: string; minRole: DocoRole },
+  args: {
+    workspaceId: string;
+    meta: { ownerId: string; visibility: string; docoId?: string };
+    minRole: DocoRole;
+  },
 ): Promise<{ handled: boolean; token?: ProjectToken }> {
   const bearer = extractBearer(request);
   if (!bearer || !isProjectToken(bearer)) return { handled: false };
@@ -905,6 +909,16 @@ async function tryProjectTokenAccess(
       JSON.stringify({
         kind: "access_denied",
         error: "Project token is scoped to a different workspace.",
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  if (!(await canAccessDoco(args.meta, token.created_by_user_id))) {
+    throw new Response(
+      JSON.stringify({
+        kind: "access_denied",
+        error:
+          "Project token reads only what the person who made it can read, and they can't read this Doco.",
       }),
       { status: 403, headers: { "Content-Type": "application/json" } },
     );

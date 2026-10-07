@@ -240,8 +240,8 @@ export default function WorkspaceSettings({
             <CardHeader>
               <CardTitle>Project tokens</CardTitle>
               <CardDescription>
-                A committable, read-only token lets the agents that clone a repository, and the Doco
-                hook, read every doco in this workspace without OAuth.
+                Read-only tokens that read this workspace as the member who made them, for the Doco
+                hook and anything else. Agents get theirs with doco_hook_token.
               </CardDescription>
             </CardHeader>
             <CardContent>
