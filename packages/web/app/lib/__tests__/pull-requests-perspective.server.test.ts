@@ -178,6 +178,14 @@ describe("loadPullRequestsPerspective", () => {
     expect(data.hasMore).toBe(false);
   });
 
+  it("loads the latest 50 unless asked for more", async () => {
+    const { client, captured } = makeClient([]);
+
+    await loadPullRequestsPerspective(client, "doco_1");
+
+    expect(captured[0].params).toEqual(["doco_1", 51]);
+  });
+
   it("loads PRs by most recently updated and exposes the updated timestamp", async () => {
     const { client, captured } = makeClient([
       prRow({

@@ -28,13 +28,10 @@ export interface DocoHomePerspectiveBudget {
    * This is a page-level budget, not a renderer preference.
    */
   nodeLimit: number;
-  /** Maximum non-graph rows serialized for list-like perspectives. */
-  rowLimit: number;
 }
 
 export const DEFAULT_DOCO_HOME_PERSPECTIVE_BUDGET: DocoHomePerspectiveBudget = {
   nodeLimit: 375,
-  rowLimit: 500,
 };
 
 export interface DocoHomePerspectiveData {
@@ -57,12 +54,18 @@ export async function loadDocoHomePerspectiveData(
     focusNodeId: string | null | undefined;
     budget?: DocoHomePerspectiveBudget;
     /**
-     * Selected PR lifecycle stages for the Pull requests perspective. Undefined
-     * (or every stage) loads the full list; a subset narrows it server-side.
+     * The Pull requests perspective's URL state: the selected lifecycle stages
+     * (undefined, or every stage, loads them all; a subset narrows the list
+     * server-side) and how many of the latest to show.
      */
-    pullRequestLifecycles?: string[];
-    /** The Slack perspective's URL state: channel, older-page cursor, search. */
-    slack?: { channelId?: string | null; before?: string | null; query?: string | null };
+    pullRequests?: { lifecycles?: string[]; limit?: number };
+    /** The Slack perspective's URL state: channel, older-page cursor, search, channels shown. */
+    slack?: {
+      channelId?: string | null;
+      before?: string | null;
+      query?: string | null;
+      channelLimit?: number;
+    };
     /** The embedded search query, when the Slack perspective is searching. */
     semantic?: SemanticQuery | null;
   },
@@ -147,17 +150,13 @@ export async function loadDocoHomePerspectiveData(
     case "pull-requests":
       return {
         ...empty,
-        pullRequestsData: await loadPullRequestsPerspective(c, args.docoId, {
-          limit: budget.rowLimit,
-          lifecycles: args.pullRequestLifecycles,
-        }),
+        pullRequestsData: await loadPullRequestsPerspective(c, args.docoId, args.pullRequests),
       };
     case "slack":
       return {
         ...empty,
         slackData: await loadSlackPerspective(c, args.docoId, {
           ...args.slack,
-          limit: 50,
           semantic: args.semantic ?? null,
         }),
       };

@@ -31,15 +31,17 @@ const base: SlackPerspectiveData = {
   ],
   channelId: "C_ENG",
   query: "",
+  moreChannels: false,
+  channelLimit: 50,
   messages: [],
   olderBefore: null,
 };
 
-function render(data: SlackPerspectiveData): string {
+function render(data: SlackPerspectiveData, url = "/"): string {
   const Stub = createRoutesStub([
     { path: "/", Component: () => createElement(SlackPerspective, { data, handle: "acme-slack" }) },
   ]);
-  return renderToStaticMarkup(createElement(Stub));
+  return renderToStaticMarkup(createElement(Stub, { initialEntries: [url] }));
 }
 
 describe("SlackPerspective", () => {
@@ -52,6 +54,28 @@ describe("SlackPerspective", () => {
     const html = render(base);
     expect(html).toContain("perspective=slack&amp;slack_channel=C_GEN");
     expect(html).toContain("general");
+  });
+
+  it("offers Show more under the channel list when more channels exist", () => {
+    expect(render(base)).not.toContain("Show more");
+
+    const html = render({ ...base, moreChannels: true }, "/?perspective=slack&slack_channel=C_GEN");
+    expect(html).toContain("Show more");
+    expect(html).toContain(
+      'href="/?perspective=slack&amp;slack_channel=C_GEN&amp;slack_channel_limit=100"',
+    );
+  });
+
+  it("keeps a grown channel list while reading, paging and searching", () => {
+    const html = render({
+      ...base,
+      channelLimit: 100,
+      messages: [message({})],
+      olderBefore: "1700000100.000100",
+    });
+    expect(html).toContain("slack_channel=C_GEN&amp;slack_channel_limit=100");
+    expect(html).toContain("slack_before=1700000100.000100&amp;slack_channel_limit=100");
+    expect(html).toContain('name="slack_channel_limit" value="100"');
   });
 
   it("shows a thread's replies, links to Slack, and file links", () => {

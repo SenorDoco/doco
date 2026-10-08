@@ -67,6 +67,7 @@ import { fitResetKey } from "~/lib/fit-reset-key";
 import { highestRankedNodeId } from "~/lib/focused-render-selection";
 import { loadHostConfig } from "~/lib/host.server";
 import { loadIntegrationStatuses } from "~/lib/integration-status.server";
+import { parseListLimit } from "~/lib/list-limit";
 import { lifecycleColor } from "~/lib/node-colors";
 import {
   type LifecycleStage,
@@ -219,16 +220,21 @@ export async function loader({
     const activeKind = activePerspective?.kind ?? "graph";
     const canAdminPerspectives = await canWriteDoco(ctx.meta, me?.id ?? null);
     const focusNodeId = selectedNode?.id ?? selectedEdge?.from.id;
-    // Pull-requests perspective lifecycle filter: `?pr_lifecycle=queued,active`
-    // narrows the list server-side. Absent → the full list (parse → null).
-    const pullRequestLifecycles =
-      parsePrLifecycles(new URL(request.url).searchParams.get("pr_lifecycle")) ?? undefined;
-    // Slack perspective URL state: `?slack_channel=C…&slack_before=<ts>&slack_q=…`.
     const params = new URL(request.url).searchParams;
+    // Pull-requests perspective URL state: `?pr_lifecycle=queued,active` narrows
+    // the list server-side (absent → every stage) and `?pr_limit=` is how many
+    // of the latest Show more has reached.
+    const pullRequests = {
+      lifecycles: parsePrLifecycles(params.get("pr_lifecycle")) ?? undefined,
+      limit: parseListLimit(params.get("pr_limit")),
+    };
+    // Slack perspective URL state:
+    // `?slack_channel=C…&slack_before=<ts>&slack_q=…&slack_channel_limit=…`.
     const slack = {
       channelId: params.get("slack_channel"),
       before: params.get("slack_before"),
       query: params.get("slack_q"),
+      channelLimit: parseListLimit(params.get("slack_channel_limit")),
     };
     // Its search is hybrid: embed the query once here.
     const slackQuery = (slack.query ?? "").trim();
@@ -247,7 +253,7 @@ export async function loader({
       docoId: ctx.meta.docoId,
       handle,
       focusNodeId,
-      pullRequestLifecycles,
+      pullRequests,
       slack,
       semantic,
     });
