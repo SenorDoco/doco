@@ -4,18 +4,19 @@
 //   1. Runtime opens this URL in the user's browser with PKCE params.
 //   2. If user not signed in, redirect through GitHub OAuth (the
 //      return path captures the exact authorize URL so params survive).
-//   3. Render the approve UI: a list of every Doco the user can read
-//      or write (the union of direct ownership, workspace membership, and
-//      doco_users grants), with checkboxes.
+//   3. Render "Allow <client> to use Doco": one sentence saying what the
+//      agent will reach (by default everything the user can, or the bound
+//      workspace), with Limit access opening the grant picker
+//      (decision_01M4EQPJ6AKETJ1508W254DXVB).
 //   4. POST from the form mints an authorization code (with PKCE
-//      challenge + selected docos baked in) and redirects to the
+//      challenge + the allowed grants baked in) and redirects to the
 //      runtime's `redirect_uri` with ?code=...&state=...
 //   5. Cancel → redirect with ?error=access_denied&state=...
 
 import type { DocoRole } from "@doco/db";
 import { redirect, useLoaderData } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { OAuthAccessApprovalForm } from "~/components/oauth-access-approval-form";
 import { PageMain } from "~/components/page-main";
 import {
@@ -148,9 +149,6 @@ export async function action({ request }: { request: Request }) {
     return redirect(redirectWith(params, { error: "access_denied" }));
   }
 
-  const tokenName = String(form.get("token_name") ?? "").trim();
-  if (!tokenName) throw errorResponse("token_name required", 400);
-
   const grants = await readOAuthApprovalGrants(form, principal.id);
 
   // A bound connector may only grant within its own workspace — the whole
@@ -182,7 +180,6 @@ export async function action({ request }: { request: Request }) {
   const { code } = await issueAuthorizationCode({
     client_id: params.client_id,
     approver_user_id: principal.id,
-    token_name: tokenName,
     redirect_uri: params.redirect_uri,
     code_challenge: params.code_challenge,
     granted_doco_ids: grants.granted_doco_ids,
@@ -210,34 +207,17 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Approve access · Doco" }];
+  return [{ title: "Allow an agent · Doco" }];
 }
 
 export default function AuthorizePage() {
   const data = useLoaderData() as LoaderData;
   return (
     <PageMain className="py-8 space-y-4">
-      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Approve access" }]} />
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Allow an agent" }]} />
       <Card>
         <CardHeader>
-          <CardTitle>Approve access</CardTitle>
-          {data.blockedTargetHandle || data.boundWorkspaceBlockedId ? null : (
-            <CardDescription>
-              {data.boundWorkspace ? (
-                <>
-                  An agent is requesting access to your <strong>{data.boundWorkspace.label}</strong>{" "}
-                  workspace through <strong>{data.client_name}</strong>. Name the token and choose
-                  the access level.
-                </>
-              ) : (
-                <>
-                  An agent is requesting access to your docos through{" "}
-                  <strong>{data.client_name}</strong>. Name the token and choose how much access to
-                  grant.
-                </>
-              )}
-            </CardDescription>
-          )}
+          <CardTitle>Allow {data.client_name} to use Doco</CardTitle>
         </CardHeader>
         <CardContent>
           {data.blockedTargetHandle ? (
@@ -250,12 +230,11 @@ export default function AuthorizePage() {
             </p>
           ) : (
             <OAuthAccessApprovalForm
+              clientName={data.client_name}
               docos={data.docos}
               workspaces={data.workspaces}
               boundWorkspace={data.boundWorkspace ?? undefined}
-              tokenNamePlaceholder="e.g. Claude Code in repo"
               requestedRole={(data.params.requested_role as DocoRole | null) ?? null}
-              approveLabel="Approve"
               cancelLabel="Cancel"
               cancelDecisionValue="cancel"
             />

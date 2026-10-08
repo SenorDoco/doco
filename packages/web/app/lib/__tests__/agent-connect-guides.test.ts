@@ -37,7 +37,8 @@ describe("agentConnectGuides", () => {
       const all = JSON.stringify(g);
       expect(all, g.name).toContain("https://doco.test/mcp");
       expect(all, g.name).not.toContain("https://doco.test//mcp");
-      expect(all, g.name).toContain("choose what the agent may reach, and approve");
+      // One-click Allow (decision_01M4EQPJ6AKETJ1508W254DXVB).
+      expect(all, g.name).toContain("Doco opens in your browser: sign in and choose Allow.");
     }
   });
 

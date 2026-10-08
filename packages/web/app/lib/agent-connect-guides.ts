@@ -30,8 +30,7 @@ export interface AgentGuide {
   docs: string;
 }
 
-const SIGN_IN =
-  "Doco opens in your browser: sign in, choose what the agent may reach, and approve.";
+const SIGN_IN = "Doco opens in your browser: sign in and choose Allow.";
 
 export function agentConnectGuides(baseUrl: string): AgentGuide[] {
   const mcp = `${baseUrl.replace(/\/+$/, "")}/mcp`;

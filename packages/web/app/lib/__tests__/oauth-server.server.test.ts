@@ -25,7 +25,6 @@ import {
   issueAuthorizationCode,
   issueTokens,
   mergeGrantSets,
-  normalizeTokenName,
   pollDeviceAuthorization,
   refreshTokens,
 } from "../oauth-server.server";
@@ -59,11 +58,6 @@ describe("OAuth token authorization", () => {
         query: mocks.query,
       }),
     );
-  });
-
-  it("normalizes and requires a token name", () => {
-    expect(normalizeTokenName("  Codex   in repo  ")).toBe("Codex in repo");
-    expect(() => normalizeTokenName("   ")).toThrow(/token_name required/);
   });
 
   it("refreshTokens reissues the access token but keeps the same refresh token (non-rotating)", async () => {
@@ -200,11 +194,12 @@ describe("OAuth token authorization", () => {
     expect(refresh[13]).toBe("writer");
   });
 
-  it("issues browser OAuth codes for the approving user and stores the token name", async () => {
+  // One-click Allow (decision_01M4EQPJ6AKETJ1508W254DXVB): approving names
+  // no token; the connection goes by its client's name.
+  it("issues browser OAuth codes for the approving user, with no token name", async () => {
     await issueAuthorizationCode({
       client_id: "doco_client_browser",
       approver_user_id: "user_owner",
-      token_name: "  Claude   Code  ",
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
       granted_doco_ids: ["doco_bpms"],
@@ -221,20 +216,20 @@ describe("OAuth token authorization", () => {
     expect(callsTo("INSERT INTO doco_users")).toHaveLength(0);
     expect(callsTo("INSERT INTO workspace_users")).toHaveLength(0);
 
-    // The minted code carries the approving human id, token name, and the approved grants.
+    // The minted code carries the approving human id and the approved grants.
     const codeInsert = callsTo("INSERT INTO oauth_authorization_codes")[0];
+    expect(String(codeInsert?.[0])).not.toContain("token_name");
     expect(codeInsert?.[1]).toEqual(expect.arrayContaining(["doco_client_browser", "user_owner"]));
-    expect((codeInsert?.[1] as unknown[])[4]).toBe("Claude Code");
-    expect((codeInsert?.[1] as unknown[])[6]).toEqual(["doco_bpms"]);
-    expect(JSON.parse((codeInsert?.[1] as unknown[])[8] as string)).toEqual({
+    expect((codeInsert?.[1] as unknown[])[5]).toEqual(["doco_bpms"]);
+    expect(JSON.parse((codeInsert?.[1] as unknown[])[7] as string)).toEqual({
       doco_bpms: ["decision"],
     });
-    expect(JSON.parse((codeInsert?.[1] as unknown[])[11] as string)).toEqual({
+    expect(JSON.parse((codeInsert?.[1] as unknown[])[10] as string)).toEqual({
       workspace_torre: ["intent"],
     });
   });
 
-  it("approves device codes by binding the pending grant to the approving user and token name", async () => {
+  it("approves device codes by binding the pending grant to the approving user, with no token name", async () => {
     mocks.query.mockImplementation(async (sql: string) => {
       if (sql.includes("SELECT client_id")) {
         return { rows: [{ client_id: "doco_client_device" }], rowCount: 1 };
@@ -245,7 +240,6 @@ describe("OAuth token authorization", () => {
     await approveDeviceAuthorization({
       device_code: "doco_dc_123",
       approver_user_id: "user_owner",
-      token_name: "Codex sandbox",
       granted_doco_ids: ["doco_bpms"],
       granted_doco_roles: { doco_bpms: "writer" },
       granted_doco_write_types: { doco_bpms: ["decision"] },
@@ -257,8 +251,8 @@ describe("OAuth token authorization", () => {
     expect(callsTo("INSERT INTO users")).toHaveLength(0);
     expect(callsTo("INSERT INTO doco_users")).toHaveLength(0);
     const update = callsTo("UPDATE oauth_device_authorizations")[0];
+    expect(String(update?.[0])).not.toContain("token_name");
     expect(update?.[1]).toEqual(expect.arrayContaining(["doco_dc_123", "user_owner"]));
-    expect((update?.[1] as unknown[])[2]).toBe("Codex sandbox");
   });
 
   it("re-authorizing a client records exactly the newly approved token grants", async () => {
@@ -272,7 +266,6 @@ describe("OAuth token authorization", () => {
     await approveDeviceAuthorization({
       device_code: "doco_dc_123",
       approver_user_id: "user_owner",
-      token_name: "Codex sandbox",
       granted_doco_ids: ["doco_new"],
       granted_doco_roles: { doco_new: "writer" },
       granted_doco_write_types: { doco_new: ["intent"] },
@@ -289,10 +282,10 @@ describe("OAuth token authorization", () => {
     // The device row is bound to the approving user and the approved set only.
     const update = callsTo("UPDATE oauth_device_authorizations")[0];
     expect((update?.[1] as unknown[])[1]).toBe("user_owner");
-    expect((update?.[1] as unknown[])[3]).toEqual(["doco_new"]);
-    const roles = JSON.parse((update?.[1] as unknown[])[4] as string);
+    expect((update?.[1] as unknown[])[2]).toEqual(["doco_new"]);
+    const roles = JSON.parse((update?.[1] as unknown[])[3] as string);
     expect(roles).toEqual({ doco_new: "writer" });
-    const writeTypes = JSON.parse((update?.[1] as unknown[])[5] as string);
+    const writeTypes = JSON.parse((update?.[1] as unknown[])[4] as string);
     expect(writeTypes).toEqual({ doco_new: ["intent"] });
   });
 });
@@ -313,7 +306,6 @@ describe("actor grant_type threads through the consent paths", () => {
     await issueAuthorizationCode({
       client_id: "doco_client_browser",
       approver_user_id: "user_owner",
-      token_name: "Claude",
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
       granted_doco_ids: [],
@@ -324,15 +316,14 @@ describe("actor grant_type threads through the consent paths", () => {
     });
     const actorInsert = callsTo("INSERT INTO oauth_authorization_codes")[0]?.[1] as unknown[];
     // …grant_type + actor_role land right after scope, before expires_at.
-    expect(actorInsert[12]).toBe("doco"); // scope
-    expect(actorInsert[13]).toBe("actor"); // grant_type
-    expect(actorInsert[14]).toBe("reader"); // actor_role ceiling
+    expect(actorInsert[11]).toBe("doco"); // scope
+    expect(actorInsert[12]).toBe("actor"); // grant_type
+    expect(actorInsert[13]).toBe("reader"); // actor_role ceiling
 
     vi.clearAllMocks();
     await issueAuthorizationCode({
       client_id: "doco_client_browser",
       approver_user_id: "user_owner",
-      token_name: "Claude",
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
       granted_doco_ids: ["doco_bpms"],
@@ -340,8 +331,8 @@ describe("actor grant_type threads through the consent paths", () => {
       scope: "doco",
     });
     const regularInsert = callsTo("INSERT INTO oauth_authorization_codes")[0]?.[1] as unknown[];
-    expect(regularInsert[13]).toBe("regular");
-    expect(regularInsert[14]).toBeNull(); // no ceiling on a regular grant
+    expect(regularInsert[12]).toBe("regular");
+    expect(regularInsert[13]).toBeNull(); // no ceiling on a regular grant
   });
 
   it("consumeAuthorizationCode returns the stored grant_type", async () => {
@@ -354,7 +345,6 @@ describe("actor grant_type threads through the consent paths", () => {
             {
               client_id: "doco_client_browser",
               user_id: "user_owner",
-              token_name: "Claude",
               redirect_uri: "http://127.0.0.1:4321/callback",
               code_challenge,
               granted_doco_ids: [],
@@ -397,15 +387,14 @@ describe("actor grant_type threads through the consent paths", () => {
     await approveDeviceAuthorization({
       device_code: "doco_dc_123",
       approver_user_id: "user_owner",
-      token_name: "Codex",
       granted_doco_ids: [],
       granted_workspace_ids: [],
       grant_type: "actor",
       actor_role: "writer",
     });
     const update = callsTo("UPDATE oauth_device_authorizations")[0]?.[1] as unknown[];
-    expect(update[9]).toBe("actor"); // grant_type
-    expect(update[10]).toBe("writer"); // actor_role ceiling, last in the SET list
+    expect(update[8]).toBe("actor"); // grant_type
+    expect(update[9]).toBe("writer"); // actor_role ceiling, last in the SET list
   });
 
   it("pollDeviceAuthorization carries an actor grant_type into the minted refresh token", async () => {
@@ -420,7 +409,6 @@ describe("actor grant_type threads through the consent paths", () => {
               scope: "doco",
               status: "approved",
               user_id: "user_owner",
-              token_name: "Codex",
               granted_doco_ids: [],
               granted_doco_roles: {},
               granted_doco_write_types: {},
@@ -448,8 +436,8 @@ describe("actor grant_type threads through the consent paths", () => {
     });
     expect(result.kind).toBe("approved");
     const refreshInsert = callsTo("INSERT INTO oauth_refresh_tokens")[0]?.[1] as unknown[];
-    expect(refreshInsert[12]).toBe("actor"); // grant_type
-    expect(refreshInsert[13]).toBe("reader"); // actor_role ceiling carried onto the refresh
+    expect(refreshInsert[11]).toBe("actor"); // grant_type
+    expect(refreshInsert[12]).toBe("reader"); // actor_role ceiling carried onto the refresh
   });
 });
 
@@ -499,7 +487,6 @@ describe("token scope invariant (assertScopedGrant)", () => {
     await issueAuthorizationCode({
       client_id: "doco_client_x",
       approver_user_id: "user_owner",
-      token_name: "two workspaces",
       redirect_uri: "http://127.0.0.1:4321/callback",
       code_challenge: "challenge",
       granted_doco_ids: ["doco_1"],
@@ -526,7 +513,6 @@ describe("token scope invariant (assertScopedGrant)", () => {
       approveDeviceAuthorization({
         device_code: "doco_dc_123",
         approver_user_id: "user_owner",
-        token_name: "broad",
         granted_doco_ids: [],
         granted_workspace_ids: ["*"],
       }),

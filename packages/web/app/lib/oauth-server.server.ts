@@ -56,17 +56,6 @@ export function isOauthAccessToken(value: string): boolean {
   return value.startsWith(ACCESS_TOKEN_PREFIX);
 }
 
-export function normalizeTokenName(value: string): string {
-  const name = value.trim().replace(/\s+/g, " ");
-  if (!name) {
-    throw new OauthError("invalid_request", "token_name required");
-  }
-  if (name.length > 120) {
-    throw new OauthError("invalid_request", "token_name must be 120 characters or less");
-  }
-  return name;
-}
-
 function isDocoRole(value: string | undefined): value is (typeof DOCO_ROLES)[number] {
   return value !== undefined && (DOCO_ROLES as readonly string[]).includes(value);
 }
@@ -325,7 +314,6 @@ function isValidRedirectUri(uri: string): boolean {
 export interface IssueAuthCodeInput {
   client_id: string;
   approver_user_id: string;
-  token_name: string;
   redirect_uri: string;
   code_challenge: string;
   granted_doco_ids: string[];
@@ -374,7 +362,6 @@ export async function issueAuthorizationCode(
   });
   const code = mintOpaque(CODE_PREFIX);
   const expires_at = new Date(Date.now() + AUTH_CODE_TTL_SECONDS * 1000);
-  const tokenName = normalizeTokenName(input.token_name);
   const grants: GrantSets = {
     granted_doco_ids: input.granted_doco_ids,
     granted_doco_roles: input.granted_doco_roles ?? {},
@@ -386,18 +373,17 @@ export async function issueAuthorizationCode(
   await withTransaction(async (c) => {
     await c.query(
       `INSERT INTO oauth_authorization_codes
-         (code, client_id, user_id, redirect_uri, token_name,
+         (code, client_id, user_id, redirect_uri,
           code_challenge, code_challenge_method, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, grant_type, actor_role, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+       VALUES ($1, $2, $3, $4, $5, 'S256', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         code,
         input.client_id,
         input.approver_user_id,
         input.redirect_uri,
-        tokenName,
         input.code_challenge,
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
@@ -417,7 +403,6 @@ export async function issueAuthorizationCode(
 
 export interface ConsumedAuthCode {
   user_id: string;
-  token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_doco_write_types: Record<string, string[]>;
@@ -444,7 +429,6 @@ export async function consumeAuthorizationCode(args: {
     const r = await c.query<{
       client_id: string;
       user_id: string;
-      token_name: string | null;
       redirect_uri: string;
       code_challenge: string;
       granted_doco_ids: string[];
@@ -459,7 +443,7 @@ export async function consumeAuthorizationCode(args: {
       expires_at: Date;
       consumed_at: Date | null;
     }>(
-      `SELECT client_id, user_id, token_name, redirect_uri, code_challenge,
+      `SELECT client_id, user_id, redirect_uri, code_challenge,
               granted_doco_ids, granted_doco_roles, granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               grant_type, actor_role, scope, expires_at, consumed_at
@@ -488,7 +472,6 @@ export async function consumeAuthorizationCode(args: {
     ]);
     return {
       user_id: row.user_id,
-      token_name: row.token_name,
       granted_doco_ids: row.granted_doco_ids,
       granted_doco_roles: row.granted_doco_roles ?? {},
       granted_doco_write_types: row.granted_doco_write_types ?? {},
@@ -877,7 +860,6 @@ export interface DeviceAuthorizationRow {
   scope: string | null;
   status: "pending" | "approved" | "denied";
   user_id: string | null;
-  token_name: string | null;
   granted_doco_ids: string[];
   granted_doco_roles: Record<string, string>;
   granted_doco_write_types: Record<string, string[]>;
@@ -988,7 +970,7 @@ export async function getDeviceAuthorizationByUserCode(
   return await withClient(async (c) => {
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              user_id, token_name, granted_doco_ids, granted_doco_roles,
+              user_id, granted_doco_ids, granted_doco_roles,
               granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               target_doco_handle, requested_role, expires_at, last_polled_at, created_at
@@ -1018,7 +1000,6 @@ export async function getDeviceAuthorizationByUserCode(
 export async function approveDeviceAuthorization(args: {
   device_code: string;
   approver_user_id: string;
-  token_name: string;
   granted_doco_ids: string[];
   granted_doco_roles?: Record<string, string>;
   granted_doco_write_types?: Record<string, string[]>;
@@ -1052,7 +1033,6 @@ export async function approveDeviceAuthorization(args: {
       );
     }
 
-    const tokenName = normalizeTokenName(args.token_name);
     const grants: GrantSets = {
       granted_doco_ids: args.granted_doco_ids,
       granted_doco_roles: args.granted_doco_roles ?? {},
@@ -1066,22 +1046,20 @@ export async function approveDeviceAuthorization(args: {
       `UPDATE oauth_device_authorizations
           SET status = 'approved',
               user_id = $2,
-              token_name = $3,
-              granted_doco_ids = $4,
-              granted_doco_roles = $5,
-              granted_doco_write_types = $6,
-              granted_workspace_ids = $7,
-              granted_workspace_roles = $8,
-              granted_workspace_write_types = $9,
-              grant_type = $10,
-              actor_role = $11
+              granted_doco_ids = $3,
+              granted_doco_roles = $4,
+              granted_doco_write_types = $5,
+              granted_workspace_ids = $6,
+              granted_workspace_roles = $7,
+              granted_workspace_write_types = $8,
+              grant_type = $9,
+              actor_role = $10
         WHERE device_code = $1
           AND status = 'pending'
           AND expires_at > now()`,
       [
         args.device_code,
         args.approver_user_id,
-        tokenName,
         grants.granted_doco_ids,
         JSON.stringify(grants.granted_doco_roles),
         JSON.stringify(grants.granted_doco_write_types),
@@ -1129,7 +1107,7 @@ export async function pollDeviceAuthorization(args: {
     // for the same approved authorization.
     const r = await c.query<DeviceAuthorizationRow>(
       `SELECT device_code, user_code, client_id, scope, status,
-              user_id, token_name, granted_doco_ids, granted_doco_roles,
+              user_id, granted_doco_ids, granted_doco_roles,
               granted_doco_write_types,
               granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
               grant_type, actor_role,
@@ -1191,16 +1169,15 @@ export async function pollDeviceAuthorization(args: {
     const workspaceWriteTypesJson = JSON.stringify(row.granted_workspace_write_types ?? {});
     await c.query(
       `INSERT INTO oauth_access_tokens
-         (token, client_id, user_id, token_name, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         access_token,
         row.client_id,
         row.user_id,
-        row.token_name,
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
@@ -1213,16 +1190,15 @@ export async function pollDeviceAuthorization(args: {
     );
     await c.query(
       `INSERT INTO oauth_refresh_tokens
-         (token, client_id, user_id, token_name, granted_doco_ids,
+         (token, client_id, user_id, granted_doco_ids,
           granted_doco_roles, granted_doco_write_types,
           granted_workspace_ids, granted_workspace_roles, granted_workspace_write_types,
           scope, expires_at, grant_type, actor_role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         refresh_token,
         row.client_id,
         row.user_id,
-        row.token_name,
         row.granted_doco_ids,
         rolesJson,
         docoWriteTypesJson,
