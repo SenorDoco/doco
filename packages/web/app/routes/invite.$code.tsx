@@ -3,36 +3,27 @@
 // signed-out users choose human sign-in or the plain-text agent recipe
 // at /invite/<code>/agent.txt.
 //
-// The page loads the invite, shows the human what they're being
-// invited to (Doco handle + expiration), and asks them to click
-// "Accept" only after they are signed in:
+// The page loads the invite and shows the human what they're being
+// invited to (Doco handle + expiration):
 //
-//   - If signed in: the invite is redeemed, the human Principal is
-//     joined to the doco or Workspace. Joining a workspace starts its one
-//     onboarding step for them (ask your agent to start using Doco) and goes
-//     straight to the workspace, which keeps them on that step until it's
-//     done; any other invite shows a success card with a "Continue" button
-//     to the target.
+//   - If signed in: "Accept invite" joins them to what it grants
+//     (lib/invite.server acceptInvite) and takes them there. Joining a
+//     workspace starts its one onboarding step for them (ask your agent to
+//     start using Doco), which the workspace keeps them on until it's done.
 //   - If not signed in: ask whether the visitor is human or agent. Humans
-//     sign in and come back here to accept; agents get the plain-text
-//     instructions for redeeming the same invite.
+//     sign in with GitHub, which accepts the invite on the way back
+//     (routes/auth.github.callback.tsx), so they land in what it grants;
+//     agents get the plain-text instructions for redeeming the same invite.
 
-import {
-  getDocoById,
-  getUserById,
-  upsertDocoUser,
-  upsertWorkspaceUser,
-  withClient,
-} from "@doco/db";
-import { type EntityId, WRITE_ALL } from "@doco/shared";
+import { getUserById } from "@doco/db";
 import { Form, Link, redirect } from "react-router";
 import { Breadcrumb } from "~/components/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
 import { HowDocoWorks } from "~/components/how-doco-works";
 import { PageMain } from "~/components/page-main";
 import { rootDir } from "~/lib/db.server";
-import { type Invite, InviteStore } from "~/lib/invite-store.server";
-import { startOnboarding } from "~/lib/onboarding.server";
+import { InviteStore } from "~/lib/invite-store.server";
+import { acceptInvite, inviteTarget } from "~/lib/invite.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 
 type LoaderError =
@@ -53,56 +44,6 @@ type LoaderOk = {
   signedIn: { id: string; username: string } | null;
 };
 
-async function getWorkspaceById(id: string): Promise<{ id: string; handle: string } | null> {
-  const result = await withClient(async (c) =>
-    c.query<{ id: string; handle: string }>(
-      "SELECT id, handle FROM workspaces WHERE id = $1 LIMIT 1",
-      [id],
-    ),
-  );
-  const row = result.rows[0];
-  return row ? { id: String(row.id), handle: String(row.handle) } : null;
-}
-
-type InviteGrant = Invite["grants"][number];
-
-function primaryGrant(invite: Invite): InviteGrant | null {
-  return invite.grants[0] ?? null;
-}
-
-function writeTypesForRedeemedGrant(grant: InviteGrant): string[] {
-  if (grant.role === "writer" && grant.write_types.length === 0) return [WRITE_ALL];
-  return grant.write_types;
-}
-
-async function inviteTargetForDisplay(invite: Invite): Promise<LoaderOk["target"] | null> {
-  const grant = primaryGrant(invite);
-  if (!grant) return null;
-  if (invite.grants.length > 1) {
-    return { level: grant.level, label: `${invite.grants.length} access grants` };
-  }
-  if (grant.level === "workspace") {
-    const workspace = await getWorkspaceById(grant.target_id);
-    return workspace ? { level: "workspace", label: workspace.handle } : null;
-  }
-  const doco = await getDocoById(grant.target_id);
-  return doco ? { level: "doco", label: doco.handle } : null;
-}
-
-async function inviteContinueTarget(invite: Invite): Promise<{ to: string; label: string } | null> {
-  const grant = primaryGrant(invite);
-  if (!grant) return null;
-  if (invite.grants.length > 1) {
-    return { to: "/workspaces", label: `${invite.grants.length} access grants` };
-  }
-  if (grant.level === "workspace") {
-    const workspace = await getWorkspaceById(grant.target_id);
-    return workspace ? { to: `/workspaces/${workspace.handle}`, label: workspace.handle } : null;
-  }
-  const doco = await getDocoById(grant.target_id);
-  return doco ? { to: `/${doco.handle}`, label: doco.handle } : null;
-}
-
 export async function loader({ request, params }: { request: Request; params: { code: string } }) {
   const code = (params.code ?? "").trim();
   if (!code) return { error: "missing_code" } satisfies LoaderError;
@@ -114,7 +55,7 @@ export async function loader({ request, params }: { request: Request; params: { 
   if (invite.status === "consumed") return { error: "consumed" } satisfies LoaderError;
   if (invite.status === "revoked") return { error: "revoked" } satisfies LoaderError;
 
-  const target = await inviteTargetForDisplay(invite);
+  const target = await inviteTarget(invite);
   if (!target) return { error: "doco_not_found" } satisfies LoaderError;
 
   const inviter = invite.minted_by_user_id ? await getUserById(invite.minted_by_user_id) : null;
@@ -122,20 +63,12 @@ export async function loader({ request, params }: { request: Request; params: { 
   return {
     ok: true,
     code,
-    target,
+    target: { level: target.level, label: target.label },
     inviter: inviter ? { username: inviter.github_login ?? inviter.id } : null,
     expires_at: invite.expires_at,
     signedIn: principal ? { id: principal.id, username: principal.username } : null,
   } satisfies LoaderOk;
 }
-
-type ActionResult =
-  | { error: string }
-  | {
-      ok: true;
-      continue_to: string;
-      target_label: string;
-    };
 
 export async function action({
   request,
@@ -143,7 +76,7 @@ export async function action({
 }: {
   request: Request;
   params: { code: string };
-}): Promise<ActionResult | Response> {
+}): Promise<{ error: string } | Response> {
   const principal = await getCurrentPrincipal(request);
   if (!principal) {
     const ret = `/invite/${encodeURIComponent(params.code)}`;
@@ -152,57 +85,8 @@ export async function action({
 
   const code = (params.code ?? "").trim();
   if (!code) return { error: "Missing invite code." };
-
-  const store = InviteStore.forDoco(rootDir());
-  const invite = await store.findInvite(code);
-  if (!invite) return { error: "Invite not found." };
-  if (invite.status === "expired") return { error: "This invite has expired." };
-  if (invite.status === "consumed") return { error: "This invite was already redeemed." };
-  if (invite.status === "revoked") return { error: "This invite has been revoked." };
-
-  const continueTarget = await inviteContinueTarget(invite);
-  if (!continueTarget) return { error: "The invite target no longer exists." };
-  const continueTo = continueTarget.to;
-  const targetLabel = continueTarget.label;
-
-  const consumed = await store.consumeInvite(code, principal.id as EntityId<"principal">);
-  if (!consumed) {
-    return {
-      error:
-        "This invite was claimed by someone else in the same moment. Ask the minter for a fresh one.",
-    };
-  }
-
-  for (const g of consumed.grants) {
-    if (g.level === "workspace") {
-      await upsertWorkspaceUser({
-        workspace_id: g.target_id,
-        user_id: principal.id,
-        role: g.role,
-        write_types: writeTypesForRedeemedGrant(g),
-      });
-      await withClient((c) =>
-        startOnboarding(c, {
-          workspaceId: g.target_id,
-          userId: principal.id,
-          joinedAs: "invitee",
-        }),
-      );
-    } else if (g.level === "doco") {
-      await upsertDocoUser({
-        doco_id: g.target_id,
-        user_id: principal.id,
-        role: g.role,
-        write_types: writeTypesForRedeemedGrant(g),
-      });
-    }
-  }
-
-  // Joining one workspace: straight to it, where its step waits.
-  if (consumed.grants.length === 1 && consumed.grants[0].level === "workspace") {
-    return redirect(continueTo);
-  }
-  return { ok: true, continue_to: continueTo, target_label: targetLabel };
+  const accepted = await acceptInvite(code, principal.id);
+  return "error" in accepted ? accepted : redirect(accepted.to);
 }
 
 export function meta() {
@@ -214,31 +98,8 @@ export default function InviteLanding({
   actionData,
 }: {
   loaderData: LoaderOk | LoaderError;
-  actionData?: ActionResult;
+  actionData?: { error: string };
 }) {
-  if (actionData && "ok" in actionData) {
-    return (
-      <InviteMain>
-        <Card>
-          <CardHeader>
-            <CardTitle>You're in</CardTitle>
-            <CardDescription>
-              You joined <em>{actionData.target_label}</em>.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              to={actionData.continue_to}
-              className="neu-button bg-primary text-primary-foreground hover:opacity-90 inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold"
-            >
-              Continue
-            </Link>
-          </CardContent>
-        </Card>
-      </InviteMain>
-    );
-  }
-
   if ("error" in loaderData) {
     return (
       <InviteMain>
@@ -277,9 +138,7 @@ export default function InviteLanding({
               <p>
                 You're signed in as <strong>{loaderData.signedIn.username}</strong>.
               </p>
-              {actionData && "error" in actionData ? (
-                <p className="text-destructive">{actionData.error}</p>
-              ) : null}
+              {actionData ? <p className="text-destructive">{actionData.error}</p> : null}
               <Form method="post" className="flex gap-2">
                 <button
                   type="submit"
@@ -302,7 +161,7 @@ export default function InviteLanding({
                 >
                   <span className="block text-sm font-semibold">Human</span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    Sign in first, then accept the invite here.
+                    Sign in with GitHub to join.
                   </span>
                 </Link>
                 <Link

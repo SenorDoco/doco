@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
   addUser: vi.fn(),
   findUserByGitHubLogin: vi.fn(),
   findInvite: vi.fn(),
+  consumeInvite: vi.fn(),
+  upsertWorkspaceUser: vi.fn(),
+  startOnboarding: vi.fn(),
 }));
 
 vi.mock("@doco/host", () => ({
@@ -11,12 +14,26 @@ vi.mock("@doco/host", () => ({
   findUserByGitHubLogin: mocks.findUserByGitHubLogin,
 }));
 
+vi.mock("@doco/db", () => ({
+  getDocoById: vi.fn(),
+  upsertDocoUser: vi.fn(),
+  upsertWorkspaceUser: mocks.upsertWorkspaceUser,
+  withClient: (callback: (c: unknown) => unknown) =>
+    callback({ query: async () => ({ rows: [{ handle: "torre" }] }) }),
+}));
+
 vi.mock("~/lib/db.server", () => ({
   rootDir: () => "/tmp/doco",
 }));
 
 vi.mock("~/lib/invite-store.server", () => ({
-  InviteStore: { forDoco: () => ({ findInvite: mocks.findInvite }) },
+  InviteStore: {
+    forDoco: () => ({ findInvite: mocks.findInvite, consumeInvite: mocks.consumeInvite }),
+  },
+}));
+
+vi.mock("~/lib/onboarding.server", () => ({
+  startOnboarding: mocks.startOnboarding,
 }));
 
 vi.mock("~/lib/oauth.server", async (importOriginal) => ({
@@ -42,26 +59,36 @@ function callback(cookies: string[]): Request {
   });
 }
 
-function invite(overrides: Record<string, unknown> = {}) {
-  return { code: "abc123", status: "pending", minted_by_user_id: "user_owner", ...overrides };
+function fromInvite(): Request {
+  return callback([cookieValue(setOAuthReturnCookie("/invite/abc123"))]);
 }
 
-describe("/auth/github/callback — who may create an account", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.findUserByGitHubLogin.mockResolvedValue(null);
-    mocks.addUser.mockResolvedValue("user_new");
-    mocks.findInvite.mockResolvedValue(invite());
-  });
+function invite(overrides: Record<string, unknown> = {}) {
+  return {
+    code: "abc123",
+    status: "pending",
+    minted_by_user_id: "user_owner",
+    grants: [
+      { level: "workspace", target_id: "workspace_torre", role: "writer", write_types: ["*"] },
+    ],
+    ...overrides,
+  };
+}
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.findUserByGitHubLogin.mockResolvedValue(null);
+  mocks.addUser.mockResolvedValue("user_new");
+  mocks.findInvite.mockResolvedValue(invite());
+  mocks.consumeInvite.mockResolvedValue(invite({ status: "consumed" }));
+});
+
+describe("/auth/github/callback — who may create an account", () => {
   it("creates the account of a newcomer following a user's pending invite, without the signup code", async () => {
-    const res = await loader({
-      request: callback([cookieValue(setOAuthReturnCookie("/invite/abc123"))]),
-    });
+    await loader({ request: fromInvite() });
 
     expect(mocks.findInvite).toHaveBeenCalledWith("abc123");
     expect(mocks.addUser).toHaveBeenCalledWith(expect.objectContaining({ username: "newcomer" }));
-    expect(res.headers.get("Location")).toBe("/invite/abc123");
   });
 
   it.each([
@@ -73,11 +100,10 @@ describe("/auth/github/callback — who may create an account", () => {
   ])("sends a newcomer whose invite is %s to /sign-up for the code", async (_label, found) => {
     mocks.findInvite.mockResolvedValue(found);
 
-    const res = await loader({
-      request: callback([cookieValue(setOAuthReturnCookie("/invite/abc123"))]),
-    });
+    const res = await loader({ request: fromInvite() });
 
     expect(mocks.addUser).not.toHaveBeenCalled();
+    expect(mocks.consumeInvite).not.toHaveBeenCalled();
     expect(res.headers.get("Location")).toBe("/sign-up?error=invite_required");
   });
 
@@ -96,5 +122,48 @@ describe("/auth/github/callback — who may create an account", () => {
 
     expect(mocks.addUser).toHaveBeenCalled();
     expect(res.headers.get("Location")).toBe("/workspaces");
+  });
+});
+
+// Alexander, 2026-10-08: choosing Human on an invite and signing in with
+// GitHub already says the person wants in, so they shouldn't have to click
+// Accept invite when they come back.
+describe("/auth/github/callback — signing in from an invite accepts it", () => {
+  it("joins a newcomer to the invite's workspace and takes them to its page", async () => {
+    const res = await loader({ request: fromInvite() });
+
+    expect(mocks.consumeInvite).toHaveBeenCalledWith("abc123", "user_new");
+    expect(mocks.upsertWorkspaceUser).toHaveBeenCalledWith({
+      workspace_id: "workspace_torre",
+      user_id: "user_new",
+      role: "writer",
+      write_types: ["*"],
+    });
+    expect(mocks.startOnboarding).toHaveBeenCalledWith(expect.anything(), {
+      workspaceId: "workspace_torre",
+      userId: "user_new",
+      joinedAs: "invitee",
+    });
+    expect(res.headers.get("Location")).toBe("/workspaces/torre");
+  });
+
+  it("joins someone who already has an account the same way", async () => {
+    mocks.findUserByGitHubLogin.mockResolvedValue({ id: "user_alice" });
+
+    const res = await loader({ request: fromInvite() });
+
+    expect(mocks.addUser).not.toHaveBeenCalled();
+    expect(mocks.consumeInvite).toHaveBeenCalledWith("abc123", "user_alice");
+    expect(res.headers.get("Location")).toBe("/workspaces/torre");
+  });
+
+  it("leaves someone whose invite can't be accepted any more on the invite page, which says why", async () => {
+    mocks.findUserByGitHubLogin.mockResolvedValue({ id: "user_alice" });
+    mocks.findInvite.mockResolvedValue(invite({ status: "consumed" }));
+
+    const res = await loader({ request: fromInvite() });
+
+    expect(mocks.consumeInvite).not.toHaveBeenCalled();
+    expect(res.headers.get("Location")).toBe("/invite/abc123");
   });
 });
