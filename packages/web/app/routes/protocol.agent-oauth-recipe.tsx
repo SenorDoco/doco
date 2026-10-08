@@ -205,21 +205,20 @@ ${baseUrl}/oauth/authorize
   &code_challenge_method=S256
   &state=<random>
   &scope=doco
-  &target_doco_handle=<doco-handle>    # optional but recommended
+  &target_doco_handle=<doco-handle>    # optional
   &requested_role=writer                # optional; reader|writer|owner
 \`\`\`
 
-**Targeted grants (recommended).** If you already know which Doco
-you need — typically read from \`.doco/connections.md\` in the project root,
-which carries a URL like \`${baseUrl}/<handle>/\` — pass
-\`target_doco_handle\` and \`requested_role\` so the approve screen
-focuses on that one Doco with the role pre-filled. Without them
-the user sees their full owned-Docos picker.
+**Access.** The approve screen asks the user to Allow your agent to
+do everything they can, in all their workspaces. Pass \`requested_role\`
+to ask for less (\`reader\` or \`writer\`); the user can also choose Limit
+access. Pass \`target_doco_handle\` when you need one Doco: if the user
+doesn't own it, the screen says so instead of offering Allow.
 
 Open it in the user's browser via \`open\` (macOS) / \`xdg-open\`
 (Linux) / \`start\` (Windows) / equivalent. Tell the user what's
 happening: "Doco access is being requested — sign in
-and pick which Docos to grant."
+and choose Allow."
 
 ### 4. Wait for the callback
 
@@ -277,22 +276,15 @@ Content-Type: application/x-www-form-urlencoded
 
 client_id=<your-client-id>
 &scope=doco
-&target_doco_handle=<doco-handle>      # optional but recommended
+&target_doco_handle=<doco-handle>      # optional
 &requested_role=writer                  # optional; reader|writer|owner
 \`\`\`
 
-**Targeted grants (recommended).** If you already know which Doco you
-need — typically read from \`.doco/connections.md\` in the project root, which
-carries a URL like \`${baseUrl}/<handle>/\` — pass the handle as
-\`target_doco_handle\` and your desired role as \`requested_role\`. The
-approve screen then focuses on that one Doco with your requested
-role pre-filled, instead of showing the user the full picker. The
-user can still adjust the role before approving, but they're not
-forced to scroll through every Doco they own to find the right one.
-
-Both params are optional; omit them and the user sees their full
-owned-Docos picker (still works, just a worse UX when you know
-exactly what you need).
+**Access.** The approve screen asks the user to Allow your agent to
+do everything they can, in all their workspaces. Pass \`requested_role\`
+to ask for less (\`reader\` or \`writer\`); the user can also choose Limit
+access. Pass \`target_doco_handle\` when you need one Doco: if the user
+doesn't own it, the screen says so instead of offering Allow.
 
 Response:
 
@@ -315,7 +307,7 @@ Tell them clearly:
 >
 > (or, faster: open ${baseUrl}/device?user_code=WXYZ-1234)
 >
-> Then sign in and pick which Docos to grant.
+> Then sign in and choose Allow.
 
 The \`verification_uri_complete\` saves them typing — use it.
 

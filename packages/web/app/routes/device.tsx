@@ -9,11 +9,11 @@
 //      the code into the form.
 //   3. If they're not signed in, we redirect through GitHub OAuth and
 //      come back with the user_code preserved as a query param.
-//   4. The post-sign-in screen shows the token name + a list of
-//      Docos they own/admin/are granted access to; they pick which to
-//      grant, click Approve, and we mark the device-authorization row
-//      approved. The client's next poll at /oauth/token mints + receives
-//      the access token.
+//   4. The post-sign-in screen says what the agent will reach (by default
+//      everything they can) and offers Allow, with Limit access opening the
+//      grant picker (decision_01M4EQPJ6AKETJ1508W254DXVB). Allow marks the
+//      device-authorization row approved; the client's next poll at
+//      /oauth/token mints + receives the access token.
 //   5. Cancel marks the row denied; the client's next poll gets
 //      access_denied and stops.
 
@@ -165,15 +165,10 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (decision === "approve") {
-    const tokenName = String(form.get("token_name") ?? "").trim();
-    if (!tokenName) {
-      throw new Response("token_name required", { status: 400 });
-    }
     const grants = await readOAuthApprovalGrants(form, principal.id);
     await approveDeviceAuthorization({
       device_code: row.device_code,
       approver_user_id: principal.id,
-      token_name: tokenName,
       granted_doco_ids: grants.granted_doco_ids,
       granted_doco_roles: grants.granted_doco_roles,
       granted_doco_write_types: grants.granted_doco_write_types,
@@ -190,14 +185,14 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function meta() {
-  return [{ title: "Authorize token access · Doco" }];
+  return [{ title: "Allow an agent · Doco" }];
 }
 
 export default function DevicePage() {
   const data = useLoaderData() as LoaderData;
   return (
     <PageMain className="py-8 space-y-4">
-      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Authorize device" }]} />
+      <Breadcrumb items={[{ label: "Home", to: "/" }, { label: "Allow an agent" }]} />
       <Card>{renderStage(data)}</Card>
     </PageMain>
   );
@@ -208,9 +203,9 @@ function renderStage(data: LoaderData) {
     return (
       <>
         <CardHeader>
-          <CardTitle>Authorize token access</CardTitle>
+          <CardTitle>Allow an agent</CardTitle>
           <CardDescription>
-            Enter the short code your client showed you. It looks like{" "}
+            Enter the short code your agent showed you. It looks like{" "}
             <code className="rounded bg-input px-1 py-0.5">WXYZ-1234</code>.
           </CardDescription>
         </CardHeader>
@@ -237,47 +232,35 @@ function renderStage(data: LoaderData) {
     );
   }
   if (data.stage === "approve") {
-    const docos = data.docos ?? [];
-    const workspaces = data.workspaces ?? [];
     return (
       <>
         <CardHeader>
-          <CardTitle>Authorize token access</CardTitle>
+          <CardTitle>Allow {data.client_name} to use Doco</CardTitle>
           <CardDescription>
-            An agent is requesting access to your docos through <strong>{data.client_name}</strong>.
-            Name the token, then pick individual docos or grant access to an entire workspace — code{" "}
-            <code className="rounded bg-input px-1 py-0.5">{data.user_code}</code>.
+            Code <code className="rounded bg-input px-1 py-0.5">{data.user_code}</code>
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {docos.length === 0 && workspaces.length === 0 ? (
-            <p className="text-sm text-destructive">
-              You don't own any docos or workspaces. Only owners can grant token access — create one
-              first, then re-enter this code.
-            </p>
-          ) : (
-            <OAuthAccessApprovalForm
-              docos={docos}
-              workspaces={workspaces}
-              tokenNamePlaceholder="e.g. Codex in Doco repo"
-              requestedRole={data.requested_role ?? null}
-              approveLabel="Approve"
-              cancelLabel="Deny"
-              cancelDecisionValue="deny"
-              hiddenFields={{ user_code: data.user_code }}
-            />
-          )}
+          <OAuthAccessApprovalForm
+            clientName={data.client_name ?? "Your agent"}
+            docos={data.docos ?? []}
+            workspaces={data.workspaces ?? []}
+            requestedRole={data.requested_role ?? null}
+            cancelLabel="Deny"
+            cancelDecisionValue="deny"
+            hiddenFields={{ user_code: data.user_code }}
+          />
         </CardContent>
       </>
     );
   }
   if (data.stage === "target-not-owned") {
     // Terminal: the client asked for a doco the user doesn't own. Show
-    // only the explanation + call to action — no token field, no picker.
+    // only the explanation + call to action, no Allow.
     return (
       <>
         <CardHeader>
-          <CardTitle>Authorize token access</CardTitle>
+          <CardTitle>Allow an agent</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-destructive">
@@ -291,7 +274,7 @@ function renderStage(data: LoaderData) {
   return (
     <>
       <CardHeader>
-        <CardTitle>Authorize token access</CardTitle>
+        <CardTitle>Allow an agent</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p

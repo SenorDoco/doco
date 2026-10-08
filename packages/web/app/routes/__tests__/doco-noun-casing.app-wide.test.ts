@@ -31,11 +31,10 @@ describe("doco noun is lowercase app-wide (brand + sentence-initial stay capital
     expect(src).not.toContain("every Doco");
   });
 
+  // One-click Allow (decision_01M4EQPJ6AKETJ1508W254DXVB) took the docos
+  // copy off the device page; the noun stays lowercase if it comes back.
   it("device authorization page", () => {
     const src = read("device.tsx");
-    expect(src).toContain("access to your docos");
-    expect(src).toContain("pick individual docos");
-    expect(src).toContain("own any docos");
     expect(src).not.toContain("your Docos");
     expect(src).not.toContain("individual Docos");
   });

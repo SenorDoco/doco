@@ -11,6 +11,8 @@ import {
 import {
   type ComposedGrant,
   type GrantCatalog,
+  actorGrant,
+  applyTargetRole,
   catalogFromOptions,
   resolveWriteTypes,
 } from "~/lib/grant-picker";
@@ -20,68 +22,64 @@ import {
 export type OAuthApprovalDoco = ApprovalDocoOption;
 export type OAuthApprovalWorkspace = ApprovalWorkspaceOption;
 
+const CAN: Record<DocoRole, string> = {
+  reader: "read",
+  writer: "read and write",
+  owner: "read, write and manage",
+};
+
+/**
+ * What a person sees when an agent signs in to Doco: one sentence saying what
+ * the agent will reach, and Allow (decision_01M4EQPJ6AKETJ1508W254DXVB). By
+ * default the agent acts as the person in all their workspaces, or, for a
+ * connector bound to one workspace, reads and writes that workspace, at the
+ * level the client asked for when it asked. Limit access opens the picker for
+ * anyone who wants less. The connection goes by the client's own name, so
+ * there is no token to name.
+ */
 export function OAuthAccessApprovalForm({
+  clientName,
   docos,
   workspaces,
   boundWorkspace,
-  tokenNamePlaceholder,
   requestedRole,
-  approveLabel,
   cancelLabel,
   cancelDecisionValue,
   hiddenFields,
 }: {
+  clientName: string;
   docos: OAuthApprovalDoco[];
   workspaces: OAuthApprovalWorkspace[];
   /**
-   * When the connector authorized against a workspace-scoped resource, the picker
-   * leads with "The entire <name> workspace" (an access-level dropdown inline)
-   * and can still narrow to specific Docos / node-edge types within it — never
-   * other workspaces. The catalog is expected to already be scoped to it.
+   * When the connector authorized against a workspace-scoped resource, the
+   * agent gets that workspace, and the picker leads with "The entire <name>
+   * workspace" and can still narrow to Docos within it — never other
+   * workspaces. The catalog is expected to already be scoped to it.
    */
   boundWorkspace?: { id: string; label: string; maxRole: DocoRole };
-  tokenNamePlaceholder: string;
   requestedRole: DocoRole | null;
-  approveLabel: string;
   cancelLabel: string;
   cancelDecisionValue: "cancel" | "deny";
   hiddenFields?: Record<string, string>;
 }) {
   const catalog = useMemo(() => approvalCatalog(docos, workspaces), [docos, workspaces]);
-  const [tokenName, setTokenName] = useState("");
-  // No default grant: the approver picks the scope: all workspaces, any set of
-  // workspaces, or specific Docos. When bound to a workspace the picker leads
-  // with "The entire <name> workspace" (with its access-level dropdown) and can
-  // still narrow to specific Docos / types within it.
-  const [grants, setGrants] = useState<ComposedGrant[]>([]);
+  const role = requestedRole ?? (boundWorkspace ? "writer" : "owner");
+  const [limiting, setLimiting] = useState(false);
+  const [grants, setGrants] = useState<ComposedGrant[]>(() =>
+    boundWorkspace ? applyTargetRole([], "workspace", boundWorkspace.id, role) : [actorGrant(role)],
+  );
   const grantsPayload = useMemo(() => JSON.stringify(grants.map(grantPayload)), [grants]);
   const [errors, setErrors] = useState<Partial<Record<GrantFormFieldKey, string>>>({});
-
-  const tokenNameRef = useRef<HTMLInputElement>(null);
   const grantsRef = useRef<HTMLDivElement>(null);
 
-  function clearError(field: GrantFormFieldKey) {
-    setErrors((prev) => {
-      if (!prev[field]) return prev;
-      const { [field]: _cleared, ...rest } = prev;
-      return rest;
-    });
-  }
-
-  // The Approve button always submits (it is never disabled) so that a click
-  // on an incomplete form surfaces the reason instead of silently doing
-  // nothing. Validate here, and if anything is missing, block the POST, show
-  // the app's error styling, and scroll + focus the first offending field.
-  // Deny/Cancel carries a different decision value and `formNoValidate`, so it
-  // skips validation entirely.
+  // Allow always submits (it is never disabled) so that a click on an empty
+  // pick surfaces the reason instead of silently doing nothing. Cancel/Deny
+  // carries a different decision value, so it skips validation.
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     if (submitter && submitter.value !== "approve") return;
 
-    const found = validateGrantForm({
-      name: { value: tokenName, message: "Enter a name for this token." },
-      grantCount: grants.length,
-    });
+    const found = validateGrantForm({ grantCount: grants.length });
     if (found.length === 0) {
       setErrors({});
       return;
@@ -89,10 +87,7 @@ export function OAuthAccessApprovalForm({
 
     e.preventDefault();
     setErrors(Object.fromEntries(found.map((f) => [f.field, f.message])));
-    focusFirstError(found[0].field, {
-      name: tokenNameRef.current,
-      grants: grantsRef.current,
-    });
+    focusFirstError(found[0].field, { grants: grantsRef.current });
   }
 
   return (
@@ -104,73 +99,43 @@ export function OAuthAccessApprovalForm({
         : null}
       <input type="hidden" name="grants" value={grantsPayload} />
 
-      <div>
-        <label className="block text-sm">
-          <span className="block text-xs uppercase tracking-wide text-muted-foreground mb-1">
-            Token name
-          </span>
-          <input
-            ref={tokenNameRef}
-            type="text"
-            name="token_name"
-            value={tokenName}
-            onChange={(e) => {
-              const next = e.currentTarget.value;
-              setTokenName(next);
-              if (next.trim()) clearError("name");
+      {limiting ? (
+        <div ref={grantsRef}>
+          <GrantPicker
+            catalog={catalog}
+            grants={grants}
+            onChange={(next) => {
+              setGrants(next);
+              if (next.length > 0) setErrors({});
             }}
-            required
-            maxLength={120}
-            placeholder={tokenNamePlaceholder}
-            aria-invalid={errors.name ? true : undefined}
-            aria-describedby={errors.name ? "token-name-error" : undefined}
-            className={`block w-full max-w-md rounded-md px-3 py-2 text-sm${
-              errors.name ? " border border-destructive ring-1 ring-destructive" : ""
-            }`}
+            offerActor
+            boundWorkspace={boundWorkspace}
           />
-        </label>
-        {errors.name ? (
-          <p id="token-name-error" role="alert" className="mt-1 text-xs text-destructive">
-            {errors.name}
-          </p>
-        ) : null}
-      </div>
-
-      <div ref={grantsRef}>
-        <GrantPicker
-          catalog={catalog}
-          grants={grants}
-          onChange={(next) => {
-            setGrants(next);
-            if (next.length > 0) clearError("grants");
-          }}
-          offerActor
-          boundWorkspace={boundWorkspace}
-        />
-        {errors.grants ? (
-          <p role="alert" className="mt-2 text-xs text-destructive">
-            {errors.grants}
-          </p>
-        ) : grants.length === 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
-        ) : null}
-      </div>
-
-      {requestedRole ? (
-        <p className="text-xs text-muted-foreground">
-          The client requested <code>{requestedRole}</code> access; choose that role or a narrower
-          one below.
+          {errors.grants ? (
+            <p role="alert" className="mt-2 text-xs text-destructive">
+              {errors.grants}
+            </p>
+          ) : grants.length === 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">{GRANT_REQUIRED_MESSAGE}</p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-sm">
+          {clientName} will be able to {CAN[role]}{" "}
+          {boundWorkspace
+            ? `the ${boundWorkspace.label} workspace.`
+            : "everything you can, in all your workspaces, including ones you join later."}
         </p>
-      ) : null}
+      )}
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
           name="decision"
           value="approve"
           className="neu-button bg-primary text-primary-foreground hover:opacity-90 rounded-md px-4 py-2 text-sm font-semibold"
         >
-          {approveLabel}
+          Allow
         </button>
         <button
           type="submit"
@@ -181,6 +146,18 @@ export function OAuthAccessApprovalForm({
         >
           {cancelLabel}
         </button>
+        {limiting ? null : (
+          <button
+            type="button"
+            onClick={() => {
+              setGrants([]);
+              setLimiting(true);
+            }}
+            className="ml-auto text-sm text-primary hover:underline"
+          >
+            Limit access
+          </button>
+        )}
       </div>
     </form>
   );

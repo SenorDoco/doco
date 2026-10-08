@@ -37,7 +37,7 @@ function approveRequest(url: string = BOUND_URL): Request {
   return new Request(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ decision: "approve", token_name: "Claude", grants: "[]" }),
+    body: new URLSearchParams({ decision: "approve", grants: "[]" }),
   });
 }
 
@@ -171,6 +171,16 @@ describe("/oauth/authorize action — actor grant passthrough", () => {
       granted_doco_ids: [],
       granted_workspace_ids: [],
     });
+  });
+
+  // Alexander, 2026-10-08: one-click Allow (decision_01M4EQPJ6AKETJ1508W254DXVB).
+  // The page asks for no token name; the connection goes by the client's name.
+  it("issues the code with no token name", async () => {
+    mocks.readOAuthApprovalGrants.mockResolvedValue(actorGrants());
+
+    await action({ request: approveRequest(UNBOUND_URL) });
+
+    expect(mocks.issueAuthorizationCode.mock.calls[0]?.[0]).not.toHaveProperty("token_name");
   });
 
   it("threads grant_type='regular' for a normal workspace grant", async () => {

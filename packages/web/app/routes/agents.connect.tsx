@@ -40,7 +40,7 @@ export default function ConnectAgentPage({
         <p className="text-sm text-muted-foreground">
           Doco works with Claude Code, Codex and Gemini CLI for now. Your agent reads and writes
           Doco through Doco's MCP server, and adds it to itself with these steps when its
-          instructions ask; you sign in to Doco once, and choose what the agent may reach.
+          instructions ask; you sign in to Doco once, and allow it.
         </p>
       </header>
       <ConnectAgentGuide guides={loaderData.guides} initial={loaderData.agent} />
