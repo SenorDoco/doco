@@ -6,7 +6,7 @@
 // A person reaches a workspace by membership (every live Doco in it) or by a
 // Doco invite (just the Docos they were invited to; role is null).
 
-import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
+import { loadLatestActivity } from "./activity-log.server";
 import { type SilenceAlert, loadSilenceAlerts } from "./silence-alerts.server";
 
 type QueryClient = {
@@ -71,20 +71,16 @@ export async function loadWorkspaceSummaries(
         AND (wu.user_id IS NOT NULL OR w.id = ANY($2::text[]))`,
     [userId, docoRows.rows.map((d) => d.workspace_id), workspaceFilter],
   );
-  const activityRows = await c.query<{ workspace_id: string; at: Date | string }>(
-    // Policy edits aren't project activity; what a Doco imports from its source is.
-    `SELECT d.workspace_id, MAX(e.at) AS at
-       FROM (SELECT doco_id, at FROM audit_events WHERE entity_type <> 'policy'
-             UNION ALL
-             SELECT doco_id, at FROM (${IMPORTED_ITEMS_SQL}) imported) e
-       JOIN docos d ON d.id = e.doco_id
-      WHERE e.doco_id = ANY($1::text[])
-      GROUP BY d.workspace_id`,
-    [docoRows.rows.map((d) => d.id)],
+  const latest = await loadLatestActivity(
+    c,
+    docoRows.rows.map((d) => d.id),
   );
-  const lastActivityAt = new Map(
-    activityRows.rows.map((r) => [r.workspace_id, new Date(r.at).toISOString()]),
-  );
+  const lastActivityAt = new Map<string, string>();
+  for (const d of docoRows.rows) {
+    const at = latest.get(d.id);
+    const seen = lastActivityAt.get(d.workspace_id);
+    if (at && (!seen || at > seen)) lastActivityAt.set(d.workspace_id, at);
+  }
   const alerts = await loadSilenceAlerts(
     c,
     docoRows.rows.map((d) => d.id),

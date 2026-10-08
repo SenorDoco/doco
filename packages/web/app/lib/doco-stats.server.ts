@@ -6,11 +6,11 @@
 // type, any of its nodes (policies are not nodes; they are surfaced via
 // /<handle>/api/policies.json), what it imported from its source (code files,
 // Slack messages, Notion pages, which are not nodes), or its processes.
-// `lastUpdatedAt` is the newest of the max `at` from `audit_events`, node
-// `updated_at` (imported/pre-audit Docos) and the latest import.
+// `lastUpdatedAt` is the newest of its nodes' `updated_at` (imported/pre-audit
+// Docos) and its latest activity (loadLatestActivity).
 
 import { withClient } from "@doco/db";
-import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
+import { IMPORTED_ITEMS_SQL, loadLatestActivity } from "./activity-log.server";
 import { docoItemFor } from "./doco-templates-meta";
 
 export interface DocoStats {
@@ -50,43 +50,45 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const [docoRows, nodeRows, processRows, auditRows, importedRows] = await Promise.all([
-      c.query<{ id: string; template: string | null }>(
-        "SELECT id, data->>'template_handle' AS template FROM docos WHERE id = ANY($1)",
-        [ids],
-      ),
-      c.query<{ doco_id: string; node_type: string; n: string; last_at: string }>(
-        `SELECT doco_id, node_type, COUNT(*)::text AS n, MAX(updated_at)::text AS last_at
-           FROM nodes
-          WHERE doco_id = ANY($1)
-            AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})
-          GROUP BY doco_id, node_type`,
-        [ids],
-      ),
-      // A process is an Action with child Actions linked to it by `has_parent`
-      // (see process-perspective.server.ts).
-      c.query<{ doco_id: string; n: string }>(
-        `SELECT doco_id, COUNT(DISTINCT to_id)::text AS n
-           FROM edges
-          WHERE doco_id = ANY($1)
-            AND edge_type = 'has_parent'
-            AND from_node_type = 'action'
-            AND to_node_type = 'action'
-          GROUP BY doco_id`,
-        [ids],
-      ),
-      c.query<{ doco_id: string; last_at: string }>(
-        "SELECT doco_id, MAX(at)::text AS last_at FROM audit_events WHERE doco_id = ANY($1) GROUP BY doco_id",
-        [ids],
-      ),
-      c.query<{ doco_id: string; n: string; last_at: string | null }>(
-        `SELECT doco_id, COUNT(*)::text AS n, MAX(at)::text AS last_at
-           FROM (${IMPORTED_ITEMS_SQL}) t
-          WHERE doco_id = ANY($1)
-          GROUP BY doco_id`,
-        [ids],
-      ),
-    ]);
+    const docoRows = await c.query<{ id: string; template: string | null }>(
+      "SELECT id, data->>'template_handle' AS template FROM docos WHERE id = ANY($1)",
+      [ids],
+    );
+    const counted = (what: string) =>
+      docoRows.rows.filter((r) => docoItemFor(r.template).counts === what).map((r) => r.id);
+    const nodeRows = await c.query<{
+      doco_id: string;
+      node_type: string;
+      n: string;
+      last_at: Date | string | null;
+    }>(
+      `SELECT doco_id, node_type, COUNT(*)::text AS n, MAX(updated_at) AS last_at
+         FROM nodes
+        WHERE doco_id = ANY($1)
+          AND node_type IN (${NODE_TYPES_FOR_STATS_SQL})
+        GROUP BY doco_id, node_type`,
+      [ids],
+    );
+    // A process is an Action with child Actions linked to it by `has_parent`
+    // (see process-perspective.server.ts).
+    const processRows = await c.query<{ doco_id: string; n: string }>(
+      `SELECT doco_id, COUNT(DISTINCT to_id)::text AS n
+         FROM edges
+        WHERE doco_id = ANY($1)
+          AND edge_type = 'has_parent'
+          AND from_node_type = 'action'
+          AND to_node_type = 'action'
+        GROUP BY doco_id`,
+      [counted("process")],
+    );
+    const importedRows = await c.query<{ doco_id: string; n: string }>(
+      `SELECT doco_id, COUNT(*)::text AS n
+         FROM (${IMPORTED_ITEMS_SQL}) t
+        WHERE doco_id = ANY($1)
+        GROUP BY doco_id`,
+      [counted("import")],
+    );
+    const latest = await loadLatestActivity(c, ids);
 
     const counts = (rows: { doco_id: string; n: string }[]) =>
       new Map(rows.map((r) => [r.doco_id, Number(r.n)]));
@@ -106,9 +108,15 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
       const s = out.get(r.id);
       if (s) s.items = items(r.id, r.template);
     }
-    for (const r of [...nodeRows.rows, ...auditRows.rows, ...importedRows.rows]) {
+    for (const r of nodeRows.rows) {
       const s = out.get(r.doco_id);
-      if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, r.last_at);
+      if (s && r.last_at) {
+        s.lastUpdatedAt = newestIso(s.lastUpdatedAt, new Date(r.last_at).toISOString());
+      }
+    }
+    for (const [docoId, at] of latest) {
+      const s = out.get(docoId);
+      if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, at);
     }
     return out;
   });

@@ -20,26 +20,77 @@ import { TOP_DAYS } from "~/components/top-list";
 import { IMPORT, agentName } from "./authoring-provenance";
 import { findIntegration } from "./integrations-catalog";
 
+/** Every table an integration fills, as `i`: from GitHub the files of a
+ *  codebase and the pull requests and bug issues it keeps (a pull request's
+ *  Reference, a bug's Eval), from Slack the messages of the channels it copies,
+ *  from Notion the pages fetched so far. `at` is when an item happened in the
+ *  source where the source says (a message posted, a page last edited; null
+ *  when Notion gave no time), else when Doco last wrote it (a code file, a pull
+ *  request or bug). Each has an index on (doco_id, at) in schema.sql, with
+ *  `where` as the predicate of a partial one. */
+const IMPORT_SOURCES = [
+  { integration: "github", table: "code_files", at: "synced_at", where: "true" },
+  {
+    integration: "github",
+    table: "nodes",
+    at: "updated_at",
+    where: `i.node_type IN ('reference', 'eval')
+            AND i.locator ~ '^https://github\\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'`,
+  },
+  {
+    integration: "slack",
+    table: "group_chat_messages",
+    at: "posted_at",
+    where: `NOT EXISTS (SELECT 1 FROM group_chat_channels ch
+                         WHERE ch.doco_id = i.doco_id AND ch.channel_id = i.channel_id
+                           AND ch.excluded)`,
+  },
+  {
+    integration: "notion",
+    table: "notion_pages",
+    at: "last_edited_time",
+    where: "i.synced_at IS NOT NULL",
+  },
+] as const;
+
 /** Every item an integration brought into a Doco, as (doco_id, integration,
- *  at) rows: from GitHub the files of a codebase and the pull requests and bug
- *  issues it keeps (a pull request's Reference, a bug's Eval), from Slack the
- *  messages of the channels it copies, from Notion the pages fetched so far.
- *  `at` is when it happened in the source where the source says (a message
- *  posted, a page last edited; null when Notion gave no time), else when Doco
- *  last wrote it (a code file, a pull request or bug). */
-export const IMPORTED_ITEMS_SQL = `
-  SELECT doco_id, 'github' AS integration, synced_at AS at FROM code_files
-  UNION ALL
-  SELECT doco_id, 'github', updated_at FROM nodes
-   WHERE node_type IN ('reference', 'eval')
-     AND locator ~ '^https://github\\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'
-  UNION ALL
-  SELECT m.doco_id, 'slack', m.posted_at
-    FROM group_chat_messages m
-    JOIN group_chat_channels ch USING (doco_id, channel_id)
-   WHERE NOT ch.excluded
-  UNION ALL
-  SELECT doco_id, 'notion', last_edited_time FROM notion_pages WHERE synced_at IS NOT NULL`;
+ *  at) rows. */
+export const IMPORTED_ITEMS_SQL = IMPORT_SOURCES.map(
+  (s) =>
+    `SELECT i.doco_id, '${s.integration}' AS integration, i.${s.at} AS at FROM ${s.table} i WHERE ${s.where}`,
+).join("\n  UNION ALL\n  ");
+
+/**
+ * When each Doco last saw activity: the latest change to its content (an audit
+ * event; policies are settings, not activity) or item an integration brought
+ * (`integration` keeps to one). One newest-row probe per source and Doco, on
+ * its (doco_id, at) index, so it costs the same however much a Doco holds.
+ * Docos with none are left out.
+ */
+export async function loadLatestActivity(
+  c: QueryClient,
+  docoIds: readonly string[],
+  opts: { integration?: string } = {},
+): Promise<Map<string, string>> {
+  const newest = (table: string, at: string, where: string) =>
+    `(SELECT i.${at} FROM ${table} i
+       WHERE i.doco_id = d.id AND i.${at} IS NOT NULL AND ${where}
+       ORDER BY i.${at} DESC LIMIT 1)`;
+  const probes = [
+    ...(opts.integration ? [] : [newest("audit_events", "at", "i.entity_type <> 'policy'")]),
+    ...IMPORT_SOURCES.filter((s) => !opts.integration || s.integration === opts.integration).map(
+      (s) => newest(s.table, s.at, s.where),
+    ),
+  ];
+  const { rows } = await c.query<{ doco_id: string; at: Date | string }>(
+    `SELECT d.id AS doco_id, GREATEST(${probes.join(",\n")}) AS at
+       FROM unnest($1::text[]) AS d(id)`,
+    [[...docoIds]],
+  );
+  return new Map(
+    rows.filter((r) => r.at !== null).map((r) => [r.doco_id, new Date(r.at).toISOString()]),
+  );
+}
 
 export interface TopActor {
   userId: string;
