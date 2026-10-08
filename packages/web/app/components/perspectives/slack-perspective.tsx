@@ -4,14 +4,17 @@
 // search across every channel.
 //
 // Data: slack-mirror-read.server.ts (loadSlackPerspective). URL state keeps it
-// linkable: ?slack_channel=C…, ?slack_before=<ts> (older page), ?slack_q=<search>.
+// linkable: ?slack_channel=C…, ?slack_before=<ts> (older page), ?slack_q=<search>,
+// ?slack_channel_limit=<n> (channels listed: the latest 50, and 50 more per Show more).
 //
 // All chrome (border, background, fullscreen) is owned by the PerspectiveFrame;
 // this component only paints the content.
 
 import { ExternalLink, Hash, MessageSquare, Paperclip, Search } from "lucide-react";
 import { Form, Link } from "react-router";
+import { ShowMoreLink } from "~/components/show-more-link";
 import { cn } from "~/lib/cn";
+import { LIST_PAGE } from "~/lib/list-limit";
 import type { SlackPerspectiveData, SlackReaderMessage } from "~/lib/slack-mirror-read.server";
 import { timeAgo } from "~/lib/time-ago";
 
@@ -33,6 +36,9 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
     );
   }
   const searching = data.query !== "";
+  // A list grown by Show more stays grown while reading, paging and searching.
+  const listed: Record<string, string> =
+    data.channelLimit > LIST_PAGE ? { slack_channel_limit: String(data.channelLimit) } : {};
   return (
     <div className="flex h-full min-h-0 gap-3 px-3 pb-3 pt-12">
       <nav aria-label="Slack channels" className="w-44 shrink-0 overflow-y-auto">
@@ -40,7 +46,7 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
           {data.channels.map((channel) => (
             <li key={channel.channelId}>
               <Link
-                to={perspectiveHref({ slack_channel: channel.channelId })}
+                to={perspectiveHref({ slack_channel: channel.channelId, ...listed })}
                 className={cn(
                   "flex items-center gap-1 rounded px-2 py-1 hover:bg-input",
                   !searching && channel.channelId === data.channelId && "neu-pressed font-semibold",
@@ -52,10 +58,16 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
             </li>
           ))}
         </ul>
+        {data.moreChannels ? (
+          <ShowMoreLink param="slack_channel_limit" limit={data.channelLimit} />
+        ) : null}
       </nav>
       <section className="flex min-h-0 flex-1 flex-col gap-2">
         <Form method="get" className="flex items-center gap-2">
           <input type="hidden" name="perspective" value="slack" />
+          {Object.entries(listed).map(([name, value]) => (
+            <input key={name} type="hidden" name={name} value={value} />
+          ))}
           <input
             name="slack_q"
             defaultValue={data.query}
@@ -93,6 +105,7 @@ export function SlackPerspective({ data, handle }: { data: SlackPerspectiveData;
               to={perspectiveHref({
                 slack_channel: data.channelId,
                 slack_before: data.olderBefore,
+                ...listed,
               })}
               className="mt-2 inline-block text-xs font-semibold text-primary"
             >

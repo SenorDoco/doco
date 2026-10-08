@@ -4,6 +4,7 @@
 // embedded ones when the caller brings a query embedding. Everything here is
 // scoped to one Doco; callers have already checked that the viewer can read it.
 import { type SemanticQuery, rankEmbeddings } from "@doco/db";
+import { LIST_PAGE } from "./list-limit";
 import { fuseRankings } from "./rank-fusion";
 
 type QueryClient = {
@@ -34,7 +35,11 @@ export interface SlackReaderMessage {
 
 export interface SlackPerspectiveData {
   teamDomain: string;
+  /** The latest `channelLimit` channels, most recently active first. */
   channels: { channelId: string; name: string; archived: boolean; lastPostedAt: string | null }[];
+  /** True when channels beyond `channelLimit` exist (the list offers Show more). */
+  moreChannels: boolean;
+  channelLimit: number;
   /** The channel being read (null while searching or with no channels). */
   channelId: string | null;
   /** The active search, "" when browsing a channel. */
@@ -232,17 +237,23 @@ export async function loadSlackPerspective(
     channelId?: string | null;
     before?: string | null;
     query?: string | null;
+    /** Channels listed (default one page); Show more raises it. */
+    channelLimit?: number;
+    /** Messages per page. */
     limit?: number;
     repliesPerThread?: number;
     semantic?: SemanticQuery | null;
   },
 ): Promise<SlackPerspectiveData> {
   const query = opts.query?.trim() ?? "";
+  const channelLimit = opts.channelLimit ?? LIST_PAGE;
   const ctx = await loadMirrorContext(c, docoId);
   if (!ctx) {
     return {
       teamDomain: "",
       channels: [],
+      moreChannels: false,
+      channelLimit,
       channelId: null,
       query,
       messages: [],
@@ -250,17 +261,20 @@ export async function loadSlackPerspective(
     };
   }
   const limit = opts.limit ?? 50;
-  const channels = (
+  const channelRows = (
     await c.query<{ channel_id: string; name: string; archived: boolean; last_ts: string | null }>(
       `SELECT ch.channel_id, ch.name, ch.archived,
               (SELECT max(m.ts) FROM group_chat_messages m
                 WHERE m.doco_id = ch.doco_id AND m.channel_id = ch.channel_id) AS last_ts
          FROM group_chat_channels ch
         WHERE ch.doco_id = $1 AND NOT ch.excluded
-        ORDER BY last_ts DESC NULLS LAST, ch.name`,
-      [docoId],
+        ORDER BY last_ts DESC NULLS LAST, ch.name
+        LIMIT $2`,
+      [docoId, channelLimit + 1],
     )
-  ).rows.map((row) => ({
+  ).rows;
+  const moreChannels = channelRows.length > channelLimit;
+  const channels = channelRows.slice(0, channelLimit).map((row) => ({
     channelId: row.channel_id,
     name: row.name,
     archived: row.archived,
@@ -272,6 +286,8 @@ export async function loadSlackPerspective(
     return {
       teamDomain: ctx.teamDomain,
       channels,
+      moreChannels,
+      channelLimit,
       channelId: null,
       query,
       messages: rows.map((row) => toReaderMessage(row, ctx)),
@@ -279,14 +295,24 @@ export async function loadSlackPerspective(
     };
   }
 
-  const channelId =
-    channels.find((ch) => ch.channelId === opts.channelId)?.channelId ??
-    channels[0]?.channelId ??
-    null;
+  // The requested channel may sit beyond the listed ones (a link from a longer
+  // list), so it is looked up on its own rather than in `channels`.
+  const requested = opts.channelId
+    ? (
+        await c.query<{ channel_id: string }>(
+          `SELECT channel_id FROM group_chat_channels
+            WHERE doco_id = $1 AND channel_id = $2 AND NOT excluded`,
+          [docoId, opts.channelId],
+        )
+      ).rows[0]?.channel_id
+    : undefined;
+  const channelId = requested ?? channels[0]?.channelId ?? null;
   if (!channelId) {
     return {
       teamDomain: ctx.teamDomain,
       channels,
+      moreChannels,
+      channelLimit,
       channelId,
       query,
       messages: [],
@@ -331,6 +357,8 @@ export async function loadSlackPerspective(
   return {
     teamDomain: ctx.teamDomain,
     channels,
+    moreChannels,
+    channelLimit,
     channelId,
     query,
     messages,

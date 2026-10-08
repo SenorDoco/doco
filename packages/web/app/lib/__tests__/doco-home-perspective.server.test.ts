@@ -108,7 +108,7 @@ describe("loadDocoHomePerspectiveData", () => {
       docoId: "doco_1",
       handle: "acme",
       focusNodeId: null,
-      slack: { channelId: "C1", before: "1700000000.000100", query: null },
+      slack: { channelId: "C1", before: "1700000000.000100", query: null, channelLimit: 100 },
     });
 
     expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
@@ -116,11 +116,27 @@ describe("loadDocoHomePerspectiveData", () => {
       channelId: "C1",
       before: "1700000000.000100",
       query: null,
-      limit: 50,
+      channelLimit: 100,
       semantic: null,
     });
     expect(data.slackData).toBe(slackData);
     expect(data.graph).toBeNull();
+  });
+
+  it("loads the pull requests from their URL state, without a node window", async () => {
+    await loadDocoHomePerspectiveData(client, {
+      activeKind: "pull-requests",
+      docoId: "doco_1",
+      handle: "acme",
+      focusNodeId: null,
+      pullRequests: { lifecycles: ["active"], limit: 100 },
+    });
+
+    expect(mocks.selectPerspectiveWindow).not.toHaveBeenCalled();
+    expect(mocks.loadPullRequestsPerspective).toHaveBeenCalledWith(client, "doco_1", {
+      lifecycles: ["active"],
+      limit: 100,
+    });
   });
 
   it.each(ALL_KINDS)("applies the default page budget to %s", async (kind) => {
@@ -165,9 +181,7 @@ describe("loadDocoHomePerspectiveData", () => {
         handle: "acme",
       });
     } else if (kind === "pull-requests") {
-      expect(mocks.loadPullRequestsPerspective).toHaveBeenCalledWith(client, "doco_1", {
-        limit: budget.rowLimit,
-      });
+      expect(mocks.loadPullRequestsPerspective).toHaveBeenCalledWith(client, "doco_1", undefined);
     } else if (kind === "org-tree") {
       expect(mocks.loadOrgTreeData).toHaveBeenCalledWith(client, "doco_1", "acme", {
         limit: budget.nodeLimit,

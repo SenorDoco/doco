@@ -80,6 +80,32 @@ describe("loadSlackPerspective", () => {
     expect(data.channels.map((ch) => ch.name)).toEqual(["eng", "general"]);
   });
 
+  it("lists the latest channelLimit channels and says more exist", async () => {
+    const first = await loadSlackPerspective(c, "doco_slack", { channelLimit: 1 });
+    expect(first.channels.map((ch) => ch.name)).toEqual(["eng"]);
+    expect(first.moreChannels).toBe(true);
+
+    const all = await loadSlackPerspective(c, "doco_slack", { channelLimit: 2 });
+    expect(all.channels.map((ch) => ch.name)).toEqual(["eng", "general"]);
+    expect(all.moreChannels).toBe(false);
+  });
+
+  it("reads a requested channel the list doesn't reach yet", async () => {
+    const data = await loadSlackPerspective(c, "doco_slack", {
+      channelId: "C_GEN",
+      channelLimit: 1,
+    });
+
+    expect(data.channels.map((ch) => ch.name)).toEqual(["eng"]);
+    expect(data.channelId).toBe("C_GEN");
+    expect(data.messages.map((m) => m.text)).toEqual(["welcome everyone"]);
+  });
+
+  it("never opens an excluded channel, even when asked for it", async () => {
+    const data = await loadSlackPerspective(c, "doco_slack", { channelId: "C_HID" });
+    expect(data.channelId).toBe("C_ENG");
+  });
+
   it("opens the most recently active channel, newest message first, with its thread", async () => {
     const data = await loadSlackPerspective(c, "doco_slack", {});
 

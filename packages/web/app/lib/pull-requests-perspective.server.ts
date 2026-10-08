@@ -13,6 +13,7 @@
 // helper; no write surface here).
 
 import { getDocoConnectionsContext } from "./github-connection.server";
+import { LIST_PAGE } from "./list-limit";
 import { PR_LIFECYCLE_ORDER, pullRequestLabel } from "./pull-requests";
 
 // Re-exported so existing importers of the label from this module keep working;
@@ -72,8 +73,6 @@ export interface PullRequestsPerspectiveData {
 type PullRequestRefRowWithTotal = PullRequestRefRow & {
   total_count: number | string | null;
 };
-
-const DEFAULT_PULL_REQUEST_LIMIT = 500;
 
 // The canonical PR lifecycle stages, as a set, for normalizing row values.
 const VALID_PR_LIFECYCLES: ReadonlySet<string> = new Set(PR_LIFECYCLE_ORDER);
@@ -141,7 +140,7 @@ export async function loadPullRequestsPerspective(
 ): Promise<PullRequestsPerspectiveData> {
   const connectionCtx = await getDocoConnectionsContext(docoId);
   const connected = (connectionCtx?.connections.length ?? 0) > 0;
-  const limit = Math.max(1, Math.floor(opts.limit ?? DEFAULT_PULL_REQUEST_LIMIT));
+  const limit = Math.max(1, Math.floor(opts.limit ?? LIST_PAGE));
   const queryLimit = limit + 1;
 
   // Normalize the requested stages: undefined → all (no filter); a whitelisted

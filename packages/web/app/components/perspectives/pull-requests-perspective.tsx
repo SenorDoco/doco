@@ -3,6 +3,7 @@
 // NOT grouped by lifecycle). The frame's lifecycle filter narrows the list by
 // PR state (Open / Merged / Closed); the narrowing happens server-side (see the
 // loader) so it spans the whole repo, not just the latest-N slice shown here.
+// The list opens with the latest 50; Show more loads 50 more (`?pr_limit=`).
 //
 // PRs are stored as `reference` nodes (locator = the PR URL); the loader
 // (pull-requests-perspective.server.ts) reads the latest back. Each row links
@@ -17,6 +18,7 @@
 
 import { ExternalLink, GitMerge, GitPullRequest, Github } from "lucide-react";
 import { Link } from "react-router";
+import { ShowMoreLink } from "~/components/show-more-link";
 import { lifecycleColor } from "~/lib/node-colors";
 import { perspectiveCountLabel } from "~/lib/perspective-count";
 import type {
@@ -79,6 +81,7 @@ export function PullRequestsPerspective({
             ))}
           </ul>
         )}
+        {data.hasMore ? <ShowMoreLink param="pr_limit" limit={data.loadedCount} /> : null}
       </div>
     </div>
   );
