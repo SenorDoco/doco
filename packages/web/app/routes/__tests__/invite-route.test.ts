@@ -177,7 +177,9 @@ describe("/invite/:code", () => {
     expect((result as Response).headers.get("Location")).toBe("/workspaces/torre");
   });
 
-  it("shows a Doco invite's new member the way on to the Doco, with no workspace steps", async () => {
+  // Accepting always goes to what the invite grants (Alexander, 2026-10-08:
+  // no extra click); the Doco page shows the person they're in.
+  it("takes a Doco invite's new member straight to the Doco, with no workspace steps", async () => {
     const docoInvite = {
       ...WORKSPACE_INVITE,
       level: "doco",
@@ -190,21 +192,9 @@ describe("/invite/:code", () => {
       request: request("POST"),
       params: { code: "invite_code" },
     });
-    expect(result).toMatchObject({ ok: true, continue_to: "/torre-bugs" });
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).headers.get("Location")).toBe("/torre-bugs");
     expect(mocks.startOnboarding).not.toHaveBeenCalled();
-
-    const html = renderToStaticMarkup(
-      createElement(
-        MemoryRouter,
-        null,
-        createElement(InviteLanding, {
-          loaderData: { error: "consumed" },
-          actionData: result as never,
-        }),
-      ),
-    );
-    expect(html).toContain("You&#x27;re in");
-    expect(html).toContain('href="/torre-bugs"');
   });
 });
 

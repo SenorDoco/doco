@@ -1,6 +1,11 @@
 import { addUser, findUserByGitHubLogin } from "@doco/host";
 import { redirect } from "react-router";
-import { clearSignupInviteCookie, maySignUp } from "~/lib/invite.server";
+import {
+  acceptInvite,
+  clearSignupInviteCookie,
+  inviteCodeIn,
+  maySignUp,
+} from "~/lib/invite.server";
 import {
   clearOAuthReturnCookie,
   clearOAuthStateCookie,
@@ -18,7 +23,8 @@ import { setSessionCookie } from "~/lib/session.server";
  * On success: creates a user if first time, or signs in the
  * existing one. Sets the session cookie and redirects home. A newcomer
  * needs the signup code from /sign-up, or a user's pending invite to return
- * to (see maySignUp).
+ * to (see maySignUp). Signing in from an invite accepts it, so the person
+ * lands in what it grants, or back on the invite when it can't be accepted.
  */
 export async function loader({ request }: { request: Request }) {
   const config = readOAuthConfig(request);
@@ -66,11 +72,17 @@ export async function loader({ request }: { request: Request }) {
   // Combine cookies in one Set-Cookie response (Remix supports an array via
   // Headers.append). Clear the OAuth-state cookie + return cookie and set
   // the session cookie. Honor `?return=` cookie if a sane same-origin path
-  // is captured; default to /workspaces.
+  // is captured; default to /workspaces. Signing in from an invite (Human on
+  // its page) accepts it: that choice already said the person wants in.
   const headers = oauthCleanupHeaders();
   headers.append("Set-Cookie", clearSignupInviteCookie());
   headers.append("Set-Cookie", setSessionCookie(userId));
-  headers.set("Location", returnPath ?? "/workspaces");
+  const inviteCode = inviteCodeIn(returnPath);
+  const accepted = inviteCode ? await acceptInvite(inviteCode, userId) : null;
+  headers.set(
+    "Location",
+    accepted && "to" in accepted ? accepted.to : (returnPath ?? "/workspaces"),
+  );
   return new Response(null, { status: 302, headers });
 }
 
