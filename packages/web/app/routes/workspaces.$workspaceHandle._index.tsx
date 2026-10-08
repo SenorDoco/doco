@@ -139,12 +139,16 @@ export async function loader({
           after_json: Record<string, unknown> | null;
           user_name: string | null;
         }>(
+          // Each Doco's newest events, read off its (doco_id, at) index, then
+          // the newest of those: never a sort of every event in the workspace.
           `SELECT a.event_id, a.at, a.doco_id, a.entity_type, a.entity_id, a.op,
                   a.before_json, a.after_json,
                   COALESCE(c.github_login, c.email, c.id) AS user_name
-             FROM audit_events a
+             FROM unnest($1::text[]) AS d(id)
+            CROSS JOIN LATERAL (
+                  SELECT * FROM audit_events a WHERE a.doco_id = d.id ORDER BY a.at DESC LIMIT $2
+                 ) a
              LEFT JOIN users c ON c.id = a.by_user
-            WHERE a.doco_id = ANY($1::text[])
             ORDER BY a.at DESC
             LIMIT $2`,
           [docoIds, FEED_LIMIT],
