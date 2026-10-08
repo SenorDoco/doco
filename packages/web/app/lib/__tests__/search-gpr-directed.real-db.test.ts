@@ -3,16 +3,17 @@
 // `gpr` used to symmetrize every edge, so an intent that many events "serve"
 // (edge from=event → to=intent) had its mass diluted across the star and
 // could rank *below* a decision that merely fans out to a few actions. The
-// search path now runs a *directed* PageRank, so the intent — the target of
+// search path now reads a *directed* PageRank, so the intent — the target of
 // many edges — accumulates rank as an authority. This pins that against real
-// Postgres (PGlite), through the actual `attachSearchGlobalPageRank` query.
+// Postgres (PGlite): the rank stored per node by the refresh, as search reads it.
 
 import type { PGlite } from "@electric-sql/pglite";
 import { describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
-import { type SearchHit, attachSearchGlobalPageRank } from "../search.server";
+import { refreshNodeRanks } from "../node-ranks.server";
+import { type SearchHit, attachNodeRanks } from "../search.server";
 
-type Client = Parameters<typeof attachSearchGlobalPageRank>[0];
+type Client = Parameters<typeof attachNodeRanks>[0];
 
 async function node(db: PGlite, id: string, nodeType: string): Promise<void> {
   await db.query(
@@ -79,7 +80,8 @@ describe("search gpr is directed", () => {
     const db = await seed();
     const intent = hit("intent_1", "intent");
     const decision = hit("decision_1", "decision");
-    await attachSearchGlobalPageRank(db, "doco_1", [intent, decision]);
+    await refreshNodeRanks(db);
+    await attachNodeRanks(db, [intent, decision]);
     expect(intent.gpr).toBeGreaterThan(decision.gpr);
   });
 });

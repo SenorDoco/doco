@@ -13,6 +13,10 @@
 // token's workspace boundary) or a hook token (the Docos the person who
 // made it can read in its workspace). 401 when none resolves. Each brief is one query of the workspace in the query log,
 // with the brief's id, what it served and how long each step took.
+//
+// A brief stops at its deadline (BRIEF_DEADLINE_MS) or when the caller goes
+// away. A hook token's brief has HOOK_BRIEF_DEADLINE_MS and no synthesis
+// (decision_01M4EXEY6FQBGNEB39QR2NB9CD).
 
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
@@ -32,6 +36,9 @@ import { extractBearer, getCurrentPrincipalAsync } from "~/lib/session.server";
 // Embedding, reranking and the synthesis each call a model: past the
 // platform's default seconds.
 export const config = { maxDuration: 60 };
+
+/** The hook gives up after 8 seconds (DEFAULT_TIMEOUT_MS in hook/doco-hook.mjs). */
+const HOOK_BRIEF_DEADLINE_MS = 6_000;
 
 export interface BriefParams extends BriefRequest {
   touching: string[];
@@ -100,7 +107,17 @@ export async function loader({ request }: { request: Request }) {
         )
       ).rows.map((row) => row.id);
     }
-    const brief = await composeBrief(c, { docoIds, origin }, params);
+    // The hook reads the items, not a paragraph about them, and gives up
+    // after 8 seconds.
+    const brief = await composeBrief(
+      c,
+      { docoIds, origin },
+      {
+        ...params,
+        signal: request.signal,
+        ...(hookToken ? { synthesize: false, deadlineMs: HOOK_BRIEF_DEADLINE_MS } : {}),
+      },
+    );
     // The brief is one query of the workspaces it drew from, or, when it
     // served nothing, of the workspaces in reach.
     const served = brief.items.flatMap((item) => (item.doco ? [item.doco] : []));

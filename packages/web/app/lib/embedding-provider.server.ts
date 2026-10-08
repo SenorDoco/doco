@@ -25,11 +25,15 @@ function wrapWithUsageLog(inner: EmbeddingProvider): EmbeddingProvider {
   return {
     modelId: inner.modelId,
     dimensions: inner.dimensions,
-    async embed(texts: string[], inputType?: EmbeddingInputType): Promise<Float32Array[]> {
+    async embed(
+      texts: string[],
+      inputType?: EmbeddingInputType,
+      signal?: AbortSignal,
+    ): Promise<Float32Array[]> {
       const start = performance.now();
       const totalChars = texts.reduce((n, s) => n + s.length, 0);
       try {
-        const out = await inner.embed(texts, inputType);
+        const out = await inner.embed(texts, inputType, signal);
         waitUntil(
           recordOpenAiUsage({
             model: inner.modelId,
@@ -70,11 +74,13 @@ export function getDocoEmbeddingProvider(): EmbeddingProvider | undefined {
 /**
  * The query side of a semantic search: the query embedded by the active
  * provider, with the model that produced it. `semantic` is null, with the
- * reason in `warning`, when there is no provider or the call failed; search
- * then degrades to full-text rather than returning nothing.
+ * reason in `warning`, when there is no provider or the call failed (or
+ * `signal` aborted it); search then degrades to full-text rather than
+ * returning nothing.
  */
 export async function embedQuery(
   text: string,
+  signal?: AbortSignal,
 ): Promise<{ semantic: SemanticQuery | null; warning: string | null }> {
   const provider = getDocoEmbeddingProvider();
   if (!provider) {
@@ -85,7 +91,7 @@ export async function embedQuery(
     };
   }
   try {
-    const [vector] = await provider.embed([text], "query");
+    const [vector] = await provider.embed([text], "query", signal);
     if (!vector || vector.length === 0) {
       return {
         semantic: null,

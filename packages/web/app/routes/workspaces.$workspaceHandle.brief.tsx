@@ -43,7 +43,11 @@ export async function loader({
     return { workspace, ask, brief: null as Brief | null };
   }
   const brief = await withClient((c) =>
-    composeBrief(c, { docoIds: docos.map((d) => d.id), origin: getPublicBaseUrl(request) }, ask),
+    composeBrief(
+      c,
+      { docoIds: docos.map((d) => d.id), origin: getPublicBaseUrl(request) },
+      { ...ask, signal: request.signal },
+    ),
   );
   waitUntil(
     recordQuery(request, { workspaceId: workspace.id, docoId: null }, me?.id ?? null, {

@@ -140,6 +140,9 @@ describe("GET /api/v1/brief.json", () => {
       rerank: false,
       synthesize: true,
     });
+    // The brief's default deadline, and it stops when the caller goes away.
+    expect(request.deadlineMs).toBeUndefined();
+    expect(request.signal).toBeInstanceOf(AbortSignal);
     const body = await res.json();
     expect(body.brief_id).toBe("brief_1");
     expect(body.text).toContain("## Must obey");
@@ -172,7 +175,8 @@ describe("GET /api/v1/brief.json", () => {
   });
 
   // decision_01M4C2J610DPD028P55Q8X6VG2: a token reads as the person who made it.
-  it("gives a hook token the Docos its maker can read in its workspace, with no actor", async () => {
+  // The hook gives up after 8 seconds, so its brief has 6 and no synthesis.
+  it("gives a hook token the Docos its maker can read in its workspace, with no actor, fast", async () => {
     mocks.extractBearer.mockReturnValue("doco_ht_x");
     mocks.isHookToken.mockReturnValue(true);
     mocks.validateHookToken.mockResolvedValue({
@@ -185,6 +189,11 @@ describe("GET /api/v1/brief.json", () => {
     expect(mocks.getCurrentPrincipalAsync).not.toHaveBeenCalled();
     expect(mocks.listReadableDocosInWorkspace).toHaveBeenCalledWith("workspace_9", "user_maker");
     expect(mocks.composeBrief.mock.calls[0][1].docoIds).toEqual(["doco_9", "doco_10"]);
+    expect(mocks.composeBrief.mock.calls[0][2]).toMatchObject({
+      about: "x",
+      synthesize: false,
+      deadlineMs: 6000,
+    });
     expect(mocks.recordQuery.mock.calls[0][2]).toBeNull();
     expect((await res.json()).display.found).toContain("[🔮 Doco] briefed");
   });
