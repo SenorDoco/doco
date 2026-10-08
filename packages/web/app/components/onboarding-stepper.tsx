@@ -161,14 +161,20 @@ function StepBody({
 
 /**
  * Ask where the steps stand every few seconds while the agent step waits on
- * the agent, and open the end of the setup the moment it is done.
+ * the agent, and open the end of the setup the moment it is done. The step
+ * shows what the poll says in place and reloads nothing while it waits: once
+ * reloading the page on every render flooded doco.to and starved the brief
+ * (decision_01M4ESD5BZKX3JYKYK84VKK8RR).
  */
-function useWaitForAgent(view: OnboardingView, action: string, onFinished: () => void) {
+function useWaitForAgent(
+  view: OnboardingView,
+  action: string,
+  onFinished: () => void,
+): OnboardingView["agent"] {
   const fetcher = useFetcher<{
     pending: OnboardingStep | null;
     agent: { wrote: boolean; hook: boolean } | null;
   }>();
-  const revalidator = useRevalidator();
 
   const load = fetcher.load;
   useEffect(() => {
@@ -176,22 +182,12 @@ function useWaitForAgent(view: OnboardingView, action: string, onFinished: () =>
     return () => clearInterval(timer);
   }, [load, action]);
 
-  // The page moves on when the step does, and shows the agent step's note or
-  // hook the moment either arrives.
-  const polled = fetcher.data;
-  const revalidate = revalidator.revalidate;
-  const { wrote, hook } = view.agent;
+  const finished = fetcher.data?.pending === null;
   useEffect(() => {
-    if (!polled) return;
-    if (polled.pending === null) onFinished();
-    else if (
-      polled.pending !== view.pending ||
-      polled.agent?.wrote !== wrote ||
-      polled.agent?.hook !== hook
-    ) {
-      revalidate();
-    }
-  }, [polled, view.pending, wrote, hook, onFinished, revalidate]);
+    if (finished) onFinished();
+  }, [finished, onFinished]);
+
+  return { ...view.agent, ...fetcher.data?.agent };
 }
 
 function Waiting({ children }: { children: React.ReactNode }) {
@@ -315,9 +311,8 @@ function AgentStep({
   action: string;
   onFinished: () => void;
 }) {
-  useWaitForAgent(view, action, onFinished);
-  const { wrote, hook } = view.agent;
-  const where = view.agent.agentsChatsHandle ?? `${view.workspaceHandle}'s Agents chats Doco`;
+  const { wrote, hook, agentsChatsHandle } = useWaitForAgent(view, action, onFinished);
+  const where = agentsChatsHandle ?? `${view.workspaceHandle}'s Agents chats Doco`;
   const chats = <span className="font-mono">{where}</span>;
   return (
     <div className="space-y-3 text-sm">
