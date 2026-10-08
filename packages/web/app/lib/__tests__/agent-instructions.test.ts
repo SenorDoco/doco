@@ -47,11 +47,15 @@ describe("agentInstructions", () => {
     expect(text).not.toContain("https://doco.test/mcp");
   });
 
-  it("then uses the project's workspace, asking the user only when there is none", () => {
+  // Alexander, 2026-10-08 (decision_01M4ER9B3KXN0SFJ307F0YKHKM): a Codex agent
+  // given the workspace by name was still told to ask which to use.
+  it("then uses the project's workspace, or the one the user named, asking only when there is neither", () => {
     const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
     expect(step2).toContain("One project = one workspace");
     expect(step2).toContain("the one whose URL is in the project's `.doco/workspace` file");
-    expect(step2).toContain("call `list_workspaces`, ask the user which to use");
+    expect(step2).toContain(
+      "Without that file, use the workspace the user named, or call `list_workspaces` and ask the user which to use",
+    );
     expect(step2).toContain("save `https://doco.test/workspaces/<handle>` there");
     // A personal workspace exists for everyone and never stands in for a project.
     expect(step2).toContain("none besides their personal one");
@@ -71,15 +75,55 @@ describe("agentInstructions", () => {
   // a `Doco workspace:` line in AGENTS.md, an older hook script) moves over
   // once, by a message its person sends its agent.
   it("assumes a new project, with nothing from the old onboarding to clean up", () => {
-    expect(text).toContain("Check these at the start of each session and fix what is missing.");
     const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
-    expect(step2).toContain("Without that file, call `list_workspaces`");
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain("If the project doesn't run the Doco hook, install it as");
     expect(text).not.toContain("doco:begin");
     expect(text).not.toContain("Doco workspace:");
     expect(text).not.toContain("AGENTS.md");
     expect(text).not.toContain("older");
+  });
+
+  // Alexander, 2026-10-08 (decision_01M4ER9B3KXN0SFJ307F0YKHKM): a Codex agent
+  // read "doco_brief before you act" as blocking setup, asked for a restart and
+  // then dug through Codex's internals to avoid it, said "configured" without
+  // checking, stalled on 504s, and recorded adopting Doco as a Decision.
+  it("puts setup first and says when it is done", () => {
+    const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
+    expect(setup).toContain(
+      "Check these first at the start of each session, before the duties, and fix what is missing.",
+    );
+    expect(text.slice(position("3. **Hook.**"))).toContain(
+      "Setup is done when Doco's tools answer, `.doco/workspace` is saved, the hook has run once with its token, and the chat's Log is in Agents chats; give the user its link.",
+    );
+  });
+
+  it("plans a restart instead of working around it", () => {
+    const step = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
+    expect(step).toContain(
+      "If the tools only appear after a restart, do every step that doesn't need them first and ask once; never dig through your client's internals to avoid it.",
+    );
+  });
+
+  it("retries a failed Doco call once, then goes on and says what is pending", () => {
+    expect(text.slice(0, position("### Setup"))).toContain(
+      "If a Doco call fails, retry it once, go on with what doesn't need it, and tell the user what is pending.",
+    );
+  });
+
+  it("keeps one Log per chat and leaves setting up Doco out of Decisions", () => {
+    const record = text.slice(
+      position("**Record the conversation.**"),
+      position("**Document every decision.**"),
+    );
+    expect(record).toContain(
+      "Keep one Log per chat in the workspace's Agents chats Doco, captured with `doco_capture` and superseded as the chat goes on",
+    );
+    const decide = text.slice(
+      position("**Document every decision.**"),
+      position("**Update the process.**"),
+    );
+    expect(decide).toContain("Setting up Doco is not a decision; the Log covers it.");
   });
 
   // Alexander, 2026-10-07 (decision_01M4BJN9097MW8Y8N0X38DGGAZ): say plainly
@@ -205,9 +249,11 @@ describe("agentInstructionsForWorkspace", () => {
     expect(request).toContain("with it as the project's workspace");
   });
 
+  // One Log per chat (decision_01M4ER9B3KXN0SFJ307F0YKHKM): the note is the
+  // chat's Log, not a second one.
   it("asks the agent to note in the workspace's Agents chats Doco that it got them", () => {
     expect(request).toContain(
-      "`doco_capture` a Log in acme's Agents chats Doco saying you received these instructions",
+      "`doco_capture` this chat's Log in acme's Agents chats Doco, saying you received these instructions",
     );
   });
 
