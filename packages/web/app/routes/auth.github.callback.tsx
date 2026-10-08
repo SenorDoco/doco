@@ -1,6 +1,6 @@
 import { addUser, findUserByGitHubLogin } from "@doco/host";
 import { redirect } from "react-router";
-import { clearSignupInviteCookie, hasValidSignupInviteCookie } from "~/lib/invite.server";
+import { clearSignupInviteCookie, maySignUp } from "~/lib/invite.server";
 import {
   clearOAuthReturnCookie,
   clearOAuthStateCookie,
@@ -16,7 +16,9 @@ import { setSessionCookie } from "~/lib/session.server";
 /**
  * GET /auth/github/callback — finishes the OAuth round-trip (ADR-095).
  * On success: creates a user if first time, or signs in the
- * existing one. Sets the session cookie and redirects home.
+ * existing one. Sets the session cookie and redirects home. A newcomer
+ * needs the signup code from /sign-up, or a user's pending invite to return
+ * to (see maySignUp).
  */
 export async function loader({ request }: { request: Request }) {
   const config = readOAuthConfig(request);
@@ -28,6 +30,7 @@ export async function loader({ request }: { request: Request }) {
   if (!code || !state) throw new Response("Missing code or state.", { status: 400 });
 
   const cookieHeader = request.headers.get("cookie");
+  const returnPath = readOAuthReturnCookie(cookieHeader);
   const verdict = verifyOAuthState(config, state, cookieHeader);
   if (verdict !== "valid") {
     throw new Response(`OAuth state ${verdict}.`, { status: 400 });
@@ -43,7 +46,7 @@ export async function loader({ request }: { request: Request }) {
   if (existing) {
     userId = existing.id;
   } else {
-    if (!hasValidSignupInviteCookie(cookieHeader)) {
+    if (!(await maySignUp(cookieHeader, returnPath))) {
       const headers = oauthCleanupHeaders();
       headers.append("Set-Cookie", clearSignupInviteCookie());
       headers.set("Location", "/sign-up?error=invite_required");
@@ -67,7 +70,6 @@ export async function loader({ request }: { request: Request }) {
   const headers = oauthCleanupHeaders();
   headers.append("Set-Cookie", clearSignupInviteCookie());
   headers.append("Set-Cookie", setSessionCookie(userId));
-  const returnPath = readOAuthReturnCookie(cookieHeader);
   headers.set("Location", returnPath ?? "/workspaces");
   return new Response(null, { status: 302, headers });
 }
