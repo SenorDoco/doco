@@ -67,7 +67,9 @@ export function PullRequestsPerspective({
           )}
         </p>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* The bottom padding lifts the list's end, Show more included, clear of
+          the frame's lifecycle filter, which floats over the bottom left. */}
+      <div className="min-h-0 flex-1 overflow-y-auto pb-12">
         {data.items.length === 0 ? (
           <p className="px-4 py-3 text-xs italic text-muted-foreground">
             {filtered
