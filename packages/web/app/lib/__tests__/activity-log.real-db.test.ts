@@ -8,7 +8,12 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
-import { countByDay, loadLatestActivity, summarizeActivity } from "../activity-log.server";
+import {
+  countByDay,
+  loadLatestActivity,
+  rollUpActivity,
+  summarizeActivity,
+} from "../activity-log.server";
 
 let db: InstanceType<typeof PGlite>;
 
@@ -310,5 +315,104 @@ describe("countByDay", () => {
       "2026-09-01": 1,
       "2026-09-03": 1,
     });
+  });
+});
+
+describe("rollUpActivity", () => {
+  // The morning of September 6: every day through the 5th is over.
+  const SEPT_6 = new Date("2026-09-06T05:00:00Z");
+  const SCOPE = { ...BOTH, workspaceId: "workspace_acme" };
+  const SINCE = "2026-08-01T00:00:00Z";
+  // Starts and ends mid-day, so both ends come from the logs.
+  const PERIOD = { since: "2026-09-01T12:00:00Z", until: "2026-09-06T04:00:00Z" };
+
+  async function activity() {
+    await write("user_alice", "doco_notes", "api", CLAUDE_CODE, "2026-09-01T10:00:00Z");
+    await write("user_alice", "doco_notes", "api", CLAUDE_CODE, "2026-09-01T14:00:00Z");
+    await write("user_bob", "doco_bugs", "ui", WEBSITE, "2026-09-02T10:00:00Z");
+    await write(null, "doco_bugs", "api", { auth: "bearer" }, "2026-09-03T10:00:00Z");
+    await write("user_bob", "doco_bugs", "api", null, "2026-09-03T11:00:00Z");
+    await writePolicy("doco_notes", "2026-09-04T11:00:00Z");
+    await write("user_alice", "doco_notes", "ui", WEBSITE, "2026-09-06T03:00:00Z");
+    await query(
+      "user_alice",
+      "doco_notes",
+      "api",
+      { ...CLAUDE_CODE, brief_id: "b1" },
+      "2026-09-02T10:00:00Z",
+    );
+    await query(
+      "user_alice",
+      "doco_notes",
+      "api",
+      { ...CLAUDE_CODE, brief_id: "b2" },
+      "2026-09-02T11:00:00Z",
+    );
+    await query("user_bob", null, "ui", WEBSITE, "2026-09-05T11:00:00Z");
+    await query(null, "doco_bugs", "api", null, "2026-09-06T02:00:00Z");
+    await imports();
+  }
+
+  async function read() {
+    return {
+      byDay: await countByDay(db, SCOPE, SINCE),
+      summary: await summarizeActivity(db, SCOPE, PERIOD, 10),
+      notes: await summarizeActivity(db, { docoIds: ["doco_notes"] }, PERIOD, 10),
+    };
+  }
+
+  it("reads the same before and after the days are rolled up", async () => {
+    await activity();
+    const before = await read();
+    expect(before.byDay.writes).toEqual({
+      "2026-09-01": 2,
+      "2026-09-02": 1,
+      "2026-09-03": 1,
+      "2026-09-06": 1,
+    });
+
+    expect(await rollUpActivity(db, SEPT_6)).toEqual({ through: "2026-09-05" });
+    expect(await read()).toEqual(before);
+    // A second run counts nothing twice.
+    await rollUpActivity(db, SEPT_6);
+    expect(await read()).toEqual(before);
+  });
+
+  it("counts a day's writes and queries once, and recounts imports every run", async () => {
+    await activity();
+    await rollUpActivity(db, SEPT_6);
+    const rolled = await countByDay(db, SCOPE, SINCE);
+
+    // Dated into a rolled day: no write is, but the rollup doesn't look again.
+    await write("user_alice", "doco_notes", "api", CLAUDE_CODE, "2026-09-02T15:00:00Z");
+    // A message from the channel's history, copied after its day was rolled,
+    // and a code file copied again today.
+    await db.exec(`
+      INSERT INTO group_chat_messages (doco_id, channel_id, ts, text, posted_at)
+        VALUES ('doco_notes', 'C_GEN', '1.4', 'from the history', '2026-09-02T09:00:00Z');
+      UPDATE code_files SET synced_at = '2026-09-06T04:30:00Z';
+    `);
+    const now = await countByDay(db, SCOPE, SINCE);
+    expect(now.writes).toEqual(rolled.writes);
+    expect(now.imports).toEqual({ ...rolled.imports, "2026-09-06": 1 });
+
+    await rollUpActivity(db, SEPT_6);
+    const next = await countByDay(db, SCOPE, SINCE);
+    expect(next.writes).toEqual(rolled.writes);
+    expect(next.imports).toEqual({
+      "2026-09-02": 1,
+      "2026-09-03": 2,
+      "2026-09-04": 1,
+      "2026-09-06": 1,
+    });
+  });
+
+  it("leaves a day to the logs until an hour after it ends", async () => {
+    await activity();
+    expect(await rollUpActivity(db, new Date("2026-09-06T00:30:00Z"))).toEqual({
+      through: "2026-09-04",
+    });
+    await write("user_alice", "doco_notes", "api", CLAUDE_CODE, "2026-09-05T23:59:00Z");
+    expect((await countByDay(db, SCOPE, SINCE)).writes["2026-09-05"]).toBe(1);
   });
 });

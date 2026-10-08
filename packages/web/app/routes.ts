@@ -200,6 +200,9 @@ export default [
   route("api/onboarding/reminders", "routes/api.onboarding.reminders.tsx"),
   // Vercel Cron: the activity digest email, daily at 13:00 UTC.
   route("api/activity-digest", "routes/api.activity-digest.tsx"),
+  // Vercel Cron, hourly: counts each ended day of activity for the Activity
+  // calendars and top lists.
+  route("api/activity/rollup", "routes/api.activity.rollup.tsx"),
   // Inbound Notion webhook (the public integration's one subscription).
   route("api/notion/webhook", "routes/api.notion.webhook.tsx"),
   route("users/:username", "routes/users.$username.tsx"),

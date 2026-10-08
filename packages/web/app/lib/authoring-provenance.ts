@@ -49,6 +49,15 @@ export function formatAuthoringMechanism(
   return source ? source.replaceAll("_", " ") : null;
 }
 
+/** SQL for the part of a changesets or query_events row's metadata (`t`)
+ *  that `formatAuthoringMechanism` reads, to group rows by how they arrived:
+ *  grouped whole, a brief's query, which records its id and timings, would be
+ *  a group of its own. */
+export function mechanismMetadataSql(t: string): string {
+  const keys = ["surface", "client", "auth", "token_name", "client_name"];
+  return `jsonb_build_object(${keys.map((k) => `'${k}', ${t}.metadata->'${k}'`).join(", ")})`;
+}
+
 /** SQL that holds when a read or write (`t`, a changesets or query_events
  *  row) came from an agent over the MCP server or the API: a request with a
  *  credential. An API write with none came from Doco itself, as above, so

@@ -17,6 +17,7 @@ describe("Vercel cron jobs", () => {
       "/admin/agent-health-cron",
       "/admin/purge-deleted-docos",
       "/api/activity-digest",
+      "/api/activity/rollup",
       "/api/alerts/silence-check",
       "/api/embeddings/sweep",
       "/api/github/backfill-sweep",
