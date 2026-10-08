@@ -1,7 +1,7 @@
-// Getting a workspace going. Its owners walk four steps on its page: connect
-// GitHub, connect other sources of knowledge (or skip them), connect Doco to
-// their agent, ask their agent to start using Doco, which also turns on the
-// Doco hook. Everyone else in it walks only the last two. The workspace page
+// Getting a workspace going. Its owners walk three steps on its page: connect
+// GitHub, connect other sources of knowledge (or skip them), ask their agent
+// to start using Doco, which connects it to Doco and turns on the Doco hook.
+// Everyone else in it walks only the last. The workspace page
 // (and its card on the list) keeps the person on the first step not done
 // until every one is. Whoever creates a workspace or joins it from an invite
 // gets a reminder email 15 minutes later if a step is still open.
@@ -12,21 +12,17 @@
 //   sources — the person finished the step (with what they connected) or
 //             skipped it, or agents already work in the workspace (a
 //             workspace that far along is past connecting its sources);
-//   mcp     — the person approved an agent's connection that reaches the
-//             workspace and hasn't been revoked or run out, or their agent
-//             already read or wrote in it;
 //   agent   — the person's agent wrote into the workspace's Agents chats Doco
 //             (the instructions ask it to note there that it got them), and
 //             their Doco hook is on: a hook token they made for the
 //             workspace, not revoked, has been used (the agent gets it with
-//             doco_hook_token), or they said their agent doesn't run hooks
-//             (decision_01M4C2JDN3EZMA2FR8JPPMT7NN).
+//             doco_hook_token). Every agent Doco supports runs hooks.
 // Every member of a workspace walks them, except in their personal workspace
 // (named after them), which isn't a project's. workspace_onboarding holds what
-// nothing else records: who created the workspace or joined it from an invite,
-// when (the reminder's clock), and when they ended the other-sources step and
-// the hook themselves. A member without a row (in a workspace made before the
-// steps, or added another way) walks them by role, and never gets a reminder.
+// nothing else records: who created the workspace or joined it from an
+// invite, when (the reminder's clock), and when they ended the other-sources
+// step. A member without a row (in a workspace made before the steps, or
+// added another way) walks them by role, and never gets a reminder.
 
 import { byAgentOverApiSql } from "./authoring-provenance";
 import {
@@ -69,27 +65,22 @@ export async function startOnboarding(
   );
 }
 
-/** What a person ends themselves, each with the column that says when. */
-const ENDED_BY_THE_PERSON = { sources: "sources_done_at", hook: "hook_done_at" } as const;
-
-/** End the other-sources step (with whatever was connected, or nothing) or
- *  the hook (their agent doesn't run hooks). A member without a row walks
- *  the steps by role, which the row it adds keeps; it counts as reminded,
- *  since nobody started the steps to be reminded of. */
-export async function finishStep(
+/** End the other-sources step, with whatever was connected or nothing. A
+ *  member without a row walks the steps by role, which the row it adds keeps;
+ *  it counts as reminded, since nobody started the steps to be reminded of. */
+export async function finishSourcesStep(
   c: QueryClient,
-  opts: { workspaceId: string; userId: string; step: keyof typeof ENDED_BY_THE_PERSON },
+  opts: { workspaceId: string; userId: string },
 ): Promise<void> {
-  const column = ENDED_BY_THE_PERSON[opts.step];
   await c.query(
     `INSERT INTO workspace_onboarding
-       (workspace_id, user_id, joined_as, ${column}, reminded_at)
+       (workspace_id, user_id, joined_as, sources_done_at, reminded_at)
      SELECT workspace_id, user_id,
             CASE WHEN role = 'owner' THEN 'creator' ELSE 'invitee' END, now(), now()
        FROM workspace_users
       WHERE workspace_id = $1 AND user_id = $2
      ON CONFLICT (workspace_id, user_id) DO UPDATE
-       SET ${column} = COALESCE(workspace_onboarding.${column}, now())`,
+       SET sources_done_at = COALESCE(workspace_onboarding.sources_done_at, now())`,
     [opts.workspaceId, opts.userId],
   );
 }
@@ -98,26 +89,20 @@ export async function finishStep(
 // of the workspace. An agent is anyone working over the MCP server or the API
 // (never the website, Slack or Doco's own imports, such as GitHub's): any
 // agent's read or write in the workspace finishes the other sources, and the
-// person's own finishes connecting Doco to their agent, as does a connection
-// they approved (an OAuth refresh token reaching every workspace of theirs,
-// this one, or a Doco in it); the agent step needs the person's own agent to
-// write in one of the workspace's Agents chats Docos.
-function agentWorkedSql(byThePerson = false): string {
-  const by = byThePerson ? " AND cs.actor = wu.user_id" : "";
-  const queriedBy = byThePerson ? " AND q.actor = wu.user_id" : "";
-  return `(EXISTS (
+// agent step needs the person's own agent to write in one of the workspace's
+// Agents chats Docos.
+const AGENT_WORKED_SQL = `(EXISTS (
              SELECT 1 FROM changesets cs
                JOIN docos d ON d.id = cs.doco_id
               WHERE d.workspace_id = wu.workspace_id
-                AND d.deleted_at IS NULL${by}
+                AND d.deleted_at IS NULL
                 AND ${byAgentOverApiSql("cs")}
            )
            OR EXISTS (
              SELECT 1 FROM query_events q
-              WHERE q.workspace_id = wu.workspace_id${queriedBy}
+              WHERE q.workspace_id = wu.workspace_id
                 AND ${byAgentOverApiSql("q")}
            ))`;
-}
 
 const PROGRESS_SQL = `
   SELECT wu.workspace_id, w.handle AS workspace_handle, wu.user_id,
@@ -130,21 +115,7 @@ const PROGRESS_SQL = `
               AND (COALESCE(d.data->'github_integration'->'connections', '[]'::jsonb) <> '[]'::jsonb
                 OR COALESCE(d.data->'github_integration'->'installations', '[]'::jsonb) <> '[]'::jsonb)
          ) AS github,
-         o.sources_done_at IS NOT NULL OR ${agentWorkedSql()} AS sources,
-         EXISTS (
-           SELECT 1 FROM oauth_refresh_tokens rt
-            WHERE rt.user_id = wu.user_id
-              AND NOT rt.revoked
-              AND rt.expires_at > now()
-              AND (rt.grant_type = 'actor'
-                OR wu.workspace_id = ANY (rt.granted_workspace_ids)
-                OR EXISTS (
-                  SELECT 1 FROM docos d
-                   WHERE d.id = ANY (rt.granted_doco_ids)
-                     AND d.workspace_id = wu.workspace_id
-                     AND d.deleted_at IS NULL
-                ))
-         ) OR ${agentWorkedSql(true)} AS mcp,
+         o.sources_done_at IS NOT NULL OR ${AGENT_WORKED_SQL} AS sources,
          EXISTS (
            SELECT 1 FROM changesets cs
              JOIN docos d ON d.id = cs.doco_id
@@ -154,7 +125,7 @@ const PROGRESS_SQL = `
               AND cs.actor = wu.user_id
               AND ${byAgentOverApiSql("cs")}
          ) AS wrote,
-         o.hook_done_at IS NOT NULL OR EXISTS (
+         EXISTS (
            SELECT 1 FROM hook_tokens ht
             WHERE ht.workspace_id = wu.workspace_id
               AND ht.created_by_user_id = wu.user_id
@@ -175,7 +146,6 @@ interface ProgressRow {
   joined_as: JoinedAs;
   github: boolean;
   sources: boolean;
-  mcp: boolean;
   wrote: boolean;
   hook: boolean;
 }
@@ -184,7 +154,6 @@ function toProgress(row: ProgressRow): OnboardingProgress {
   const done: Record<OnboardingStep, boolean> = {
     github: row.github,
     sources: row.sources,
-    mcp: row.mcp,
     agent: row.wrote && row.hook,
   };
   return {

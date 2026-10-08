@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { firstPersonLines } from "~/lib/__tests__/first-person";
-import { agentInstructions, agentInstructionsVersion } from "~/lib/agent-instructions";
+import { agentInstructions } from "~/lib/agent-instructions";
 
 // The hosted MCP endpoint at /mcp. Identity + reach come from the token via the
 // user-level gate (gateUserMcp); the tool surface + Doco confinement are shared.
@@ -605,20 +605,14 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(capture.description).toContain("footer_lines");
   });
 
-  // Alexander, 2026-10-02: an install whose client drops the server's
-  // instructions still sees doco_brief's description, which duty 1 calls
-  // first, so it names the current version and where to get the block.
-  it("doco_brief's description names the current agent instructions version", async () => {
+  // Alexander, 2026-10-07: with the hook, forget about AGENTS.md. No project
+  // keeps a copy of the instructions, so no tool names a version to check it
+  // against: the hook loads them at the start of every session.
+  it("names no agent instructions version in doco_brief's description", async () => {
     const res = await call({ jsonrpc: "2.0", id: 46, method: "tools/list" }, BEARER);
     const body: Json = await res.json();
     const brief = body.result.tools.find((t: Json) => t.name === "doco_brief");
-    const version = agentInstructionsVersion("https://doco.to");
-    expect(agentInstructions("https://doco.to")).toMatch(`<!-- doco:begin v${version} -->`);
-    expect(brief.description).toContain(
-      `The current Doco agent instructions are version v${version}. If the project's copy of them is missing, has no version or has another, fetch https://doco.to/agents and follow its step 3.`,
-    );
-    const search = body.result.tools.find((t: Json) => t.name === "doco_search");
-    expect(search.description).not.toContain("agent instructions are version");
+    expect(brief.description).not.toContain("agent instructions are version");
   });
 
   // The brief spans every Doco the bearer can read, so the tool takes no

@@ -14,12 +14,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { hostBreadcrumb } from "~/components/breadcrumb";
-import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { GrantPicker } from "~/components/grant-picker";
 import { PageHeader } from "~/components/page-header";
 import { PageMain } from "~/components/page-main";
-import { agentConnectGuides } from "~/lib/agent-connect-guides";
-import { agentInstructions } from "~/lib/agent-instructions";
+import { CONNECT_AGENT_PATH, agentInstructions } from "~/lib/agent-instructions";
 import {
   type ApiKeyGrantInput,
   type ApiKeyRow,
@@ -369,25 +367,21 @@ export function ExistingTokensPanel({
 export function ManualMcpPanel({ host }: { host: string }) {
   // ONE hosted MCP endpoint at /mcp. Connect once; the token's grant is the
   // scope (one workspace, several, or specific docos — list_workspaces
-  // enumerates the reach). The steps differ per agent, so the person picks
-  // theirs, as on /agents/connect and in a workspace's onboarding.
+  // enumerates the reach). The agent connects itself, as its instructions
+  // (the one template, as on /agents) say.
   const baseUrl = host.replace(/\/+$/, "");
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
-      {/* Step 1 — connect Doco to the person's agent */}
-      <div className="space-y-3">
-        <h2 className="text-base font-semibold">1. Connect Doco to your agent</h2>
-        <ConnectAgentGuide guides={agentConnectGuides(baseUrl)} />
-      </div>
-
-      {/* Step 2 — the one agent-instructions template, as on /agents */}
-      <div className="border-t border-border pt-3">
-        <AgentInstructionsBlock
-          title="2. Give your agent these instructions"
-          instructions={agentInstructions(baseUrl)}
-        />
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Doco works with Claude Code, Codex and Gemini CLI for now. Your agent connects itself to
+        Doco as <Link to={CONNECT_AGENT_PATH}>Connect Doco to your agent</Link> shows; you sign in
+        once.
+      </p>
+      <AgentInstructionsBlock
+        title="Give your agent these instructions"
+        instructions={agentInstructions(baseUrl)}
+      />
     </section>
   );
 }

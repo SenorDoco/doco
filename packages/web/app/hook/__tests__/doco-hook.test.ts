@@ -1,20 +1,27 @@
 // The Doco hook as the clients run it: a process fed one event on stdin that
-// prints the brief as additionalContext, or nothing. The brief route is a
-// local stub that records what the hook asked for.
+// prints the brief as additionalContext, or nothing. Doco is a local stub that
+// serves the instructions for agents and records what the hook asked for.
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { type Server, createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DOCO_REMINDER } from "../../lib/agent-instructions";
-import { DOCO_REMINDER as HOOK_REMINDER, requestFor, resolveConfig } from "../doco-hook.mjs";
+import { AGENT_INSTRUCTIONS_TEXT_PATH, DOCO_REMINDER } from "../../lib/agent-instructions";
+import {
+  DOCO_REMINDER as HOOK_REMINDER,
+  INSTRUCTIONS_PATH,
+  requestFor,
+  resolveConfig,
+} from "../doco-hook.mjs";
 
 const HOOK = new URL("../doco-hook.mjs", import.meta.url).pathname;
 
 let server: Server;
 let origin: string;
+const INSTRUCTIONS = "## Doco\n\nThis project keeps its shared memory in Doco.";
 const requests: { url: string; authorization: string | undefined }[] = [];
+let instructionsStatus = 200;
 let respond: (url: URL) => { status: number; body: string; delayMs?: number } = () => ({
   status: 200,
   body: "Doco brief brief_1 · about: x\n\n## Must obey\n- rule_1",
@@ -23,6 +30,11 @@ let respond: (url: URL) => { status: number; body: string; delayMs?: number } = 
 beforeAll(async () => {
   server = createServer((req, res) => {
     requests.push({ url: req.url ?? "", authorization: req.headers.authorization });
+    if (req.url === "/agents/instructions.md") {
+      res.writeHead(instructionsStatus, { "content-type": "text/markdown" });
+      res.end(INSTRUCTIONS);
+      return;
+    }
     const { status, body, delayMs } = respond(new URL(req.url ?? "/", "http://x"));
     setTimeout(() => {
       res.writeHead(status, { "content-type": "text/plain" });
@@ -36,6 +48,7 @@ beforeAll(async () => {
 afterAll(() => server.close());
 beforeEach(() => {
   requests.length = 0;
+  instructionsStatus = 200;
 });
 
 function runHook(
@@ -71,8 +84,9 @@ function project(): string {
 const session = () => `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 describe("the Doco hook", () => {
-  it("carries the reminder line the instructions name", () => {
+  it("carries the reminder line the instructions name, and loads them where Doco serves them", () => {
     expect(HOOK_REMINDER).toBe(DOCO_REMINDER);
+    expect(INSTRUCTIONS_PATH).toBe(AGENT_INSTRUCTIONS_TEXT_PATH);
   });
 
   it("briefs a prompt, reminder first, for Claude Code and Codex (UserPromptSubmit) and Gemini CLI (BeforeAgent)", async () => {
@@ -131,7 +145,10 @@ describe("the Doco hook", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("loads the standing orders at session start, with what changed since the last start here", async () => {
+  // Alexander, 2026-10-07: with the hook, forget about AGENTS.md. Every
+  // session starts on Doco's instructions for agents, fetched without a token
+  // since Doco serves them to anyone, then the standing orders.
+  it("loads the instructions and the standing orders at session start, with what changed since the last start here", async () => {
     const cwd = project();
     const env = { DOCO_ORIGIN: origin, DOCO_TOKEN: "doco_ht_env", DOCO_WORKSPACE: "acme" };
     const orders = "Standing orders for Acme (acme)\n\n## Constitution\nShip small.";
@@ -145,14 +162,22 @@ describe("the Doco hook", () => {
     const first = await runHook(event, env, cwd);
     expect(JSON.parse(first.stdout).hookSpecificOutput).toEqual({
       hookEventName: "SessionStart",
-      additionalContext: orders,
+      additionalContext: `${INSTRUCTIONS}\n\n${orders}`,
     });
-    expect(requests.map((r) => r.url)).toEqual([
+    expect(requests.map((r) => r.url).sort()).toEqual([
+      "/agents/instructions.md",
       "/api/v1/standing-orders.json?workspace=acme&format=text",
     ]);
+    expect(requests.find((r) => r.url === "/agents/instructions.md")?.authorization).toBe(
+      undefined,
+    );
+    requests.length = 0;
     const second = await runHook({ ...event, session_id: session() }, env, cwd);
-    expect(JSON.parse(second.stdout).hookSpecificOutput.additionalContext).toBe(orders);
-    const since = new URL(requests[1].url, "http://x").searchParams.get("since");
+    expect(JSON.parse(second.stdout).hookSpecificOutput.additionalContext).toBe(
+      `${INSTRUCTIONS}\n\n${orders}`,
+    );
+    const ordersUrl = requests.find((r) => r.url.startsWith("/api/v1/standing-orders.json"))?.url;
+    const since = new URL(ordersUrl ?? "", "http://x").searchParams.get("since");
     expect(Math.abs(Date.now() - Date.parse(since ?? ""))).toBeLessThan(60_000);
     respond = () => ({
       status: 200,
@@ -161,13 +186,12 @@ describe("the Doco hook", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("reads the workspace, the origin and the token from the project's files", async () => {
+  // The project keeps only its workspace, in .doco/workspace, and its token,
+  // out of git, in .doco/hook-tokens.json.
+  it("reads the workspace, the origin and the token from the project's .doco folder", async () => {
     const cwd = project();
-    writeFileSync(
-      join(cwd, "AGENTS.md"),
-      `# Project\n\n<!-- doco:begin v1 -->\n...\n<!-- doco:end -->\nDoco workspace: ${origin}/workspaces/acme\n`,
-    );
     mkdirSync(join(cwd, ".doco"));
+    writeFileSync(join(cwd, ".doco", "workspace"), `${origin}/workspaces/acme\n`);
     writeFileSync(
       join(cwd, ".doco", "hook-tokens.json"),
       JSON.stringify({ other: "doco_ht_other", acme: "doco_ht_file" }),
@@ -211,14 +235,14 @@ describe("the Doco hook", () => {
 
   // decision_01M4C2J610DPD028P55Q8X6VG2: a fresh clone has the hook but not
   // the token, which stays out of git; the agent gets its person's back.
-  it("without a token, tells the agent to get its own from doco_hook_token, and asks Doco nothing", async () => {
+  it("without a token, tells the agent to get its own from doco_hook_token, and asks Doco only for the instructions", async () => {
     const cwd = project();
     const env = { DOCO_ORIGIN: origin, DOCO_WORKSPACE: "acme" };
     const context = (out: string) => JSON.parse(out).hookSpecificOutput.additionalContext;
     const note =
       "The Doco hook has no token here: call doco_hook_token for acme, save the token as it says, and the hook briefs you from the next prompt on.";
     const start = await runHook({ hook_event_name: "SessionStart", cwd }, env, cwd);
-    expect([start.code, context(start.stdout)]).toEqual([0, note]);
+    expect([start.code, context(start.stdout)]).toEqual([0, `${INSTRUCTIONS}\n\n${note}`]);
     const prompt = await runHook(
       { hook_event_name: "UserPromptSubmit", session_id: session(), cwd, prompt: "x" },
       env,
@@ -236,7 +260,7 @@ describe("the Doco hook", () => {
       cwd,
     );
     expect([edit.code, edit.stdout]).toEqual([0, ""]);
-    expect(requests).toHaveLength(0);
+    expect(requests.map((r) => r.url)).toEqual(["/agents/instructions.md"]);
     rmSync(cwd, { recursive: true, force: true });
   });
 
@@ -250,7 +274,7 @@ describe("the Doco hook", () => {
       "Doco refused the Doco hook's token: call doco_hook_token for acme, save the token as it says, and the hook briefs you from the next prompt on.";
     respond = () => ({ status: 401, body: '{"kind":"invalid_token"}' });
     const start = await runHook({ hook_event_name: "SessionStart", cwd }, env, cwd);
-    expect([start.code, context(start.stdout)]).toEqual([0, note]);
+    expect([start.code, context(start.stdout)]).toEqual([0, `${INSTRUCTIONS}\n\n${note}`]);
     const prompt = await runHook(
       { hook_event_name: "UserPromptSubmit", session_id: session(), cwd, prompt: "x" },
       env,
@@ -313,6 +337,16 @@ describe("the Doco hook", () => {
       cwd,
     );
     expect([slowEdit.code, slowEdit.stdout]).toEqual([0, ""]);
+
+    // At session start the instructions come even when the standing orders
+    // don't, and nothing comes when neither does.
+    const start = { hook_event_name: "SessionStart", session_id: session(), cwd };
+    respond = () => ({ status: 500, body: "boom" });
+    const ordersFail = await runHook(start, { DOCO_ORIGIN: origin, DOCO_TOKEN: "t" }, cwd);
+    expect(JSON.parse(ordersFail.stdout).hookSpecificOutput.additionalContext).toBe(INSTRUCTIONS);
+    instructionsStatus = 500;
+    const bothFail = await runHook(start, { DOCO_ORIGIN: origin, DOCO_TOKEN: "t" }, cwd);
+    expect([bothFail.code, bothFail.stdout]).toEqual([0, ""]);
     respond = () => ({ status: 200, body: "fine" });
 
     const bad = await new Promise<{ stdout: string; code: number | null }>((done) => {

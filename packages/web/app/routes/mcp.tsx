@@ -18,7 +18,7 @@ import { getPublicBaseUrl } from "@doco/shared";
 import { requestDocoAccess } from "~/lib/access-requests.server";
 import { gatherAgentDebug } from "~/lib/agent-debug.server";
 import { type IdentityGrant, loadAgentIdentity } from "~/lib/agent-identity.server";
-import { agentInstructions, agentInstructionsPointer } from "~/lib/agent-instructions";
+import { agentInstructions } from "~/lib/agent-instructions";
 import { DOCO_TEMPLATES } from "~/lib/doco-templates-meta";
 import { hookTokenFor, hookTokenInstallHint } from "~/lib/hook-tokens.server";
 import { isSuperadmin } from "~/lib/session.server";
@@ -86,7 +86,7 @@ const BRIEF_TOOL = {
       workspace: {
         type: "string",
         description:
-          "The project's workspace handle (the `Doco workspace:` line of its AGENTS.md): its charter and rules bind. Default: every Doco you can read.",
+          "The project's workspace handle (from the URL in its .doco/workspace): its charter and rules bind. Default: every Doco you can read.",
       },
       rerank: {
         type: "boolean",
@@ -402,7 +402,7 @@ const WHOAMI_TOOL = {
       workspace: {
         type: "string",
         description:
-          "The project's workspace handle (the `Doco workspace:` line of its AGENTS.md); default: the one workspace this connection reaches, if there is one.",
+          "The project's workspace handle (from the URL in its .doco/workspace); default: the one workspace this connection reaches, if there is one.",
       },
       since: {
         type: "string",
@@ -428,7 +428,7 @@ const HOOK_TOKEN_TOOL = {
       workspace: {
         type: "string",
         description:
-          "The project's workspace handle (the `Doco workspace:` line of its AGENTS.md); default: the one workspace this connection reaches, if there is one.",
+          "The project's workspace handle (from the URL in its .doco/workspace); default: the one workspace this connection reaches, if there is one.",
       },
     },
   },
@@ -495,16 +495,6 @@ const AGENT_DEBUG_TOOL = {
     },
   },
 };
-
-// doco_search, which duty 1 calls first, names the agent instructions'
-// current version (agentInstructionsPointer).
-function toolsFor(baseUrl: string) {
-  const brief = {
-    ...BRIEF_TOOL,
-    description: `${BRIEF_TOOL.description}\n${agentInstructionsPointer(baseUrl)}`,
-  };
-  return TOOLS.map((tool) => (tool === BRIEF_TOOL ? brief : tool));
-}
 
 const TOOLS = [
   WHOAMI_TOOL,
@@ -968,7 +958,7 @@ async function runDocoHookToken(
       named
         ? `This connection doesn't reach the whole workspace ${named}, and the hook's token reads all of it the user can. Ask the user to connect Doco again and include ${named} when Doco asks what the agent may reach.`
         : workspaces.length > 1
-          ? "This connection reaches several workspaces: name the project's (workspace=<handle>), from the `Doco workspace:` line of its AGENTS.md."
+          ? "This connection reaches several workspaces: name the project's (workspace=<handle>), from the URL in its .doco/workspace."
           : "This connection reaches no whole workspace. Ask the user to connect Doco again and include the project's workspace when Doco asks what the agent may reach.",
     );
   }
@@ -1061,14 +1051,14 @@ async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promis
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        // The one agent-instructions template, the same block /agents
-        // shows: in a connector context there may be no AGENTS.md copy yet.
+        // The one agent-instructions template, the same text /agents shows
+        // and the Doco hook loads: an agent without the hook yet gets it here.
         instructions: agentInstructions(getPublicBaseUrl(request)),
       });
     case "ping":
       return rpcResult(message.id, {});
     case "tools/list":
-      return rpcResult(message.id, { tools: toolsFor(getPublicBaseUrl(request)) });
+      return rpcResult(message.id, { tools: TOOLS });
     case "tools/call": {
       const params = message.params as
         | { name?: string; arguments?: Record<string, unknown> }

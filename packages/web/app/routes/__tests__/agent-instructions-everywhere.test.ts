@@ -23,11 +23,16 @@ describe("the one agent-instructions template", () => {
     expect(AI_INSTRUCTIONS_META).toContain("follow the agent instructions at /agents.");
   });
 
-  it("is what the OAuth recipe has agents keep in AGENTS.md", async () => {
+  // Alexander, 2026-10-07: with the hook, forget about AGENTS.md. The recipe
+  // has agents follow the instructions, which install the hook that loads
+  // them, and keep no copy.
+  it("is what the OAuth recipe has agents follow, keeping no copy in AGENTS.md", async () => {
     const body = await oauthRecipe({
       request: new Request("https://doco.test/protocol/agent-oauth-recipe"),
     }).text();
-    expect(body).toMatch(/AGENTS\.md` with the instructions at https:\/\/doco\.test\/agents,/);
+    expect(body).toContain("follow the instructions at https://doco.test/agents, which");
+    expect(body).toContain("so the project keeps no copy");
+    expect(body).not.toContain("AGENTS.md");
     expect(body).not.toMatch(/canonical[ _-]instructions/i);
     expect(body).toContain("`agent_instructions`");
   });

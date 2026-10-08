@@ -41,10 +41,7 @@ describe("loadOnboardingView", () => {
       workspaceHandle: ACME.handle,
       userId: "user_bo",
       joinedAs: "invitee",
-      steps: [
-        { step: "mcp", done: true },
-        { step: "agent", done: false },
-      ],
+      steps: [{ step: "agent", done: false }],
       agent: { wrote: true, hook: false },
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_bo" });
@@ -68,7 +65,6 @@ describe("loadOnboardingView", () => {
       steps: [
         { step: "github", done: false },
         { step: "sources", done: false },
-        { step: "mcp", done: false },
         { step: "agent", done: false },
       ],
       agent: { wrote: false, hook: false },

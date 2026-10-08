@@ -5,32 +5,28 @@
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef } from "react";
 
-/** The modal itself. It focuses its `data-autofocus` control on opening and
- *  whenever `focusKey` changes (an agent invite's next step). A control inside
- *  it closes it with `closeDialog`. */
+/** The modal itself. It focuses its `data-autofocus` control on opening. A
+ *  control inside it closes it with `closeDialog`. */
 export function Dialog({
   title,
   description,
-  focusKey,
   onClose,
   children,
 }: {
   title: ReactNode;
   description?: ReactNode;
-  focusKey?: unknown;
   onClose: () => void;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusKey says when the control to focus changed.
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
     // It opens on what it's for, so Enter does it.
     dialog.querySelector<HTMLElement>("[data-autofocus]")?.focus();
-  }, [focusKey]);
+  }, []);
   const close = () => ref.current?.close();
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: a click on the backdrop closes it; Escape already does natively.

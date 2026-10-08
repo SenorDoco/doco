@@ -210,23 +210,27 @@ describe("/tokens page action", () => {
     expect(actorScopeLabel(null)).toBe("All your workspaces");
   });
 
-  // Alexander, 2026-10-06: connecting Doco differs per agent, so the person
-  // says which agent they use and gets its steps, as on /agents/connect.
-  it("connects Doco to the agent the person picks, then hands over the instructions", () => {
+  // Alexander, 2026-10-07: Doco supports Claude Code, Codex and Gemini CLI,
+  // which connect themselves to Doco as /agents/connect shows, so the panel
+  // hands over the instructions alone.
+  it("hands over the instructions, with which the agent connects itself", () => {
     const markup = renderToStaticMarkup(
-      createElement(ManualMcpPanel, { host: "https://doco.test/" }),
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ManualMcpPanel, { host: "https://doco.test/" }),
+      ),
     );
-    expect(markup).toContain("1. Connect Doco to your agent");
-    expect(markup).toContain("Which agent do you use?");
-    expect(markup).toContain(">Claude Code</button>");
-    expect(markup).toContain(">Cursor</button>");
+    expect(markup).toContain("Doco works with Claude Code, Codex and Gemini CLI for now.");
+    expect(markup).toContain('href="/agents/connect"');
+    expect(markup).not.toContain("Which agent do you use?");
     // One endpoint at /mcp — no per-workspace picker, no workspace in the URL.
     expect(markup).not.toContain("Select a workspace");
     expect(markup).not.toContain("/workspace_");
     expect(markup).not.toContain("doco_select_workspace");
-    // Step 2: the same instructions /agents gives, from the one
-    // template, not a page-specific prompt.
-    expect(markup).toContain("2. Give your agent these instructions");
+    // The same instructions /agents gives, from the one template, not a
+    // page-specific prompt.
+    expect(markup).toContain("Give your agent these instructions");
     expect(markup).toContain("### Every session");
     expect(markup).toContain('id="instructions"');
     expect(markup).not.toContain("https://doco.test//");

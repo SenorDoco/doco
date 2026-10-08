@@ -19,7 +19,7 @@ function lowerFirst(text: string): string {
   return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
 
-const COUNTS = ["no", "one", "two", "three", "four"];
+const COUNTS = ["no", "one", "two", "three"];
 
 function workspaceUrl(baseUrl: string, handle: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/workspaces/${handle}`;
@@ -47,7 +47,7 @@ export function reminderEmail(opts: {
   const url = workspaceUrl(opts.baseUrl, opts.workspaceHandle);
   if (pendingStep(opts) === "agent") {
     const instructions = agentInstructionsForWorkspace(opts.baseUrl, opts.workspaceHandle);
-    const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it the message below: it has your agent start using Doco there, note in ${opts.workspaceHandle}'s Agents chats Doco that it received the instructions, and turn on the Doco hook.`;
+    const intro = `Your agent is one message away from working in ${opts.workspaceHandle}. Send it to Claude Code, Codex or Gemini CLI in your project: your agent adds Doco to itself (sign in to Doco when it asks), starts using it in ${opts.workspaceHandle}, notes in its Agents chats Doco that it received the instructions, and turns on the Doco hook.`;
     const after = `You can also copy the message from ${opts.workspaceHandle}: ${url}`;
     return {
       subject: `Ask your agent to start using Doco in ${opts.workspaceHandle}`,

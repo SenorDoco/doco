@@ -8,18 +8,15 @@
 //                              creates the source's Doco and goes to approve
 //                              the copy (Slack, Notion), coming back here.
 //   intent=finish-sources      finishes (or skips) the other sources.
-//   intent=finish-hook         the person's agent doesn't run hooks, so the
-//                              agent step waits for its note alone.
 //
-// Connecting sources is an owner's; saying their agent doesn't run hooks is
-// any member's. Every outcome redirects to the workspace page; a refusal rides
-// along as ?onboarding=<reason> for the steps to explain.
+// Both are an owner's. Every outcome redirects to the workspace page; a
+// refusal rides along as ?onboarding=<reason> for the steps to explain.
 import { getWorkspaceRole, withClient } from "@doco/db";
 import { redirect } from "react-router";
 import { KNOWLEDGE_SOURCE_INTEGRATIONS } from "~/lib/integrations-catalog";
 import { KNOWLEDGE_SOURCE_CONNECTORS } from "~/lib/knowledge-sources.server";
 import { pendingStep } from "~/lib/onboarding-steps";
-import { finishStep, loadOnboardingProgress } from "~/lib/onboarding.server";
+import { finishSourcesStep, loadOnboardingProgress } from "~/lib/onboarding.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { ensureWorkspaceDoco, resolveWorkspaceByHandle } from "~/lib/workspace-helpers.server";
 
@@ -60,14 +57,6 @@ export async function action(args: RouteArgs): Promise<Response> {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
 
-  // Ends the hook for a member of the workspace (finishStep keeps to them).
-  if (intent === "finish-hook") {
-    await withClient((c) =>
-      finishStep(c, { workspaceId: workspace.id, userId: me.id, step: "hook" }),
-    );
-    return redirect(home);
-  }
-
   // Connecting sources makes Docos in the workspace and binds its apps: an
   // owner's call, as on each integration's own page.
   if ((await getWorkspaceRole(workspace.id, me.id)) !== "owner") return refused("not_owner");
@@ -96,9 +85,7 @@ export async function action(args: RouteArgs): Promise<Response> {
   }
 
   if (intent === "finish-sources") {
-    await withClient((c) =>
-      finishStep(c, { workspaceId: workspace.id, userId: me.id, step: "sources" }),
-    );
+    await withClient((c) => finishSourcesStep(c, { workspaceId: workspace.id, userId: me.id }));
     return redirect(home);
   }
 

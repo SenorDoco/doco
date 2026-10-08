@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceRole: vi.fn(),
   resolveWorkspaceByHandle: vi.fn(),
   ensureWorkspaceDoco: vi.fn(),
-  finishStep: vi.fn(),
+  finishSourcesStep: vi.fn(),
   loadOnboardingProgress: vi.fn(),
   slackConfigured: vi.fn(),
   slackAuthorizeUrl: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("~/lib/knowledge-sources.server", () => ({
   },
 }));
 vi.mock("~/lib/onboarding.server", () => ({
-  finishStep: mocks.finishStep,
+  finishSourcesStep: mocks.finishSourcesStep,
   loadOnboardingProgress: mocks.loadOnboardingProgress,
 }));
 
@@ -107,9 +107,9 @@ describe("POST /workspaces/:handle/onboarding", () => {
   it("finishes (or skips) the other sources", async () => {
     const res = await post({ intent: "finish-sources" });
     expect(res.headers.get("Location")).toBe("/workspaces/acme");
-    expect(mocks.finishStep).toHaveBeenCalledWith(
+    expect(mocks.finishSourcesStep).toHaveBeenCalledWith(
       {},
-      { workspaceId: "workspace_acme", userId: "user_alice", step: "sources" },
+      { workspaceId: "workspace_acme", userId: "user_alice" },
     );
   });
 
@@ -117,22 +117,15 @@ describe("POST /workspaces/:handle/onboarding", () => {
     mocks.getWorkspaceRole.mockResolvedValue("writer");
     const res = await post({ intent: "finish-sources" });
     expect(res.headers.get("Location")).toBe("/workspaces/acme?onboarding=not_owner");
-    expect(mocks.finishStep).not.toHaveBeenCalled();
+    expect(mocks.finishSourcesStep).not.toHaveBeenCalled();
   });
 
-  // decision_01M4C2JDN3EZMA2FR8JPPMT7NN: every member's agent step waits for
-  // their hook, so any member can say their agent doesn't run hooks.
-  it("ends the hook for any member whose agent doesn't run hooks", async () => {
-    for (const role of ["owner", "writer", "reader"]) {
-      mocks.getWorkspaceRole.mockResolvedValue(role);
-      const res = await post({ intent: "finish-hook" });
-      expect(res.headers.get("Location")).toBe("/workspaces/acme");
-    }
-    expect(mocks.finishStep).toHaveBeenCalledTimes(3);
-    expect(mocks.finishStep).toHaveBeenCalledWith(
-      {},
-      { workspaceId: "workspace_acme", userId: "user_alice", step: "hook" },
-    );
+  // Alexander, 2026-10-07: Doco supports only Claude Code, Codex and Gemini
+  // CLI for now, and all of them run hooks, so nobody skips the hook.
+  it("lets nobody skip the hook", async () => {
+    const res = await post({ intent: "finish-hook" });
+    expect(res.headers.get("Location")).toBe("/workspaces/acme?onboarding=unknown");
+    expect(mocks.finishSourcesStep).not.toHaveBeenCalled();
   });
 
   it("hands out no token: the agent gets its own with doco_hook_token", async () => {

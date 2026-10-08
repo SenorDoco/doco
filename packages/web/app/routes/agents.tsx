@@ -6,10 +6,10 @@ import { CONNECT_AGENT_PATH, agentInstructions } from "~/lib/agent-instructions"
 import { hookInstallSnippets } from "~/lib/doco-hook-install";
 
 /**
- * /agents: the instructions to give an agent, with a Copy button. Every
+ * /agents: the instructions to give an agent, with a Copy button, and how to
+ * install the Doco hook, which loads them at the start of every session. Every
  * pointer for agents leads here (the head's ai-instructions tag, robots.txt,
- * the discovery probes, the OAuth recipe, invite agent.txt), and an agent
- * without Doco's connector checks its AGENTS.md copy against this page.
+ * the discovery probes, the OAuth recipe, invite agent.txt).
  */
 export function loader({ request }: { request: Request }) {
   const baseUrl = getPublicBaseUrl(request);
@@ -29,8 +29,9 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
       <h1 className="sr-only">Instructions for agents</h1>
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          First, <Link to={CONNECT_AGENT_PATH}>connect Doco to your agent</Link>: step by step for
-          Claude, ChatGPT, Cursor and more.
+          Doco works with Claude Code, Codex and Gemini CLI for now. Your agent connects itself to
+          Doco as <Link to={CONNECT_AGENT_PATH}>Connect Doco to your agent</Link> shows; you sign in
+          once.
         </p>
         <AgentInstructionsBlock
           title="To use Doco with your agent(s), give them these instructions:"
@@ -40,14 +41,14 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
       <section id="hook" className="flex min-w-0 flex-col gap-4">
         <h2 className="text-sm font-semibold">Then install the Doco hook:</h2>
         <p className="text-sm text-muted-foreground">
-          One script loads the workspace's standing orders at session start (its charter, rules,
-          Docos and what changed since the last session), then briefs the agent before each prompt
-          and each file edit, with the reminder line first. It reads the workspace from the{" "}
-          <code>Doco workspace:</code> line and the token from <code>DOCO_TOKEN</code> or{" "}
-          <code>.doco/hook-tokens.json</code>, where the agent saves the token Doco&apos;s{" "}
-          <code>doco_hook_token</code> tool gives it, kept out of git: the token reads what you can
-          read in the workspace, as you. Without a token, the hook tells the agent to get it; when
-          it cannot reach Doco, the agent gets the reminder alone.
+          One script loads these instructions and the workspace's standing orders at session start
+          (its charter, rules, Docos and what changed since the last session), then briefs the agent
+          before each prompt and each file edit, with the reminder line first. So the project keeps
+          no copy of the instructions, only its workspace&apos;s URL in <code>.doco/workspace</code>
+          . It reads the token from <code>.doco/hook-tokens.json</code>, where the agent saves the
+          token Doco&apos;s <code>doco_hook_token</code> tool gives it, kept out of git: the token
+          reads what you can read in the workspace, as you. Without a token, the hook tells the
+          agent to get it; when it cannot reach Doco, the agent gets the reminder alone.
         </p>
         {loaderData.hook.map((snippet) => (
           <div key={snippet.title} className="flex min-w-0 flex-col gap-2">
