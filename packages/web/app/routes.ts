@@ -143,6 +143,9 @@ export default [
   route("protocol/agent-oauth-recipe", "routes/protocol.agent-oauth-recipe.tsx"),
   // The Doco hook script, which /agents tells a project to save.
   route("agents/doco-hook.mjs", "routes/agents.doco-hook[.]mjs.tsx"),
+  // The instructions for agents as plain text, which the Doco hook loads at
+  // the start of every session.
+  route("agents/instructions.md", "routes/agents.instructions[.]md.tsx"),
   // How a person connects Doco to their agent, step by step for each agent.
   // The agent instructions send people here when Doco's tools are missing.
   route("agents/connect", "routes/agents.connect.tsx"),

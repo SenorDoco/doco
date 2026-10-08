@@ -3,14 +3,12 @@
 // for who it goes to ("Copy invite" for a person, "Copy prompt" for an agent)
 // and a way out (components/dialog.tsx).
 //
-// An agent's invite takes the two steps a workspace's setup gives an invitee
-// (Alexander, 2026-10-07): connect Doco to the agent, with the same per-agent
-// guide, then send it the prompt.
+// An agent's invite is the one step a workspace's setup gives an invitee: send
+// the agent the prompt, and it connects itself to Doco (Alexander,
+// 2026-10-07).
 
 import { type ReactNode, useState } from "react";
-import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { Dialog, DialogFooter } from "~/components/dialog";
-import { agentConnectGuides } from "~/lib/agent-connect-guides";
 import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import { buildHumanInvitePrompt } from "~/lib/invite-prompts";
 import { STEP_TITLES } from "~/lib/onboarding-steps";
@@ -39,54 +37,26 @@ export function PersonInviteDialog({
   );
 }
 
-/** Invite an agent to a workspace: connect Doco to it, then send it the prompt. */
+/** Invite an agent to a workspace: send it the prompt, which connects it. */
 export function AgentInviteDialog({
   workspaceHandle,
   baseUrl,
   onClose,
 }: {
   workspaceHandle: string;
-  /** Doco's public URL, which the guide and the prompt point at. */
+  /** Doco's public URL, which the prompt points at. */
   baseUrl: string;
   onClose: () => void;
 }) {
-  const [step, setStep] = useState<1 | 2>(1);
-  if (step === 1) {
-    return (
-      <Dialog
-        title={`Step 1 of 2: ${STEP_TITLES.mcp}`}
-        description={`Add Doco to the agent you use, so it can read and write in ${workspaceHandle}. When Doco asks what the agent may reach, include ${workspaceHandle}.`}
-        focusKey={step}
-        onClose={onClose}
-      >
-        <div className="-mx-1 min-h-0 overflow-y-auto px-1 py-1">
-          <ConnectAgentGuide guides={agentConnectGuides(baseUrl)} />
-        </div>
-        <DialogFooter note="Already connected? Go on to step 2.">
-          <button type="button" data-autofocus onClick={() => setStep(2)} className={PRIMARY}>
-            Next
-          </button>
-        </DialogFooter>
-      </Dialog>
-    );
-  }
   const message = agentInstructionsForWorkspace(baseUrl, workspaceHandle);
   return (
     <Dialog
-      title={`Step 2 of 2: ${STEP_TITLES.agent}`}
-      description={`Copy this prompt and send it to your agent. It has your agent start using Doco in ${workspaceHandle}.`}
-      focusKey={step}
+      title={STEP_TITLES.agent}
+      description={`Copy this prompt and send it to Claude Code, Codex or Gemini CLI in your project. Your agent adds Doco to itself (sign in to Doco when it asks) and starts using it in ${workspaceHandle}.`}
       onClose={onClose}
     >
       <MessageWell message={message} />
       <DialogFooter>
-        <button
-          type="button"
-          onClick={() => setStep(1)}
-          className="neu-button rounded-md px-4 py-2 text-sm font-semibold hover:opacity-90"
-        >
-          Back
-        </button>
         <CopyMessageButton message={message} label="Copy prompt" />
       </DialogFooter>
     </Dialog>

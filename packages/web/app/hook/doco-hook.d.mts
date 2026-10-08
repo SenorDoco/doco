@@ -1,6 +1,7 @@
 // Types for the Doco hook script, which stays plain JavaScript so a project
 // runs it with node alone. The test imports its pure parts.
 export const DOCO_REMINDER: string;
+export const INSTRUCTIONS_PATH: string;
 
 export interface HookConfig {
   root: string;

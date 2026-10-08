@@ -3,26 +3,30 @@
 // Code, Codex and Gemini CLI. Served at /agents/doco-hook.mjs; a project
 // keeps it at .doco/hook.mjs and names it in its client's hooks.
 //
-//   SessionStart (every client): the workspace's standing orders, with what
-//     changed since the last session started from this project.
+//   SessionStart (every client): Doco's instructions for agents, then the
+//     workspace's standing orders, with what changed since the last session
+//     started from this project.
 //   UserPromptSubmit (Claude Code, Codex) and BeforeAgent (Gemini CLI):
 //     the reminder line, then a brief about the prompt.
 //   PreToolUse on Edit, Write or MultiEdit (Claude Code, Codex): a brief on
 //     the file about to change, once per session and file.
 //
-// The brief comes from GET <origin>/api/v1/brief.json (the standing orders
-// from /api/v1/standing-orders.json) with a hook token
-// (.doco/hook-tokens.json keyed by workspace handle, or DOCO_TOKEN) or an
-// OAuth token (DOCO_ACCESS). The workspace and the origin come from the
-// `Doco workspace:` line of AGENTS.md or CLAUDE.md, or DOCO_WORKSPACE and
-// DOCO_ORIGIN. The output is the hookSpecificOutput.additionalContext JSON
-// every client reads. Without a token (the file stays out of git, so a fresh
-// clone has none), or with one Doco refuses (revoked, or a project token from
-// before hook tokens), it tells the agent to get its person's from Doco's
-// doco_hook_token, at session start and after the reminder on a prompt.
-// Anything that fails, including the deadline, fails open: the reminder
-// alone on a prompt, nothing on a file or at session start; exit 0 either
-// way. No dependencies; Node 18 or later.
+// The instructions come from GET <origin>/agents/instructions.md, which Doco
+// serves to anyone, so no project keeps a copy (Alexander, 2026-10-07: with
+// the hook, forget about AGENTS.md). The brief comes from GET
+// <origin>/api/v1/brief.json (the standing orders from
+// /api/v1/standing-orders.json) with a hook token (.doco/hook-tokens.json
+// keyed by workspace handle, or DOCO_TOKEN) or an OAuth token (DOCO_ACCESS).
+// The workspace and the origin come from the URL in the project's
+// .doco/workspace, or DOCO_WORKSPACE and DOCO_ORIGIN. The output is the
+// hookSpecificOutput.additionalContext JSON every client reads. Without a
+// token (the file stays out of git, so a fresh clone has none), or with one
+// Doco refuses (revoked, or a project token from before hook tokens), it tells
+// the agent to get its person's from Doco's doco_hook_token, at session start
+// and after the reminder on a prompt. Anything that fails, including the
+// deadline, fails open: the reminder alone on a prompt, the instructions
+// alone at session start, nothing on a file; exit 0 either way. No
+// dependencies; Node 18 or later.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -33,6 +37,9 @@ import { fileURLToPath } from "node:url";
 /** The same line as DOCO_REMINDER in lib/agent-instructions.ts (a test holds them equal). */
 export const DOCO_REMINDER =
   "Doco: doco_brief before you act, capture each decision as it forms, and log this chat in Agents chats.";
+
+/** Where Doco serves its instructions for agents (AGENT_INSTRUCTIONS_TEXT_PATH in lib/agent-instructions.ts). */
+export const INSTRUCTIONS_PATH = "/agents/instructions.md";
 
 const DEFAULT_ORIGIN = "https://doco.to";
 const PROMPT_BUDGET = 4000;
@@ -59,24 +66,17 @@ function findUp(cwd, names) {
   }
 }
 
-/** The `Doco workspace:` line of the project's AGENTS.md or CLAUDE.md. */
+/** The project's workspace: the URL in its .doco/workspace. */
 export function readProjectWorkspace(cwd) {
-  const found = findUp(cwd, ["AGENTS.md", "CLAUDE.md"]);
+  const found = findUp(cwd, [join(".doco", "workspace")]);
   if (!found) return null;
-  for (const name of ["AGENTS.md", "CLAUDE.md"]) {
-    const path = join(found.dir, name);
-    if (!existsSync(path)) continue;
-    const match = readFileSync(path, "utf8").match(/^Doco workspace:\s*(\S+)/m);
-    if (!match) continue;
-    try {
-      const url = new URL(match[1]);
-      const workspace = url.pathname.match(/\/workspaces\/([^/]+)/)?.[1] ?? null;
-      return { root: found.dir, origin: url.origin, workspace };
-    } catch {
-      return { root: found.dir, origin: null, workspace: null };
-    }
+  try {
+    const url = new URL(readFileSync(found.path, "utf8").trim());
+    const workspace = url.pathname.match(/\/workspaces\/([^/]+)/)?.[1] ?? null;
+    return { root: found.dir, origin: url.origin, workspace };
+  } catch {
+    return { root: found.dir, origin: null, workspace: null };
   }
-  return { root: found.dir, origin: null, workspace: null };
 }
 
 /** The token saved at .doco/hook-tokens.json, for the workspace or the only one. */
@@ -183,12 +183,13 @@ function freshInCache(path) {
   }
 }
 
-async function fetchBrief(url, config) {
+/** GET a text, with the token when one is given. */
+async function fetchText(url, config, token) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${config.token}`, Accept: "text/plain" },
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), Accept: "text/plain" },
       signal: controller.signal,
     });
     if (res.status === 401) return { refused: true };
@@ -209,25 +210,36 @@ export async function main(stdinText, env = process.env, cwd = process.cwd()) {
     return null;
   }
   const config = resolveConfig(env, typeof event.cwd === "string" ? event.cwd : cwd);
-  const request = requestFor(event, config);
-  const output = (additionalContext) =>
-    JSON.stringify({
-      hookSpecificOutput: { hookEventName: event.hook_event_name, additionalContext },
-    });
-  const onPrompt = PROMPT_EVENTS.has(String(event.hook_event_name));
-  if (!request) return onPrompt ? output(DOCO_REMINDER) : null;
-  // Without a token Doco takes, the agent gets its person's from doco_hook_token.
-  const askForToken = (why) => {
-    if (FILE_EVENTS.has(String(event.hook_event_name))) return null;
-    const note = `${why}: call doco_hook_token${config.workspace ? ` for ${config.workspace}` : ""}, save the token as it says, and the hook briefs you from the next prompt on.`;
-    return output(onPrompt ? `${DOCO_REMINDER}\n\n${note}` : note);
+  const name = String(event.hook_event_name ?? "");
+  // A session starts on Doco's instructions for agents, and a prompt on the
+  // reminder line, whatever else comes.
+  const instructions = SESSION_EVENTS.has(name)
+    ? fetchText(`${config.origin}${INSTRUCTIONS_PATH}`, config, null).catch(() => null)
+    : null;
+  const lead = PROMPT_EVENTS.has(name) ? DOCO_REMINDER : null;
+  const output = async (context) => {
+    const text = [lead, (await instructions)?.text, context].filter(Boolean).join("\n\n");
+    return text
+      ? JSON.stringify({
+          hookSpecificOutput: { hookEventName: event.hook_event_name, additionalContext: text },
+        })
+      : null;
   };
+  const request = requestFor(event, config);
+  if (!request) return output(null);
+  // Without a token Doco takes, the agent gets its person's from doco_hook_token.
+  const askForToken = (why) =>
+    FILE_EVENTS.has(name)
+      ? null
+      : output(
+          `${why}: call doco_hook_token${config.workspace ? ` for ${config.workspace}` : ""}, save the token as it says, and the hook briefs you from the next prompt on.`,
+        );
   if (!config.token) return askForToken("The Doco hook has no token here");
   const cache = request.cacheKey ? cacheFile(event.session_id, request.cacheKey) : null;
   if (cache && freshInCache(cache)) return null;
   let fetched = null;
   try {
-    fetched = await fetchBrief(request.url, config);
+    fetched = await fetchText(request.url, config, config.token);
   } catch (error) {
     process.stderr.write(`Doco hook: ${error instanceof Error ? error.message : String(error)}\n`);
   }
@@ -250,8 +262,7 @@ export async function main(stdinText, env = process.env, cwd = process.cwd()) {
       /* the next session gets the default window */
     }
   }
-  if (!onPrompt) return brief ? output(brief) : null;
-  return output(brief ? `${DOCO_REMINDER}\n\n${brief}` : DOCO_REMINDER);
+  return output(brief);
 }
 
 async function run() {

@@ -90,8 +90,7 @@ describe("/api/onboarding/reminders", () => {
     await call(CRON);
     const email = mocks.sendEmail.mock.calls[0][0];
     expect(email.subject).toBe("Ask your agent to start using Doco in acme");
-    expect(email.text).toContain("in the workspace acme");
-    expect(email.text).toContain("Doco workspace: https://doco.to/workspaces/acme");
+    expect(email.text).toContain("in the workspace acme (https://doco.to/workspaces/acme)");
   });
 
   it("skips a person without an email address", async () => {
@@ -108,7 +107,7 @@ describe("/api/onboarding/reminders", () => {
     ]);
     await call(CRON);
     expect(mocks.sendEmail.mock.calls[0][0].text).toContain(
-      "Doco workspace: https://staging.doco.to/workspaces/acme",
+      "in the workspace acme (https://staging.doco.to/workspaces/acme)",
     );
   });
 });

@@ -1,10 +1,10 @@
 // One workspace at a glance: the icons of its Docos, any integration or agent
 // gone unexpectedly quiet, the three things to do next (add a Doco or a source
-// of knowledge, invite a person, invite an agent: connect Doco to it, then the
-// message that asks it to start using Doco here, in the invite dialog) and when
-// it last saw activity. The Workspaces page lists one per workspace, with the way back to
-// the person's open onboarding step; each workspace's own page shows its card
-// under the steps.
+// of knowledge, invite a person, invite an agent: the message that has it
+// connect itself to Doco and start using it here, in the invite dialog) and
+// when it last saw activity. The Workspaces page lists one per workspace, with
+// the way back to the person's open onboarding step; each workspace's own page
+// shows its card under the steps.
 
 import { useState } from "react";
 import { Link } from "react-router";

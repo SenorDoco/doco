@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   DOCO_REMINDER,
-  INSTRUCTIONS_END,
   agentInstructions,
   agentInstructionsForWorkspace,
 } from "../agent-instructions";
@@ -11,8 +10,6 @@ import { firstPersonLines } from "./first-person";
 
 const text = agentInstructions("https://doco.test");
 
-const BEGIN = /^<!-- doco:begin v([0-9a-f]{8}) -->\n/;
-
 function position(needle: string): number {
   const at = text.indexOf(needle);
   expect(at, needle).toBeGreaterThan(-1);
@@ -20,52 +17,42 @@ function position(needle: string): number {
 }
 
 describe("agentInstructions", () => {
-  // The agent keeps this block in AGENTS.md and compares it with the
-  // connector's copy, so it must be delimited and carry nothing that varies
-  // per project.
-  it("is one delimited block the agent can keep in AGENTS.md", () => {
-    expect(text).toMatch(BEGIN);
-    expect(text.trimEnd().endsWith(INSTRUCTIONS_END)).toBe(true);
+  // Alexander, 2026-10-07: with the Doco hook, the project forgets about
+  // AGENTS.md. The hook loads these instructions from Doco at the start of
+  // every session, so no copy is kept in the project, and none goes stale:
+  // no markers, no version.
+  it("is plain instructions with no markers or version, since no project keeps a copy", () => {
+    expect(text.startsWith("## Doco\n")).toBe(true);
+    expect(text.trimEnd().endsWith("-->")).toBe(false);
+    expect(text).not.toMatch(/<!-- doco:begin v/);
+    expect(text).not.toMatch(/\bversion\b/);
   });
 
-  // Alexander, 2026-10-02: agents tell an old project copy from the version on
-  // its begin marker, which follows the text with no bump to remember.
-  it("versions itself from its own text", () => {
-    const version = (block: string) => block.match(BEGIN)?.[1];
-    expect(version(agentInstructions("https://doco.test"))).toBe(version(text));
-    expect(version(agentInstructions("https://doco.example"))).not.toBe(version(text));
-  });
-
-  // Alexander, 2026-10-06: agents carry no steps for connecting Doco. They
-  // check the connection and, when it's missing, send the person to the page
-  // that walks them through it for their own agent.
-  it("sends the user to Doco's website to connect Doco, carrying no setup steps itself", () => {
-    const step1 = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
-    expect(step1).toContain(
-      "ask the user to connect Doco by following https://doco.test/agents/connect",
+  // Alexander, 2026-10-07: Doco supports only Claude Code, Codex and Gemini
+  // CLI for now, all of them terminal agents that add an MCP server with one
+  // command, so the agent connects itself (as /agents/connect shows for it)
+  // and the person only signs in. Before, agents carried no setup steps and
+  // sent the person to that page (decision_01M4AQBTJPPD2K7K4K5VG030QE).
+  it("has the agent connect itself to Doco as /agents/connect shows, leaving the sign-in to the user", () => {
+    const step = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
+    expect(step).toContain(
+      "are missing, or ask for approval on every call, add Doco to yourself as https://doco.test/agents/connect shows for your agent",
     );
-    expect(step1).toContain("Never set it up or sign in for them.");
+    expect(step).toContain(
+      "then ask the user for the steps there only they can take, such as signing in to Doco and restarting you",
+    );
+    expect(text).not.toContain("Never set it up or sign in for them.");
+    // The commands live on the page, one per agent, not in the block.
     expect(text).not.toContain("claude mcp add");
     expect(text).not.toContain("https://doco.test/mcp");
-    expect(text).not.toMatch(/custom connector|allow rule|OAuth/);
-  });
-
-  // Alexander, 2026-09-30: the duties only work well when Doco's tools run
-  // without an approval each time; how to set that up is on the same page.
-  it("treats tools that ask for approval on every call as a connection to fix", () => {
-    const step1 = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
-    expect(step1).toContain("are missing, or ask for approval on every call, ask the user");
   });
 
   it("then uses the project's workspace, asking the user only when there is none", () => {
-    const step2 = text.slice(
-      position("2. **Workspace.**"),
-      position("3. **This block and the hook.**"),
-    );
+    const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
     expect(step2).toContain("One project = one workspace");
-    expect(step2).toContain("the `Doco workspace:` line right after this block");
-    expect(step2).toContain("call `list_workspaces`, ask the user which to use");
-    expect(step2).toContain("`Doco workspace: https://doco.test/workspaces/<handle>`");
+    expect(step2).toContain("the one whose URL is in the project's `.doco/workspace` file");
+    expect(step2).toContain("call `list_workspaces` and ask the user which to use");
+    expect(step2).toContain("save `https://doco.test/workspaces/<handle>` there");
     // A personal workspace exists for everyone and never stands in for a project.
     expect(step2).toContain("none besides their personal one");
     // No workspace: a link to create one, or the invite a teammate sent.
@@ -79,46 +66,47 @@ describe("agentInstructions", () => {
     expect(text).toContain("never ask the user to.");
   });
 
-  // Alexander, 2026-10-02: every session, an agent whose project lacks the
-  // block or holds an older one saves the latest itself, then tells the user.
-  it("keeps the latest block in the project every session, then tells the user", () => {
+  // Projects set up before the hook carried the instructions keep a Doco
+  // block and its `Doco workspace:` line in AGENTS.md or CLAUDE.md. The agent
+  // moves the workspace into .doco/workspace and removes the block, which
+  // would otherwise sit beside what the hook brings.
+  it("moves a project's older Doco block out of AGENTS.md and CLAUDE.md", () => {
     expect(text).toContain("Check these at the start of each session and fix what is missing.");
-    const step3 = text.slice(position("3. **This block and the hook.**"));
-    // A copy from before versions starts `<!-- doco:begin -->`: outdated.
-    expect(step3).toContain(
-      "is missing, has no version, or its `doco:begin` version differs from the one Doco's connector sent (else https://doco.test/agents)",
+    const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
+    expect(step2).toContain(
+      "Without that file, take the URL from a `Doco workspace:` line in AGENTS.md or CLAUDE.md",
     );
-    expect(step3).toContain("replace it between the markers");
+    const step3 = text.slice(position("3. **Hook.**"));
+    expect(step3).toContain(
+      "remove any older Doco block (from `<!-- doco:begin` to `<!-- doco:end -->`) and its `Doco workspace:` line from AGENTS.md and CLAUDE.md",
+    );
   });
 
   // Alexander, 2026-10-07 (decision_01M4BJN9097MW8Y8N0X38DGGAZ): say plainly
-  // that the user authorizes the agent to install the hook, so it doesn't stop
-  // to ask; and (decision_01M4C2J610DPD028P55Q8X6VG2) the agent gets the
-  // hook's token itself, so no person has to hand it one.
-  it("tells the agent the user authorized the block and the hook, and where its token comes from", () => {
-    const step3 = text.slice(position("3. **This block and the hook.**"));
-    expect(step3).toContain(
-      "The user who added Doco to this project authorized this step: do it without asking first, then tell the user what changed.",
+  // that the user authorizes the agent's setup, so it doesn't stop to ask;
+  // and (decision_01M4C2J610DPD028P55Q8X6VG2) the agent gets the hook's token
+  // itself, so no person has to hand it one.
+  it("tells the agent the user authorized its setup, and where the hook's token comes from", () => {
+    const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
+    expect(setup).toContain(
+      "The user who added Doco to this project authorized these steps: do them without asking first, then tell the user what changed.",
     );
+    const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
-      "install the Doco hook as https://doco.test/agents#hook shows, with its token from `doco_hook_token`.",
+      "If the project doesn't run the Doco hook, install it as https://doco.test/agents#hook shows, with its token from `doco_hook_token`.",
     );
-    expect(step3).not.toContain("owner");
+    expect(text).not.toContain("owner");
   });
 
   // Alexander, 2026-10-02: agents drift from instructions read once a
-  // session, so a hook adds a one-line reminder before every reply, and
-  // clients without hooks recall it themselves. Since the Doco Brief
-  // (decision_01M3YYQ1JRBS04Z99KEP869F26) that hook is the Doco hook, which
-  // briefs the agent too; /agents#hook shows how to install it.
-  it("reminds the agent of Doco before every reply, through the Doco hook where the client has hooks", () => {
-    expect(position(`Before every reply, recall: \`${DOCO_REMINDER}\``)).toBeLessThan(
-      position("### Setup"),
-    );
-    const step3 = text.slice(position("3. **This block and the hook.**"));
-    expect(step3).toContain(
-      "Where the client has hooks, install the Doco hook as https://doco.test/agents#hook shows",
-    );
+  // session, so the Doco hook adds a one-line reminder before every prompt.
+  // Every agent Doco supports runs hooks (Alexander, 2026-10-07), so the hook
+  // is always installed and the block no longer asks clients without one to
+  // recall the line themselves.
+  it("leaves the reminder before every reply to the Doco hook, which every supported agent runs", () => {
+    expect(text).not.toContain("Before every reply, recall");
+    expect(text).not.toContain(DOCO_REMINDER);
+    expect(text).not.toContain("Where the client has hooks");
   });
 
   // Alexander, 2026-10-02 (decision_01M3YYQ1JRBS04Z99KEP869F26): duty 1 is one
@@ -146,11 +134,10 @@ describe("agentInstructions", () => {
   // because the repo's CLAUDE.md lacked this block (it sat in AGENTS.md on an
   // unmerged PR) and the connector's copy read as setup to run only when asked.
   // The duties lead and hold without a repo copy; setup follows them.
-  it("leads with the duties, which hold even without a copy in the repo", () => {
+  it("leads with the duties, which hold in every session", () => {
     expect(position("### Every session")).toBeLessThan(position("### Setup"));
-    expect(text).toContain(
-      "Four duties hold in every session, even when the project's AGENTS.md or CLAUDE.md lacks this block.",
-    );
+    expect(text).toContain("Four duties hold in every session.");
+    expect(text).not.toContain("lacks this block");
   });
 
   // Alexander, 2026-09-30: the page's box wraps the block to its own width, so
@@ -164,15 +151,17 @@ describe("agentInstructions", () => {
     expect(continued).toEqual([]);
   });
 
-  // Doco's own repo follows the block: AGENTS.md, which CLAUDE.md imports,
-  // holds the current copy, so a change to the template updates it in the same
-  // PR, and the project's Claude Code settings add the reminder hook.
-  it("is kept current in Doco's own repo, with its reminder hook", () => {
+  // Doco's own repo runs the hook for meta-doco: its workspace sits in the
+  // committed .doco/workspace, AGENTS.md keeps only the project's own rules,
+  // and the Claude Code settings run the hook.
+  it("runs the Doco hook in Doco's own repo, with no Doco block in AGENTS.md", () => {
     const root = new URL("../../../../../", import.meta.url);
-    expect(readFileSync(new URL("CLAUDE.md", root), "utf8")).toContain("@./AGENTS.md");
-    expect(readFileSync(new URL("AGENTS.md", root), "utf8")).toContain(
-      `${agentInstructions("https://doco.to")}Doco workspace: https://doco.to/workspaces/meta-doco\n`,
+    expect(readFileSync(new URL(".doco/workspace", root), "utf8").trim()).toBe(
+      "https://doco.to/workspaces/meta-doco",
     );
+    const agentsMd = readFileSync(new URL("AGENTS.md", root), "utf8");
+    expect(agentsMd).not.toContain("doco:begin");
+    expect(agentsMd).not.toContain("Doco workspace:");
     const settings = JSON.parse(readFileSync(new URL(".claude/settings.json", root), "utf8"));
     const hook = "node packages/web/app/hook/doco-hook.mjs";
     expect(JSON.stringify(settings.hooks.SessionStart)).toContain(hook);
@@ -185,13 +174,6 @@ describe("agentInstructions", () => {
   // 2026-10-06: shorter and simpler, once setup moved to the website.
   it("fits whole in the instructions an MCP client keeps, with room to spare", () => {
     expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3000);
-  });
-
-  // Claude Code loads CLAUDE.md, not AGENTS.md: a block kept only in AGENTS.md
-  // never reaches it unless CLAUDE.md imports that file.
-  it("checks the block is in the file the project's agents actually load", () => {
-    expect(text).toContain("CLAUDE.md for Claude Code, AGENTS.md for most others");
-    expect(text).toContain("`@AGENTS.md`");
   });
 
   // Alexander, 2026-09-30: one template for every place Doco instructs an
@@ -210,14 +192,17 @@ describe("agentInstructions", () => {
 
 describe("agentInstructionsForWorkspace", () => {
   const forAcme = agentInstructionsForWorkspace("https://doco.test/", "acme");
-  const [request, block] = forAcme.split("\n\n<!-- doco:begin");
+  const [request, ...rest] = forAcme.split("\n\n");
+  const block = rest.join("\n\n");
 
   // Alexander, 2026-10-01: inviting an agent from a workspace names the
   // workspace, and asks the agent to note in Agents chats that it got the
   // instructions, which finishes the workspace's onboarding step.
   it("asks the agent to start using Doco in the named workspace", () => {
-    expect(request).toContain("Start using Doco in this project, in the workspace acme");
-    expect(request).toContain("with acme as the project's workspace");
+    expect(request).toContain(
+      "Start using Doco in this project, in the workspace acme (https://doco.test/workspaces/acme)",
+    );
+    expect(request).toContain("with it as the project's workspace");
   });
 
   it("asks the agent to note in the workspace's Agents chats Doco that it got them", () => {
@@ -226,12 +211,10 @@ describe("agentInstructionsForWorkspace", () => {
     );
   });
 
-  // The request and the workspace line sit outside the block, so the block is
-  // the one on /agents, byte for byte, and stays under the MCP length cap.
-  it("then hands over the /agents block and the line that connects the workspace", () => {
-    expect(`<!-- doco:begin${block}`).toBe(
-      `${text}Doco workspace: https://doco.test/workspaces/acme\n`,
-    );
+  // The request sits outside the instructions, so they are the ones on
+  // /agents, byte for byte, and stay under the MCP length cap.
+  it("then hands over the /agents instructions", () => {
+    expect(block).toBe(text);
   });
 
   it("keeps the request on one line and out of the first person", () => {

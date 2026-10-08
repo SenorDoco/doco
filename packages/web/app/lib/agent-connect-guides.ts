@@ -1,20 +1,20 @@
-// How a person connects Doco to the agent they use: one guide per agent, each
-// a few steps with the pages to open and the things to paste. Every guide adds
-// Doco's MCP server (/mcp), signs in to Doco once (the agent opens Doco's
-// approval page, where the person picks what the agent may reach), and lets
-// Doco's tools run without asking each time, since every duty calls one.
+// How Doco connects to the agents it supports for now: Claude Code, Codex and
+// Gemini CLI (Alexander, 2026-10-07), each a terminal agent that adds an MCP
+// server with one command and runs the Doco hook. Every guide adds Doco's MCP
+// server (/mcp), signs in to Doco once (Doco's approval page, where the person
+// picks what the agent may reach), and lets Doco's tools run without asking
+// each time, since every duty calls one.
 //
-// Agents carry none of this: their instructions (lib/agent-instructions.ts)
-// send the person to /agents/connect. The page, a workspace's onboarding and
-// Invite agent dialog, and the Tokens page's Add MCP tab show these guides
-// (components/connect-agent-guide.tsx).
+// The agent follows its guide itself: its instructions
+// (lib/agent-instructions.ts) send it to /agents/connect, which shows these
+// guides (components/connect-agent-guide.tsx), and it asks the person only
+// for what it can't do, such as signing in. Other agents can still connect to
+// /mcp, but Doco offers no guide for them.
 // Pure.
 
 export interface GuideStep {
   /** What to do, in a sentence or two. */
   text: string;
-  /** A page to open for it; one on the web opens in a new tab. */
-  link?: { label: string; href: string };
   /** Something to paste, shown with a Copy button. */
   code?: string;
 }
@@ -27,7 +27,7 @@ export interface AgentGuide {
   note?: string;
   steps: GuideStep[];
   /** The agent maker's own guide to adding an MCP server. */
-  docs?: string;
+  docs: string;
 }
 
 const SIGN_IN =
@@ -39,7 +39,7 @@ export function agentConnectGuides(baseUrl: string): AgentGuide[] {
     {
       id: "claude-code",
       name: "Claude Code",
-      note: "In a terminal, an editor, or the Claude app's Code tab. Claude Code on the web uses your claude.ai connectors: follow the Claude steps instead.",
+      note: `In a terminal, an editor, or the Claude app's Code tab. Claude Code on the web uses your claude.ai connectors instead: add Doco there as a custom connector, with the URL ${mcp}.`,
       steps: [
         {
           text: "In a terminal, add Doco for all your projects:",
@@ -55,63 +55,6 @@ export function agentConnectGuides(baseUrl: string): AgentGuide[] {
         },
       ],
       docs: "https://code.claude.com/docs/en/mcp",
-    },
-    {
-      id: "claude",
-      name: "Claude",
-      note: "claude.ai, the Claude desktop and mobile apps, and Claude Code on the web. On a Team or Enterprise plan, an owner first adds Doco the same way under Organization settings, Connectors; then you choose Connect.",
-      steps: [
-        {
-          text: "Open Customize, Connectors, choose + Add, then Add custom connector.",
-          link: { label: "Open Connectors", href: "https://claude.ai/customize/connectors" },
-        },
-        { text: "Name it Doco, paste this URL, and choose Continue.", code: mcp },
-        { text: `Choose Sign in now, then Add. ${SIGN_IN}` },
-        {
-          text: "Still in Connectors, open Doco's Tool permissions and set them to Always allow, so Claude doesn't stop to ask on every call.",
-        },
-        { text: "In a chat, turn Doco on from the + button, under Connectors." },
-      ],
-      docs: "https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp",
-    },
-    {
-      id: "chatgpt",
-      name: "ChatGPT",
-      note: "ChatGPT adds MCP servers as plugins. On a Business or Enterprise workspace, an admin may have to let you add custom MCP servers.",
-      steps: [
-        {
-          text: "Open ChatGPT's plugins, choose +, then Add custom MCP server.",
-          link: { label: "Open Plugins", href: "https://chatgpt.com/plugins" },
-        },
-        {
-          text: "Name it Doco, give this URL as its public endpoint, pick OAuth for authentication, confirm the warning, and choose Create as a plugin.",
-          code: mcp,
-        },
-        { text: `Install the plugin and sign in when ChatGPT asks. ${SIGN_IN}` },
-        {
-          text: "In a chat, type @ and pick Doco. So ChatGPT doesn't stop to ask on every call, set Doco's app permission to Never ask.",
-        },
-      ],
-      docs: "https://developers.openai.com/plugins/deploy/connect-chatgpt",
-    },
-    {
-      id: "cursor",
-      name: "Cursor",
-      steps: [
-        {
-          text: "With Cursor open, add Doco in one click:",
-          link: { label: "Add Doco to Cursor", href: cursorInstallLink(mcp) },
-        },
-        {
-          text: "Or add Doco to ~/.cursor/mcp.json yourself:",
-          code: JSON.stringify({ mcpServers: { doco: { url: mcp } } }, null, 2),
-        },
-        { text: `When Cursor shows doco needs a sign-in, start it. ${SIGN_IN}` },
-        {
-          text: "So Cursor doesn't stop to ask on every call, open Cursor Settings, Agents, Approvals & Execution, and add Doco's tools to the allowlist.",
-        },
-      ],
-      docs: "https://cursor.com/docs/mcp",
     },
     {
       id: "codex",
@@ -141,50 +84,5 @@ export function agentConnectGuides(baseUrl: string): AgentGuide[] {
       ],
       docs: "https://geminicli.com/docs/tools/mcp-server/",
     },
-    {
-      id: "vscode",
-      name: "VS Code",
-      note: "GitHub Copilot in VS Code.",
-      steps: [
-        {
-          text: "With VS Code open, add Doco in one click:",
-          link: { label: "Add Doco to VS Code", href: vscodeInstallLink(mcp) },
-        },
-        {
-          text: "Or run MCP: Add Server from the Command Palette, choose HTTP, and paste this URL.",
-          code: mcp,
-        },
-        { text: `When VS Code first connects, it opens Doco. ${SIGN_IN}` },
-        {
-          text: "So Copilot doesn't stop to ask on every call, run Chat: Manage Tool Approval from the Command Palette and tick doco.",
-        },
-      ],
-      docs: "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
-    },
-    {
-      id: "other",
-      name: "Another agent",
-      steps: [
-        {
-          text: "In your agent's settings, add a remote MCP server (it may be called a connector, an integration or a plugin) with this URL. It speaks streamable HTTP and signs in with OAuth, so there is no key to paste.",
-          code: mcp,
-        },
-        { text: `Sign in when your agent asks. ${SIGN_IN}` },
-        {
-          text: "If your agent asks before every tool call, mark Doco's tools as always allowed or trusted.",
-        },
-      ],
-    },
   ];
-}
-
-/** Cursor's one-click install: its deeplink carries the server's config. */
-function cursorInstallLink(mcp: string): string {
-  const config = btoa(JSON.stringify({ url: mcp }));
-  return `cursor://anysphere.cursor-deeplink/mcp/install?name=doco&config=${encodeURIComponent(config)}`;
-}
-
-/** VS Code's one-click install: its link carries the server's config. */
-function vscodeInstallLink(mcp: string): string {
-  return `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "doco", type: "http", url: mcp }))}`;
 }

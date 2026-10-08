@@ -76,9 +76,10 @@ describe("PersonInviteDialog", () => {
   });
 });
 
-// Alexander, 2026-10-07: inviting an agent takes the same two steps as a
-// workspace's setup does for an invitee: connect Doco to your agent, with the
-// same per-agent guide, then send it the prompt.
+// Alexander, 2026-10-07: inviting an agent takes the one step a workspace's
+// setup gives an invitee: send it the prompt. Doco supports only Claude Code,
+// Codex and Gemini CLI for now, which add Doco to themselves, so connecting
+// the agent is no longer a step of its own.
 describe("AgentInviteDialog", () => {
   const render = () =>
     act(async () =>
@@ -91,32 +92,23 @@ describe("AgentInviteDialog", () => {
       ),
     );
 
-  it("opens on connecting Doco to the agent, with the per-agent guide", async () => {
+  it("opens on the prompt for the agent, which it copies", async () => {
     await render();
     expect(dialog().open).toBe(true);
-    expect(dialog().textContent).toContain("Step 1 of 2: Connect Doco to your agent");
-    expect(dialog().textContent).toContain("Which agent do you use?");
-    expect(dialog().textContent).toContain("Already connected? Go on to step 2.");
-    await act(async () => button("Claude Code")?.click());
+    expect(dialog().textContent).toContain("Ask your agent to start using Doco");
     expect(dialog().textContent).toContain(
-      "claude mcp add --transport http --scope user doco https://doco.test/mcp",
+      "send it to Claude Code, Codex or Gemini CLI in your project",
     );
-    expect(button("Copy prompt")).toBeUndefined();
-  });
-
-  it("goes on to the prompt, which it copies, and back", async () => {
-    await render();
-    await act(async () => button("Next")?.click());
-    expect(dialog().textContent).toContain("Step 2 of 2: Ask your agent to start using Doco");
+    expect(dialog().textContent).not.toContain("Step 1 of 2");
+    expect(dialog().textContent).not.toContain("Which agent do you use?");
     expect(dialog().querySelector("pre")?.textContent).toContain(
-      "Doco workspace: https://doco.test/workspaces/torre",
+      "in the workspace torre (https://doco.test/workspaces/torre)",
     );
     expect(document.activeElement).toBe(button("Copy prompt"));
     await act(async () => button("Copy prompt")?.click());
     expect(writeText).toHaveBeenCalledWith(
-      expect.stringContaining("Doco workspace: https://doco.test/workspaces/torre"),
+      expect.stringContaining("in the workspace torre (https://doco.test/workspaces/torre)"),
     );
-    await act(async () => button("Back")?.click());
-    expect(dialog().textContent).toContain("Which agent do you use?");
+    expect(button("Next")).toBeUndefined();
   });
 });

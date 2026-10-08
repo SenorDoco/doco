@@ -1,6 +1,7 @@
-# Local Doco index cache — per-clone, regenerable, never source-of-truth (D-023).
-# Nothing in .doco/ is committed.
-.doco/
+# The Doco hook's token reads the workspace as whoever made it: never committed.
+# .doco/workspace, the project's workspace, is.
+.doco/*
+!.doco/workspace
 
 # Node / TypeScript
 node_modules/

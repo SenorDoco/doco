@@ -1,18 +1,17 @@
 // The steps that get a workspace going, on top of its page until every one is
-// done: connect GitHub, connect other sources of knowledge (or skip them),
-// connect Doco to your agent, ask your agent to start using Doco. Someone who
-// joined from an invite only has the last two. The page keeps the person on
-// the first step not done. Connecting GitHub goes through the GitHub setup
-// (routes/integrations.github.tsx), which asks which repositories to bring;
-// the other sources are one click each
+// done: connect GitHub, connect other sources of knowledge (or skip them), ask
+// your agent to start using Doco. Someone who joined from an invite only has
+// the last. The page keeps the person on the first step not done. Connecting
+// GitHub goes through the GitHub setup (routes/integrations.github.tsx), which
+// asks which repositories to bring; the other sources are one click each
 // (routes/workspaces.$workspaceHandle.onboarding.tsx) and come back here
-// saying what happened. The last two wait in view for what happens in the
-// agent: the person approving its connection to Doco, then its note in the
-// workspace's Agents chats Doco and the first brief of the Doco hook it turns
-// on with the token it gets from doco_hook_token (or the person saying their
-// agent doesn't run hooks). Once the last one is done, a dialog over the page
-// says the workspace is set up, and closing it leaves the page without the
-// steps (Alexander, 2026-10-07: a button to the page he was on read wrong).
+// saying what happened. The last waits in view for what happens in the agent,
+// which connects itself to Doco (the person signs in once): its note in the
+// workspace's Agents chats Doco, and the first brief of the Doco hook it turns
+// on with the token it gets from doco_hook_token. Once the last one is done, a
+// dialog over the page says the workspace is set up, and closing it leaves the
+// page without the steps (Alexander, 2026-10-07: a button to the page he was
+// on read wrong).
 
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -20,7 +19,6 @@ import { Form, Link, useFetcher, useRevalidator, useSearchParams } from "react-r
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { BRAND_ICONS, GitHubIcon } from "~/components/brand-icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
-import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { Dialog, DialogFooter, closeDialog } from "~/components/dialog";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { cn } from "~/lib/cn";
@@ -71,8 +69,8 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
         </CardTitle>
         <CardDescription>
           {creator
-            ? "Four steps to shared knowledge and context for your team and its agents."
-            : `You joined ${view.workspaceHandle}. Two steps left: connect Doco to your agent, then ask it to start using Doco here.`}
+            ? "Three steps to shared knowledge and context for your team and its agents."
+            : `You joined ${view.workspaceHandle}. One step left: ask your agent to start using Doco here.`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-0">
@@ -158,13 +156,12 @@ function StepBody({
   const action = `/workspaces/${view.workspaceHandle}/onboarding`;
   if (step === "github") return <GitHubStep view={view} />;
   if (step === "sources") return <SourcesStep view={view} action={action} />;
-  if (step === "mcp") return <McpStep view={view} action={action} onFinished={onFinished} />;
   return <AgentStep view={view} action={action} onFinished={onFinished} />;
 }
 
 /**
- * Ask where the steps stand every few seconds while one waits on the agent,
- * and move on the moment it does: to the next step, or to all set.
+ * Ask where the steps stand every few seconds while the agent step waits on
+ * the agent, and open the end of the setup the moment it is done.
  */
 function useWaitForAgent(view: OnboardingView, action: string, onFinished: () => void) {
   const fetcher = useFetcher<{
@@ -309,30 +306,6 @@ function SourcesStep({ view, action }: { view: OnboardingView; action: string })
   );
 }
 
-function McpStep({
-  view,
-  action,
-  onFinished,
-}: {
-  view: OnboardingView;
-  action: string;
-  onFinished: () => void;
-}) {
-  useWaitForAgent(view, action, onFinished);
-  return (
-    <div className="space-y-4 text-sm">
-      <p className="text-muted-foreground">
-        Add Doco to the agent you use, so it can read and write in {view.workspaceHandle}. When Doco
-        asks what the agent may reach, include {view.workspaceHandle}.
-      </p>
-      <ConnectAgentGuide guides={view.mcp.guides} />
-      <Waiting>
-        Waiting for you to approve Doco from your agent. This page moves on by itself once you do.
-      </Waiting>
-    </div>
-  );
-}
-
 function AgentStep({
   view,
   action,
@@ -349,11 +322,11 @@ function AgentStep({
   return (
     <div className="space-y-3 text-sm">
       <p className="text-muted-foreground">
-        Copy this message and send it to your agent. It has your agent start using Doco in{" "}
-        {view.workspaceHandle}, note in <span className="font-mono text-foreground">{where}</span>{" "}
-        that it received the instructions, and turn on the Doco hook, which briefs it from{" "}
-        {view.workspaceHandle} before each prompt and each file edit in Claude Code, Codex and
-        Gemini CLI.
+        Copy this message and send it to Claude Code, Codex or Gemini CLI in your project. Your
+        agent adds Doco to itself (sign in to Doco when it asks), notes in{" "}
+        <span className="font-mono text-foreground">{where}</span> that it received the
+        instructions, and turns on the Doco hook, which loads them at every session and briefs it
+        from {view.workspaceHandle} before each prompt and each file edit.
       </p>
       <AgentInstructionsBlock
         title="Message for your agent"
@@ -378,14 +351,6 @@ function AgentStep({
           </>
         )}
       </Waiting>
-      {hook ? null : (
-        <Form method="post" action={action}>
-          <input type="hidden" name="intent" value="finish-hook" />
-          <button type="submit" className={SECONDARY}>
-            My agent doesn&apos;t run hooks
-          </button>
-        </Form>
-      )}
     </div>
   );
 }

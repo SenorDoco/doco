@@ -2,7 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { agentConnectGuides } from "~/lib/agent-connect-guides";
 import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import type { OnboardingView } from "~/lib/onboarding-view.server";
 import { OnboardingStepper } from "../onboarding-stepper";
@@ -13,7 +12,6 @@ const CREATOR: OnboardingView = {
   steps: [
     { step: "github", done: false },
     { step: "sources", done: false },
-    { step: "mcp", done: false },
     { step: "agent", done: false },
   ],
   pending: "github",
@@ -36,7 +34,6 @@ const CREATOR: OnboardingView = {
       connected: false,
     },
   ],
-  mcp: { guides: agentConnectGuides("https://doco.to") },
   agent: {
     instructions: agentInstructionsForWorkspace("https://doco.to", "acme"),
     agentsChatsHandle: "acme-agents-chats",
@@ -50,7 +47,6 @@ const ON_SOURCES: OnboardingView = {
   steps: [
     { step: "github", done: true },
     { step: "sources", done: false },
-    { step: "mcp", done: false },
     { step: "agent", done: false },
   ],
   pending: "sources",
@@ -63,35 +59,20 @@ const ON_SOURCES: OnboardingView = {
   },
 };
 
-const ON_MCP: OnboardingView = {
-  ...ON_SOURCES,
-  steps: [
-    { step: "github", done: true },
-    { step: "sources", done: true },
-    { step: "mcp", done: false },
-    { step: "agent", done: false },
-  ],
-  pending: "mcp",
-};
-
 const ON_AGENT: OnboardingView = {
   ...ON_SOURCES,
   steps: [
     { step: "github", done: true },
     { step: "sources", done: true },
-    { step: "mcp", done: true },
     { step: "agent", done: false },
   ],
   pending: "agent",
 };
 
 const INVITEE: OnboardingView = {
-  ...ON_MCP,
+  ...ON_AGENT,
   joinedAs: "invitee",
-  steps: [
-    { step: "mcp", done: false },
-    { step: "agent", done: false },
-  ],
+  steps: [{ step: "agent", done: false }],
   github: { available: true, docos: [] },
   sources: [],
 };
@@ -118,11 +99,12 @@ describe("OnboardingStepper", () => {
   it("starts a workspace's creator on connecting GitHub, which asks which repositories", () => {
     const html = render(CREATOR);
     expect(html).toContain("Set up acme");
-    expect(html).toContain("Four steps to shared knowledge");
+    expect(html).toContain("Three steps to shared knowledge");
     expect(html).toContain("Connect GitHub");
     expect(html).toContain("Connect other sources of knowledge");
-    expect(html).toContain("Connect Doco to your agent");
     expect(html).toContain("Ask your agent to start using Doco");
+    // The agent connects itself to Doco, so connecting it isn't a step.
+    expect(html).not.toContain("Connect Doco to your agent");
     expect(html).not.toContain("Turn on the Doco hook");
     const step = currentStep(html);
     // The GitHub setup: it creates the workspace's GitHub Docos and has the
@@ -166,31 +148,22 @@ describe("OnboardingStepper", () => {
     expect(step).not.toContain("Skip for now");
   });
 
-  // Alexander, 2026-10-06: connecting the agent is a step of its own, with
-  // steps for the agent the person says they use.
-  it("asks which agent the person uses before connecting Doco to it, and waits for the approval", () => {
-    const step = currentStep(render(ON_MCP));
-    expect(step).toContain("Which agent do you use?");
-    for (const name of ["Claude Code", "Claude", "ChatGPT", "Cursor", "Codex"]) {
-      expect(step).toContain(`>${name}</button>`);
-    }
-    // No agent picked yet, so no agent's steps yet.
-    expect(step).not.toContain("<ol");
-    expect(step).toContain("include acme");
-    expect(step).toContain("Waiting for you to approve Doco from your agent");
-  });
-
-  // decision_01M4C2JDN3EZMA2FR8JPPMT7NN: the one message also turns on the
-  // Doco hook, so the step waits for the agent's note and the hook's first
-  // brief, and says which is still missing.
+  // Alexander, 2026-10-07: Doco supports Claude Code, Codex and Gemini CLI,
+  // which add Doco to themselves, so the one message connects the agent too:
+  // the person only signs in. It also turns on the Doco hook, so the step
+  // waits for the agent's note and the hook's first brief, and says which is
+  // still missing.
   it("gives the message for the agent with a copy button and waits for its note and its hook", () => {
     const html = render(ON_AGENT);
     const step = currentStep(html);
     expect(step).toContain("Message for your agent");
     expect(step).toContain("Copy");
+    expect(step).toContain("send it to Claude Code, Codex or Gemini CLI in your project");
+    expect(step).toContain("adds Doco to itself (sign in to Doco when it asks)");
     expect(step).toContain("in the workspace acme");
-    expect(step).toContain("turn on the Doco hook");
+    expect(step).toContain("turns on the Doco hook");
     expect(step).toContain("before each prompt and each file edit");
+    expect(step).not.toContain("Which agent do you use?");
     expect(step).toContain("Waiting for your agent&#x27;s note in");
     expect(step).toContain("acme-agents-chats");
     expect(step).toContain("and the hook&#x27;s first brief");
@@ -212,20 +185,20 @@ describe("OnboardingStepper", () => {
     expect(hooked).not.toContain("run hooks");
   });
 
-  it("lets the person skip the hook when their agent doesn't run hooks", () => {
+  // Every agent Doco supports runs hooks, so nobody skips the hook.
+  it("offers no way around the hook", () => {
     const step = currentStep(render(ON_AGENT));
-    expect(step).toContain('<input type="hidden" name="intent" value="finish-hook"/>');
-    expect(step).toContain("My agent doesn&#x27;t run hooks");
+    expect(step).not.toContain("finish-hook");
+    expect(step).not.toContain("run hooks");
   });
 
-  it("walks someone who joined from an invite only through connecting and asking their agent", () => {
+  it("walks someone who joined from an invite only through asking their agent", () => {
     const html = render(INVITEE);
     expect(html).toContain("Get started in acme");
-    expect(html).toContain("Two steps left");
+    expect(html).toContain("One step left: ask your agent to start using Doco here.");
     expect(html).not.toContain("Connect GitHub");
     expect(html).not.toContain("Connect other sources of knowledge");
-    expect(html).not.toContain("Turn on the Doco hook");
-    expect(currentStep(html)).toContain("Which agent do you use?");
+    expect(currentStep(html)).toContain("Message for your agent");
   });
 
   it("explains a step that came back refused", () => {

@@ -132,35 +132,34 @@ Before declaring setup done, check for the bootstrap files:
 
 \`\`\`sh
 test -f .doco/connections.md
-test -f AGENTS.md
-test -f CLAUDE.md
+test -f .doco/workspace
+test -f .doco/hook.mjs
 \`\`\`
 
 If any are missing, add them: create \`.doco/connections.md\` with the
-public Doco URL, create \`AGENTS.md\` with the instructions at ${baseUrl}${AGENT_INSTRUCTIONS_PATH}, and create \`CLAUDE.md\` as a one-line shim:
-
-\`\`\`
-@./AGENTS.md
-\`\`\`
+public Doco URL, and follow the instructions at ${baseUrl}${AGENT_INSTRUCTIONS_PATH}, which
+save the project's workspace in \`.doco/workspace\` and install the Doco hook. The hook
+loads those instructions at the start of every session, so the project keeps no copy.
 
 Commit these when they exist or changed:
 
 - \`.doco/connections.md\` — public Doco URL(s) for this repo.
-- \`AGENTS.md\` and \`CLAUDE.md\` — bootstrap pointers.
+- \`.doco/workspace\` — the project's workspace.
+- \`.doco/hook.mjs\` and the client's hook settings (\`.claude/settings.json\`,
+  \`.codex/hooks.json\` or \`.gemini/settings.json\`) — the Doco hook.
 - \`.agents/doco-agent-client.mjs\` — helper that reads credentials
   inside Node.
-- \`.claude/settings.json\` and \`.claude/*.sh\` — Claude Code hooks,
-  when this repo uses them.
 
-Never commit \`.env\`, \`DOCO_ACCESS\`, refresh tokens, OAuth client
-state, browser cookies, or any other credential.
+Never commit \`.env\`, \`DOCO_ACCESS\`, \`.doco/hook-tokens.json\`, refresh tokens,
+OAuth client state, browser cookies, or any other credential.
 
 If the worktree also contains unrelated user changes, stage only the
 Doco bootstrap files you touched:
 
 \`\`\`sh
 git status --short
-git add .doco/connections.md AGENTS.md CLAUDE.md .agents/doco-agent-client.mjs .claude
+git add .doco/connections.md .doco/workspace .doco/hook.mjs .agents/doco-agent-client.mjs
+git add .claude/settings.json   # or .codex/hooks.json, or .gemini/settings.json
 git diff --cached --stat
 git commit -m "Connect repository to Doco"
 git push

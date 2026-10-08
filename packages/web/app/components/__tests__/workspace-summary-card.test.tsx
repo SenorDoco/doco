@@ -167,7 +167,7 @@ describe("WorkspaceSummaryCard", () => {
   // with "Copy prompt". The message is the one that asks an agent to start
   // using Doco in this workspace. 2026-10-07: connecting Doco to the agent
   // comes first, as in a workspace's setup.
-  it("opens a dialog that connects the agent, then hands over its prompt", async () => {
+  it("opens a dialog that hands over the prompt for the agent", async () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -188,13 +188,9 @@ describe("WorkspaceSummaryCard", () => {
     await act(async () => invite?.click());
     const dialog = container.querySelector("dialog");
     expect(dialog?.open).toBe(true);
-    expect(dialog?.textContent).toContain("Step 1 of 2: Connect Doco to your agent");
-    const next = [...(dialog?.querySelectorAll("button") ?? [])].find(
-      (b) => b.textContent === "Next",
-    );
-    await act(async () => next?.click());
+    expect(dialog?.textContent).toContain("Ask your agent to start using Doco");
     expect(dialog?.querySelector("pre")?.textContent).toContain(
-      "Doco workspace: https://doco.test/workspaces/torre",
+      "in the workspace torre (https://doco.test/workspaces/torre)",
     );
     expect([...(dialog?.querySelectorAll("button") ?? [])].map((b) => b.textContent)).toContain(
       "Copy prompt",

@@ -1,8 +1,6 @@
-// Connecting Doco to the agent a person uses: they pick their agent, and the
-// steps for it follow, each page to open in a new tab and each thing to paste
-// with a Copy button. A workspace's onboarding, its Invite agent dialog,
-// /agents/connect and the Tokens page's Add MCP tab all show it; agents carry
-// none of these steps, their instructions send the person to /agents/connect.
+// Connecting Doco to an agent: pick the agent, and the steps for it follow,
+// each thing to paste with a Copy button. /agents/connect shows it, where an
+// agent's instructions send it to add Doco to itself.
 
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
@@ -58,15 +56,7 @@ function GuideSteps({ guide }: { guide: AgentGuide }) {
               {i + 1}
             </span>
             <div className="min-w-0 flex-1 space-y-2">
-              <p>
-                {step.text}
-                {step.link ? (
-                  <>
-                    {" "}
-                    <GuideLink href={step.link.href}>{step.link.label}</GuideLink>
-                  </>
-                ) : null}
-              </p>
+              <p>{step.text}</p>
               {step.code ? (
                 <div className="flex items-start gap-2">
                   <pre className="neu-well min-w-0 flex-1 whitespace-pre-wrap rounded-md [overflow-wrap:anywhere] bg-input px-3 py-2 font-mono text-xs leading-relaxed">
@@ -79,29 +69,14 @@ function GuideSteps({ guide }: { guide: AgentGuide }) {
           </li>
         ))}
       </ol>
-      {guide.docs ? (
-        <p className="text-xs text-muted-foreground">
-          Stuck? <GuideLink href={guide.docs}>{guide.name}'s own guide</GuideLink> has the details.
-        </p>
-      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Stuck?{" "}
+        <a href={guide.docs} target="_blank" rel="noreferrer" className="font-semibold">
+          {guide.name}'s own guide
+          <ExternalLink aria-hidden className="ml-0.5 inline h-3 w-3 align-[-0.125em]" />
+        </a>{" "}
+        has the details.
+      </p>
     </section>
-  );
-}
-
-/** A page on the web opens in a new tab, with the new-window icon; a link
- *  that opens an app (Cursor's, VS Code's) opens it in place. */
-function GuideLink({ href, children }: { href: string; children: React.ReactNode }) {
-  if (!href.startsWith("https://")) {
-    return (
-      <a href={href} className="font-semibold">
-        {children}
-      </a>
-    );
-  }
-  return (
-    <a href={href} target="_blank" rel="noreferrer" className="font-semibold">
-      {children}
-      <ExternalLink aria-hidden className="ml-0.5 inline h-3 w-3 align-[-0.125em]" />
-    </a>
   );
 }
