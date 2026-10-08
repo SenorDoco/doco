@@ -51,7 +51,7 @@ describe("agentInstructions", () => {
     const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
     expect(step2).toContain("One project = one workspace");
     expect(step2).toContain("the one whose URL is in the project's `.doco/workspace` file");
-    expect(step2).toContain("call `list_workspaces` and ask the user which to use");
+    expect(step2).toContain("call `list_workspaces`, ask the user which to use");
     expect(step2).toContain("save `https://doco.test/workspaces/<handle>` there");
     // A personal workspace exists for everyone and never stands in for a project.
     expect(step2).toContain("none besides their personal one");
@@ -66,25 +66,20 @@ describe("agentInstructions", () => {
     expect(text).toContain("never ask the user to.");
   });
 
-  // Projects set up before the hook carried the instructions keep a Doco
-  // block and its `Doco workspace:` line in AGENTS.md or CLAUDE.md, and an
-  // older hook script that reads that line and loads no instructions. The
-  // agent moves the workspace into .doco/workspace, saves the current script,
-  // and only then removes the block, so the hook never loses the workspace.
-  it("moves a project's older Doco block out of AGENTS.md and CLAUDE.md, updating its hook first", () => {
+  // Alexander, 2026-10-08: the instructions aren't backwards compatible; they
+  // assume a new project. A project from the old onboarding (a Doco block and
+  // a `Doco workspace:` line in AGENTS.md, an older hook script) moves over
+  // once, by a message its person sends its agent.
+  it("assumes a new project, with nothing from the old onboarding to clean up", () => {
     expect(text).toContain("Check these at the start of each session and fix what is missing.");
     const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
-    expect(step2).toContain(
-      "Without that file, take the URL from a `Doco workspace:` line in AGENTS.md or CLAUDE.md",
-    );
+    expect(step2).toContain("Without that file, call `list_workspaces`");
     const step3 = text.slice(position("3. **Hook.**"));
-    expect(step3).toContain(
-      "If the project doesn't run the Doco hook, or AGENTS.md or CLAUDE.md still holds an older Doco block (from `<!-- doco:begin` to `<!-- doco:end -->`), install the hook as https://doco.test/agents#hook shows",
-    );
-    expect(step3).toContain("replacing any older copy of its script.");
-    expect(step3).toContain(
-      "Then remove that block and its `Doco workspace:` line: the hook brings these instructions now.",
-    );
+    expect(step3).toContain("If the project doesn't run the Doco hook, install it as");
+    expect(text).not.toContain("doco:begin");
+    expect(text).not.toContain("Doco workspace:");
+    expect(text).not.toContain("AGENTS.md");
+    expect(text).not.toContain("older");
   });
 
   // Alexander, 2026-10-07 (decision_01M4BJN9097MW8Y8N0X38DGGAZ): say plainly
@@ -98,7 +93,7 @@ describe("agentInstructions", () => {
     );
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
-      "install the hook as https://doco.test/agents#hook shows, with its token from `doco_hook_token`",
+      "install it as https://doco.test/agents#hook shows, with its token from `doco_hook_token`.",
     );
     expect(text).not.toContain("owner");
   });

@@ -44,7 +44,7 @@ describe("/agents", () => {
     expect(html).toContain("Doco works with Claude Code, Codex and Gemini CLI for now.");
     expect(html).toContain('href="/agents/connect"');
     expect(html).toContain("<code>.doco/workspace</code>");
-    expect(html).not.toContain("<code>Doco workspace:</code> line");
+    expect(html).not.toContain("Doco workspace:");
     expect(html).not.toContain("ChatGPT");
   });
 });
