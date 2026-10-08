@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { rootDir } from "~/lib/db.server";
+import { InviteStore } from "~/lib/invite-store.server";
 
 const INVITE_COOKIE_NAME = "doco_signup_invite";
 const INVITE_COOKIE_TTL_SECONDS = 10 * 60;
@@ -20,7 +22,24 @@ export function clearSignupInviteCookie(): string {
   return `${INVITE_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
-export function hasValidSignupInviteCookie(cookieHeader: string | null, now = Date.now()): boolean {
+/**
+ * Whether a newcomer may create an account: they entered the signup code, or
+ * they are following an invite a user sent them. Signing in from
+ * /invite/<code> returns there, and a pending invite minted by a user is the
+ * newcomer's pass, so they need no code.
+ */
+export async function maySignUp(
+  cookieHeader: string | null,
+  returnPath: string | null,
+): Promise<boolean> {
+  if (hasValidSignupInviteCookie(cookieHeader)) return true;
+  const code = returnPath?.match(/^\/invite\/([^/?#]+)$/)?.[1];
+  if (!code) return false;
+  const invite = await InviteStore.forDoco(rootDir()).findInvite(code);
+  return invite?.status === "pending" && invite.minted_by_user_id !== null;
+}
+
+function hasValidSignupInviteCookie(cookieHeader: string | null, now = Date.now()): boolean {
   const token = parseCookie(cookieHeader, INVITE_COOKIE_NAME);
   if (!token) return false;
 
