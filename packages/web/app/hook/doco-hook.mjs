@@ -144,6 +144,7 @@ export function requestFor(event, config) {
     if (!prompt || prompt.startsWith("/")) return null;
     params.set("about", prompt.length > ABOUT_MAX ? prompt.slice(0, ABOUT_MAX) : prompt);
     params.set("budget", String(config.budget));
+    params.set("synthesize", "0");
     return {
       url: `${config.origin}/api/v1/brief.json?${params}`,
       cacheKey: null,

@@ -3,12 +3,16 @@
 // fusion and budget fill in ./brief. Seeds come from four mechanisms (nearest
 // embeddings, full text, exact touches on what the agent names, glossary
 // terms in the ask), grow one hop along edges, and are ordered by reciprocal
-// rank fusion with PageRank and recency as tie-breaks. A cross-encoder
-// reranker and a one-paragraph synthesis are on by default and switchable per
-// request; both are injectable, so tests stub them and keep the database real.
+// rank fusion with PageRank (stored per node) and recency as tie-breaks. A
+// cross-encoder reranker and a one-paragraph synthesis are on by default and
+// switchable per request, and run side by side; both are injectable, so tests
+// stub them and keep the database real. The brief has a deadline: when it
+// passes, or the caller goes away, the embedding, the reranker and the
+// synthesis requests stop, later steps are left out, and the brief returns
+// what it has with a warning (decision_01M4EXEMH1NA4MYE47KJ9M5SX6).
 
 import { type SemanticQuery, rankEmbeddings } from "@doco/db";
-import { type Reranker, getDefaultReranker, globalPageRank, rerankItems } from "@doco/index";
+import { type Reranker, getDefaultReranker, rerankItems } from "@doco/index";
 import { generateUlid } from "@doco/shared";
 import { queryPolicyArticles } from "../agent-bootstrap.server";
 import { createSenorDocoMessage, getSenorDocoAnthropicApiKey } from "../assistant-runtime.server";
@@ -60,6 +64,10 @@ export interface BriefRequest {
   /** Node ids left out of the brief and its hops: the evaluation hides the
    *  record a query is drawn from, so it cannot answer itself. */
   exclude?: string[];
+  /** Milliseconds the brief may take (default BRIEF_DEADLINE_MS). */
+  deadlineMs?: number;
+  /** Aborts when the caller goes away: the brief stops as at its deadline. */
+  signal?: AbortSignal;
 }
 
 export interface SynthesisInput {
@@ -72,12 +80,17 @@ export interface BriefDeps {
   /** undefined: the environment's reranker; null: none. */
   reranker?: Reranker | null;
   /** undefined: the model when a key is configured; null: none. */
-  synthesize?: ((input: SynthesisInput) => Promise<string | null>) | null;
+  synthesize?: ((input: SynthesisInput, signal: AbortSignal) => Promise<string | null>) | null;
   now?: () => Date;
 }
 
+/** How long a brief may take unless the request says otherwise. */
+export const BRIEF_DEADLINE_MS = 15_000;
 /** Candidates the four seed mechanisms may return, before the hop. */
 const SEED_LIMIT = 100;
+/** Words of the ask the full-text seed searches: its longest, which are its
+ *  rarest-looking (paths, identifiers, uncommon words). */
+const FTS_WORDS = 10;
 /** Seeds whose neighbours are added, and neighbours per seed. */
 const HOP_SEEDS = 40;
 const HOP_PER_SEED = 5;
@@ -93,7 +106,7 @@ export const BRIEF_SYNTHESIS_MODEL = "claude-haiku-4-5-20251001";
 
 const SYNTHESIS_SYSTEM = [
   "You open a brief for an AI agent that is about to act in a software project.",
-  "From the items given, write one paragraph of at most 120 words saying what the agent must know before it acts: the rules that bind it, the decisions already made, and what is in motion that it could collide with.",
+  "From the items given, write one paragraph of at most 70 words saying what the agent must know before it acts: the rules that bind it, the decisions already made, and what is in motion that it could collide with.",
   "Use only the items given. Cite each item you draw on by its id in square brackets. No preamble, no headings, no advice beyond the items.",
 ].join(" ");
 
@@ -113,7 +126,18 @@ interface NodeRow {
   prose: string;
   locator: string | null;
   updated_at: string;
+  /** PageRank stored per node; 0 without a live edge. */
+  rank: number;
 }
+
+/** The steps a stopped brief leaves out, in the order the warning names them. */
+const LEFT_OUT = [
+  "the query embedding",
+  "the one-hop expansion",
+  "the reranker",
+  "the synthesis",
+] as const;
+type LeftOut = (typeof LEFT_OUT)[number];
 
 interface EdgeRow {
   from_id: string;
@@ -140,6 +164,16 @@ export async function composeBrief(
   };
   const warnings: string[] = [];
   const gaps: string[] = [];
+  const deadlineMs = request.deadlineMs ?? BRIEF_DEADLINE_MS;
+  const deadline = AbortSignal.timeout(deadlineMs);
+  const stop = request.signal ? AbortSignal.any([request.signal, deadline]) : deadline;
+  const cut = new Set<LeftOut>();
+  /** Whether an optional step may start; once the brief is stopped it may
+   *  not, and the warning names it. */
+  const inTime = (step: LeftOut): boolean => {
+    if (stop.aborted) cut.add(step);
+    return !stop.aborted;
+  };
   const now = deps.now ? deps.now() : new Date();
   const about = request.about.trim();
   // What the ask itself names counts as touched when nothing else is said to
@@ -194,13 +228,15 @@ export async function composeBrief(
     `${scope.origin}/${handleOf.get(row.doco_id)}/${row.node_type}/${row.id}`;
 
   // ── Seeds ───────────────────────────────────────────────────────────────
-  const semantic = about
-    ? await timed("embed", async () => {
-        const { semantic, warning } = await (deps.embed ?? embedQuery)(about);
-        if (warning) warnings.push(warning);
-        return semantic;
-      })
-    : null;
+  const semantic =
+    about && inTime("the query embedding")
+      ? await timed("embed", async () => {
+          const { semantic, warning } = await (deps.embed ?? embedQuery)(about, stop);
+          if (!semantic && stop.aborted) cut.add("the query embedding");
+          else if (warning) warnings.push(warning);
+          return semantic;
+        })
+      : null;
 
   const excluded = new Set(request.exclude ?? []);
   const candidates = new Map<string, Candidate>();
@@ -252,17 +288,26 @@ export async function composeBrief(
         // Any of the ask's words, ranked by how many and how densely they
         // match: an ask is a sentence, and demanding every word (the AND that
         // websearch_to_tsquery builds) would miss the decision that shares
-        // two of them.
+        // two of them. Only its ten longest words: OR'ing every word of a
+        // 2,000-character hook prompt matched 60 % of torre's nodes and took
+        // 8.5 s to rank, and short words are the common ones.
         const rows = (
           await c.query<{ entity_id: string }>(
-            `WITH query AS (
-               SELECT to_tsquery('english', replace(plainto_tsquery('english', $2)::text, '&', '|')) AS q)
+            `WITH words AS (
+               SELECT word FROM unnest(tsvector_to_array(to_tsvector('english', $2))) AS word
+                ORDER BY length(word) DESC, word
+                LIMIT $4),
+             query AS (
+               SELECT string_agg(
+                        '''' || replace(replace(word, '\\', '\\\\'), '''', '''''') || '''', ' | '
+                      )::tsquery AS q
+                 FROM words)
              SELECT f.entity_id
                FROM entity_fts_nodes f CROSS JOIN query
               WHERE f.doco_id = ANY($1::text[]) AND f.search_tsv @@ query.q
               ORDER BY ts_rank_cd(f.search_tsv, query.q) DESC, f.entity_id
               LIMIT $3`,
-            [docoIds, about, SEED_LIMIT],
+            [docoIds, about, SEED_LIMIT, FTS_WORDS],
           )
         ).rows;
         rows.forEach((row, rank) => {
@@ -401,7 +446,7 @@ export async function composeBrief(
       for (const edge of edges) signal(edge.from_id, { kind: "replaces", old: edge.to_id });
     }
 
-    if (hopFrom.length > 0) {
+    if (hopFrom.length > 0 && inTime("the one-hop expansion")) {
       const edges = (
         await c.query<EdgeRow>(
           `SELECT from_id, to_id, edge_type FROM edges
@@ -473,21 +518,9 @@ export async function composeBrief(
 
   // ── Rank ────────────────────────────────────────────────────────────────
   const ordered = await timed("rank", async () => {
-    const edges = (
-      await c.query<EdgeRow>(
-        `SELECT from_id, to_id, edge_type FROM edges
-          WHERE doco_id = ANY($1::text[]) AND lifecycle <> 'retired'`,
-        [docoIds],
-      )
-    ).rows;
-    const gpr = new Map(
-      globalPageRank(
-        edges.map((e) => ({ from: e.from_id, to: e.to_id, edge_type: e.edge_type })),
-        { alpha: 0.85, directed: true },
-      ).map((p) => [p.id, p.score]),
-    );
+    const rankOf = (id: string) => nodes.get(id)?.rank ?? 0;
     const ids = [...candidates.keys()];
-    const byRank = [...ids].sort((a, b) => (gpr.get(b) ?? 0) - (gpr.get(a) ?? 0));
+    const byRank = [...ids].sort((a, b) => rankOf(b) - rankOf(a));
     const byRecency = [...ids].sort(
       (a, b) =>
         Date.parse(candidates.get(b)?.updated_at ?? "") -
@@ -589,7 +622,7 @@ export async function composeBrief(
     tiered.push(item(candidates.get(id) as Candidate, "must_obey"));
   for (const id of firstTier.filter((id) => candidates.get(id)?.type !== "rule"))
     tiered.push(item(candidates.get(id) as Candidate, "must_obey"));
-  let rest: Omit<BriefItem, "detail">[] = [];
+  const rest: Omit<BriefItem, "detail">[] = [];
   for (const tier of BRIEF_TIERS) {
     if (tier === "must_obey") continue;
     for (const id of ordered) {
@@ -598,52 +631,67 @@ export async function composeBrief(
     if (tier === "background") rest.push(...mirrorItems);
   }
 
-  // ── Rerank (on by default) ─────────────────────────────────────────────
+  // ── Rerank and synthesis (on by default), side by side ─────────────────
+  // The reranker orders within a tier, never across, so the synthesis reads
+  // the tiers in the order rank fusion gave and need not wait for it.
   const reranker = deps.reranker === undefined ? getDefaultReranker() : deps.reranker;
-  if (request.rerank !== false && about && rest.length > 1) {
-    if (!reranker) warnings.push("No reranker is configured; order is by rank fusion alone.");
-    else {
-      try {
-        rest = await timed("rerank", async () => {
-          const head = rest.slice(0, RERANK_TOP);
-          const scored = await rerankItems(
-            reranker,
-            about,
-            head,
-            (it) => `${it.summary}\n${it.text}`,
-          );
-          const scoreOf = new Map(scored.map(({ item, score }) => [item.id, score]));
-          const reranked = [...head].sort(
-            (a, b) =>
-              (scoreOf.get(b.id) ?? Number.NEGATIVE_INFINITY) -
-              (scoreOf.get(a.id) ?? Number.NEGATIVE_INFINITY),
-          );
-          const all = [...reranked, ...rest.slice(RERANK_TOP)];
-          // Tiers hold: the reranker orders within a tier, never across.
-          return BRIEF_TIERS.flatMap((tier) => all.filter((it) => it.tier === tier));
-        });
-      } catch (e) {
-        warnings.push(`Reranker failed (${(e as Error).message}); order is by rank fusion.`);
-      }
-    }
-  }
-  const all = [...tiered, ...rest];
-
-  // ── Synthesis (on by default) ──────────────────────────────────────────
   const synthesize = deps.synthesize === undefined ? synthesizeWithModel : deps.synthesize;
-  if (request.synthesize !== false && synthesize && all.length > 0) {
-    try {
-      brief.synthesis = await timed("synthesize", () =>
-        synthesize({
-          about,
-          items: all.filter((it) => it.tier !== "background").slice(0, SYNTHESIS_ITEMS),
-        }),
-      );
-      if (brief.synthesis === null) warnings.push("No model is configured for the synthesis.");
-    } catch (e) {
-      warnings.push(`Synthesis failed (${(e as Error).message}).`);
-    }
+  const fused = [...tiered, ...rest];
+  const wantsRerank = request.rerank !== false && about !== "" && rest.length > 1;
+  if (wantsRerank && !reranker) {
+    warnings.push("No reranker is configured; order is by rank fusion alone.");
   }
+  const [reranked, synthesis] = await Promise.all([
+    wantsRerank && reranker && inTime("the reranker")
+      ? timed("rerank", async () => {
+          try {
+            const head = rest.slice(0, RERANK_TOP);
+            const scored = await rerankItems(
+              reranker,
+              about,
+              head,
+              (it) => `${it.summary}\n${it.text}`,
+              undefined,
+              stop,
+            );
+            const scoreOf = new Map(scored.map(({ item, score }) => [item.id, score]));
+            const sorted = [...head].sort(
+              (a, b) =>
+                (scoreOf.get(b.id) ?? Number.NEGATIVE_INFINITY) -
+                (scoreOf.get(a.id) ?? Number.NEGATIVE_INFINITY),
+            );
+            const all = [...sorted, ...rest.slice(RERANK_TOP)];
+            return BRIEF_TIERS.flatMap((tier) => all.filter((it) => it.tier === tier));
+          } catch (e) {
+            if (stop.aborted) cut.add("the reranker");
+            else
+              warnings.push(`Reranker failed (${(e as Error).message}); order is by rank fusion.`);
+            return rest;
+          }
+        })
+      : rest,
+    request.synthesize !== false && synthesize && fused.length > 0 && inTime("the synthesis")
+      ? timed("synthesize", async () => {
+          try {
+            const text = await synthesize(
+              {
+                about,
+                items: fused.filter((it) => it.tier !== "background").slice(0, SYNTHESIS_ITEMS),
+              },
+              stop,
+            );
+            if (text === null) warnings.push("No model is configured for the synthesis.");
+            return text;
+          } catch (e) {
+            if (stop.aborted) cut.add("the synthesis");
+            else warnings.push(`Synthesis failed (${(e as Error).message}).`);
+            return null;
+          }
+        })
+      : null,
+  ]);
+  brief.synthesis = synthesis;
+  const all = [...tiered, ...reranked];
 
   // ── Gaps and budget ────────────────────────────────────────────────────
   for (const touch of touches) {
@@ -659,6 +707,16 @@ export async function composeBrief(
   if (touches.length > 0 && !all.some((it) => it.type === "decision" && /names /.test(it.because)))
     gaps.push("No decision mentions what you touch.");
 
+  if (cut.size > 0) {
+    const why = request.signal?.aborted
+      ? "The caller went away"
+      : `Out of time after ${deadlineMs} ms`;
+    const left = LEFT_OUT.filter((step) => cut.has(step));
+    const list =
+      left.length > 1 ? `${left.slice(0, -1).join(", ")} and ${left[left.length - 1]}` : left[0];
+    warnings.push(`${why}; left out ${list}.`);
+  }
+
   const reserved = tokensOf(brief.synthesis ?? "") + 40;
   const filled = fillBudget(all, budget, reserved);
   brief.items = filled.served;
@@ -669,14 +727,20 @@ export async function composeBrief(
 }
 
 /** The paragraph a model writes over the first three tiers. */
-export async function synthesizeWithModel(input: SynthesisInput): Promise<string | null> {
+export async function synthesizeWithModel(
+  input: SynthesisInput,
+  signal: AbortSignal,
+): Promise<string | null> {
   if (!getSenorDocoAnthropicApiKey()) return null;
-  const message = await createSenorDocoMessage({
-    model: BRIEF_SYNTHESIS_MODEL,
-    max_tokens: 240,
-    system: SYNTHESIS_SYSTEM,
-    messages: [{ role: "user", content: synthesisPrompt(input.about, input.items) }],
-  });
+  const message = await createSenorDocoMessage(
+    {
+      model: BRIEF_SYNTHESIS_MODEL,
+      max_tokens: 140,
+      system: SYNTHESIS_SYSTEM,
+      messages: [{ role: "user", content: synthesisPrompt(input.about, input.items) }],
+    },
+    { signal },
+  );
   const text = message.content
     .flatMap((block) => (block.type === "text" ? [block.text] : []))
     .join("\n")
@@ -700,8 +764,10 @@ async function loadNodes(c: BriefClient, ids: string[], docoIds: string[]): Prom
   if (ids.length === 0) return [];
   return (
     await c.query<NodeRow>(
-      `SELECT id, doco_id, node_type, lifecycle, prose, locator, updated_at
-         FROM nodes WHERE id = ANY($1::text[]) AND doco_id = ANY($2::text[])`,
+      `SELECT n.id, n.doco_id, n.node_type, n.lifecycle, n.prose, n.locator, n.updated_at,
+              coalesce(r.rank, 0) AS rank
+         FROM nodes n LEFT JOIN node_ranks r ON r.node_id = n.id
+        WHERE n.id = ANY($1::text[]) AND n.doco_id = ANY($2::text[])`,
       [ids, docoIds],
     )
   ).rows;

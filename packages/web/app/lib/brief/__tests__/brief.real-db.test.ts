@@ -1,12 +1,14 @@
 // The brief engine against a real database: seeds from touches, meaning and
 // words across every readable Doco, one hop along edges, replacements of
-// retired decisions, the four tiers with their reasons, the budget, and the
-// reranker and synthesis switches. The embedding model, the reranker and the
-// synthesis model are stubbed; everything else is the real code.
+// retired decisions, the four tiers with their reasons, the budget, the
+// reranker and synthesis switches, and the deadline. The embedding model, the
+// reranker and the synthesis model are stubbed; everything else is the real
+// code, PageRank included (stored per node by the refresh).
 import { vectorLiteral } from "@doco/db";
 import type { Reranker } from "@doco/index";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { freshDb } from "../../../../../db/src/__tests__/fresh-db";
+import { refreshNodeRanks } from "../../node-ranks.server";
 import { type BriefClient, type BriefDeps, composeBrief } from "../brief.server";
 
 const MODEL = "test:model";
@@ -101,6 +103,7 @@ beforeEach(async () => {
        ('edge_1', 'doco_dec', 'derived_from', 'decision_hybrid', 'decision', 'idea_brief', 'idea'),
        ('edge_2', 'doco_dec', 'replaces', 'decision_rrf', 'decision', 'decision_cosine', 'decision')`,
   );
+  await refreshNodeRanks(db);
   await db.query(
     `INSERT INTO embeddings
        (doco_id, source, entity_id, chunk_index, model_id, content_hash, chunk_text, embedding)
@@ -271,12 +274,13 @@ describe("composeBrief", () => {
     expect(ids(on, "decided")).toEqual(["decision_rrf", "decision_rerank", "decision_hybrid"]);
     expect(ids(on, "in_motion")).toEqual(["idea_brief"]);
     expect(on.synthesis).toBe("About improve the hybrid search ranking: obey [workspace_1].");
+    // The synthesis runs alongside the reranker, over the order rank fusion gave.
     expect(synthesize.mock.calls[0][0].items.map((i: { id: string }) => i.id)).toEqual([
       "workspace_1",
       "rule_small",
-      "decision_rrf",
-      "decision_rerank",
       "decision_hybrid",
+      "decision_rerank",
+      "decision_rrf",
       "idea_brief",
     ]);
     expect(Object.keys(on.steps)).toContain("rerank");
@@ -306,4 +310,125 @@ describe("composeBrief", () => {
       "No model is configured for the synthesis.",
     ]);
   });
+
+  // A 2,000-character hook prompt OR'ed every word: on torre 60 % of the
+  // nodes matched one and ranking them took 8.5 s. The ask's ten longest
+  // words are its rarest-looking ones; the short common ones are left out.
+  it("searches the words of a long ask by its ten longest", async () => {
+    const brief = await composeBrief(
+      c,
+      SCOPE,
+      {
+        about:
+          "internationalization telecommunications electroencephalography counterrevolutionaries " +
+          "photosynthesizing incomprehensibilities uncharacteristically disproportionately " +
+          "institutionalizations reciprocal search hybrid rank",
+        rerank: false,
+        synthesize: false,
+      },
+      OFF,
+    );
+    const served = brief.items.map((i) => i.id);
+    expect(served).toContain("decision_rrf");
+    expect(served).not.toContain("decision_hybrid");
+    expect(served).not.toContain("decision_rerank");
+    expect(served).not.toContain("reference_term");
+  });
+
+  // Ranking reads the PageRank stored per node: a brief loads edges only
+  // around its seeds, never every edge of the Docos it reads.
+  it("loads no edges beyond its seeds' to rank", async () => {
+    const statements: string[] = [];
+    const spy: BriefClient = {
+      query: (sql, params) => {
+        statements.push(sql);
+        return c.query(sql, params);
+      },
+    };
+    const brief = await composeBrief(
+      spy,
+      SCOPE,
+      { about: "improve the hybrid search ranking", rerank: false, synthesize: false },
+      { ...OFF, embed: embedApple },
+    );
+    expect(ids(brief, "decided")).toEqual(["decision_hybrid", "decision_rerank", "decision_rrf"]);
+    const edgeReads = statements.filter((sql) => /FROM edges/.test(sql));
+    expect(edgeReads.length).toBeGreaterThan(0);
+    for (const sql of edgeReads) expect(sql).toMatch(/(from_id|to_id) = ANY/);
+  });
+
+  it("returns what it has when the deadline passes, and stops the embedding", async () => {
+    let embedSignal: AbortSignal | undefined;
+    const hang: BriefDeps["embed"] = async (_text, signal) => {
+      embedSignal = signal;
+      await aborted(signal);
+      return { semantic: null, warning: "Semantic ranking unavailable (aborted)." };
+    };
+    const reranker: Reranker = { modelId: "test:reranker", rerank: vi.fn() };
+    const synthesize = vi.fn();
+    const started = Date.now();
+    const brief = await composeBrief(
+      c,
+      SCOPE,
+      { about: "improve the hybrid search ranking", deadlineMs: 50 },
+      { ...OFF, embed: hang, reranker, synthesize },
+    );
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(embedSignal?.aborted).toBe(true);
+    // The words still found what they match; the hop and the model steps were left out.
+    expect(ids(brief, "must_obey")).toEqual(["workspace_1", "rule_small"]);
+    expect(ids(brief, "decided")).toEqual(
+      expect.arrayContaining(["decision_hybrid", "decision_rerank", "decision_rrf"]),
+    );
+    expect(brief.items.map((i) => i.id)).not.toContain("idea_brief");
+    expect(reranker.rerank).not.toHaveBeenCalled();
+    expect(synthesize).not.toHaveBeenCalled();
+    expect(brief.warnings).toEqual([
+      "Out of time after 50 ms; left out the query embedding, the one-hop expansion, the reranker and the synthesis.",
+    ]);
+  });
+
+  it("stops the reranker and the synthesis, running side by side, when the caller goes away", async () => {
+    const caller = new AbortController();
+    let rerankSignal: AbortSignal | undefined;
+    let synthesisSignal: AbortSignal | undefined;
+    const reranker: Reranker = {
+      modelId: "test:reranker",
+      rerank: vi.fn(async (_q: string, _d: string[], _n?: number, signal?: AbortSignal) => {
+        rerankSignal = signal;
+        await aborted(signal);
+        throw signal?.reason;
+      }),
+    };
+    const synthesize = vi.fn(async (_input: unknown, signal?: AbortSignal) => {
+      synthesisSignal = signal;
+      // Both are in flight at once: the reranker has been called already.
+      await vi.waitFor(() => expect(reranker.rerank).toHaveBeenCalled());
+      caller.abort();
+      await aborted(signal);
+      throw signal?.reason;
+    });
+    const brief = await composeBrief(
+      c,
+      SCOPE,
+      { about: "improve the hybrid search ranking", signal: caller.signal },
+      { ...OFF, embed: embedApple, reranker, synthesize },
+    );
+    expect(rerankSignal?.aborted).toBe(true);
+    expect(synthesisSignal?.aborted).toBe(true);
+    expect(brief.synthesis).toBeNull();
+    expect(ids(brief, "decided")).toEqual(["decision_hybrid", "decision_rerank", "decision_rrf"]);
+    expect(ids(brief, "in_motion")).toContain("idea_brief");
+    expect(brief.warnings).toEqual([
+      "The caller went away; left out the reranker and the synthesis.",
+    ]);
+  });
 });
+
+/** Resolves once `signal` aborts. */
+function aborted(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (!signal || signal.aborted) return resolve();
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}

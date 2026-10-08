@@ -82,15 +82,19 @@ export async function createSenorDocoMessage(
   params: Omit<MessageCreateParamsNonStreaming, "model"> & {
     model?: MessageCreateParamsNonStreaming["model"] | string;
   },
+  options: { signal?: AbortSignal } = {},
 ): Promise<Message> {
   const client = getSenorDocoAnthropicClient();
   if (!client) throw new Error(missingSenorDocoAnthropicMessage() ?? "Anthropic is unavailable.");
   const { model, ...rest } = params;
-  return client.messages.create({
-    ...rest,
-    messages: stripEmptyTextBlocks(rest.messages),
-    model: (model ?? getSenorDocoModel()) as MessageCreateParamsNonStreaming["model"],
-  });
+  return client.messages.create(
+    {
+      ...rest,
+      messages: stripEmptyTextBlocks(rest.messages),
+      model: (model ?? getSenorDocoModel()) as MessageCreateParamsNonStreaming["model"],
+    },
+    options,
+  );
 }
 
 export function streamSenorDocoMessage(

@@ -1,7 +1,7 @@
 import { type SemanticQuery, rankEmbeddings } from "@doco/db";
-import { globalPageRank } from "@doco/index";
 import { NODE_TYPES } from "@doco/shared";
 import type { PoolClient } from "pg";
+import { loadNodeRanks } from "~/lib/node-ranks.server";
 import { type SearchFilters, resolveFilteredCandidates } from "~/lib/search-filters.server";
 
 export interface SearchHit {
@@ -98,7 +98,7 @@ export async function loadFilteredSearchHits(
   const ids =
     candidateIds === null ? await loadAllDocoEntityIds(c, docoId) : Array.from(candidateIds);
   const hits = await hydrateSearchHits(c, ids, docoId, null);
-  await attachSearchGlobalPageRank(c, docoId, hits);
+  await attachNodeRanks(c, hits);
   hits.sort((a, b) => {
     const byCreated = createdTime(b.created_at) - createdTime(a.created_at);
     if (byCreated !== 0) return byCreated;
@@ -151,33 +151,14 @@ export async function hydrateSearchHits(
   return hits;
 }
 
-export async function attachSearchGlobalPageRank(
-  c: PoolClient,
-  docoId: string,
-  hits: SearchHit[],
-): Promise<void> {
-  if (hits.length === 0) return;
-  const edgeRows = (
-    await c.query<{ from_id: string; to_id: string; edge_type: string }>(
-      "SELECT from_id, to_id, edge_type FROM edges WHERE doco_id = $1",
-      [docoId],
-    )
-  ).rows;
-  // Directed: an edge's direction is meaningful here (e.g. an event
-  // "serves" an intent as from=event → to=intent), so the intent that many
-  // nodes point at accumulates rank as an authority rather than having its
-  // mass diluted across a symmetrized star. See ADR / globalPageRank docs.
-  const gpr = globalPageRank(
-    edgeRows.map((s) => ({
-      from: s.from_id,
-      to: s.to_id,
-      edge_type: s.edge_type,
-    })),
-    { alpha: 0.85, directed: true },
+/** Each hit's PageRank, as stored per node (node-ranks.server.ts); 0 for a
+ *  node with no live edge. */
+export async function attachNodeRanks(c: PoolClient, hits: SearchHit[]): Promise<void> {
+  const ranks = await loadNodeRanks(
+    c,
+    hits.map((hit) => hit.id),
   );
-  const gprById = new Map<string, number>();
-  for (const point of gpr) gprById.set(point.id, point.score);
-  for (const hit of hits) hit.gpr = gprById.get(hit.id) ?? 0;
+  for (const hit of hits) hit.gpr = ranks.get(hit.id) ?? 0;
 }
 
 /** How many nodes the vector ranker returns when the caller sets no limit. */
@@ -210,7 +191,7 @@ export async function rankSearchEmbeddings(
   const scoreById = new Map(ranked.map((item) => [item.entity_id, item.score]));
   const ids = ranked.map((item) => item.entity_id);
   const hits = await hydrateSearchHits(c, ids, docoId, scoreById);
-  await attachSearchGlobalPageRank(c, docoId, hits);
+  await attachNodeRanks(c, hits);
   hits.sort((a, b) => (b.vector_score ?? 0) - (a.vector_score ?? 0));
   return { hits, candidateIds };
 }
@@ -252,7 +233,7 @@ export async function rankSearchFts(
   if (ids.length === 0) return [];
 
   const hits = await hydrateSearchHits(c, ids, docoId, null);
-  await attachSearchGlobalPageRank(c, docoId, hits);
+  await attachNodeRanks(c, hits);
   // hydrateSearchHits returns rows grouped by spec; restore FTS rank order.
   const rankById = new Map(ids.map((id, i) => [id, i]));
   hits.sort((a, b) => (rankById.get(a.id) ?? 0) - (rankById.get(b.id) ?? 0));

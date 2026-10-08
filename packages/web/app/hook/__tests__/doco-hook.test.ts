@@ -89,7 +89,7 @@ describe("the Doco hook", () => {
     expect(INSTRUCTIONS_PATH).toBe(AGENT_INSTRUCTIONS_TEXT_PATH);
   });
 
-  it("briefs a prompt, reminder first, for Claude Code and Codex (UserPromptSubmit) and Gemini CLI (BeforeAgent)", async () => {
+  it("briefs a prompt without the synthesis, reminder first, for Claude Code and Codex (UserPromptSubmit) and Gemini CLI (BeforeAgent)", async () => {
     const cwd = project();
     for (const name of ["UserPromptSubmit", "BeforeAgent"]) {
       const out = await runHook(
@@ -106,8 +106,8 @@ describe("the Doco hook", () => {
       });
     }
     expect(requests.map((r) => r.url)).toEqual([
-      "/api/v1/brief.json?workspace=acme&format=text&about=add+a+brief+route&budget=4000",
-      "/api/v1/brief.json?workspace=acme&format=text&about=add+a+brief+route&budget=4000",
+      "/api/v1/brief.json?workspace=acme&format=text&about=add+a+brief+route&budget=4000&synthesize=0",
+      "/api/v1/brief.json?workspace=acme&format=text&about=add+a+brief+route&budget=4000&synthesize=0",
     ]);
     expect(requests[0].authorization).toBe("Bearer doco_ht_env");
     rmSync(cwd, { recursive: true, force: true });
@@ -199,7 +199,7 @@ describe("the Doco hook", () => {
     const config = resolveConfig({}, join(cwd, "packages", "web"));
     expect(config).toMatchObject({ root: cwd, origin, workspace: "acme", token: "doco_ht_file" });
     expect(requestFor({ hook_event_name: "UserPromptSubmit", prompt: "x" }, config)?.url).toBe(
-      `${origin}/api/v1/brief.json?workspace=acme&format=text&about=x&budget=4000`,
+      `${origin}/api/v1/brief.json?workspace=acme&format=text&about=x&budget=4000&synthesize=0`,
     );
     const out = await runHook(
       { hook_event_name: "UserPromptSubmit", session_id: session(), prompt: "ship it" },
@@ -208,7 +208,7 @@ describe("the Doco hook", () => {
     );
     expect(JSON.parse(out.stdout).hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
     expect(requests[0]).toEqual({
-      url: "/api/v1/brief.json?workspace=acme&format=text&about=ship+it&budget=4000",
+      url: "/api/v1/brief.json?workspace=acme&format=text&about=ship+it&budget=4000&synthesize=0",
       authorization: "Bearer doco_ht_file",
     });
     rmSync(cwd, { recursive: true, force: true });
