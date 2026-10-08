@@ -58,7 +58,7 @@ Check these at the start of each session and fix what is missing. The user who a
 
 1. **Connection.** If Doco's tools (\`doco_brief\`, \`doco_capture\`) are missing, or ask for approval on every call, add Doco to yourself as ${host}${CONNECT_AGENT_PATH} shows for your agent, then ask the user for the steps there only they can take, such as signing in to Doco and restarting you.
 2. **Workspace.** One project = one workspace: the one whose URL is in the project's \`.doco/workspace\` file. Without that file, take the URL from a \`Doco workspace:\` line in AGENTS.md or CLAUDE.md, or call \`list_workspaces\` and ask the user which to use, and save \`${host}/workspaces/<handle>\` there. If they have none besides their personal one, send them to ${host}/new-workspace or to the invite a teammate sent; agents never create workspaces. Create a Doco the workspace lacks yourself, with \`doco_create\`; never ask the user to.
-3. **Hook.** If the project doesn't run the Doco hook, install it as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows, with its token from \`doco_hook_token\`. Then remove any older Doco block (from \`<!-- doco:begin\` to \`<!-- doco:end -->\`) and its \`Doco workspace:\` line from AGENTS.md and CLAUDE.md: the hook brings these instructions now.
+3. **Hook.** If the project doesn't run the Doco hook, or AGENTS.md or CLAUDE.md still holds an older Doco block (from \`<!-- doco:begin\` to \`<!-- doco:end -->\`), install the hook as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows, with its token from \`doco_hook_token\`, replacing any older copy of its script. Then remove that block and its \`Doco workspace:\` line: the hook brings these instructions now.
 `;
 }
 
