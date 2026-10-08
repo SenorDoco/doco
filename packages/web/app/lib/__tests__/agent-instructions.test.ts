@@ -67,10 +67,11 @@ describe("agentInstructions", () => {
   });
 
   // Projects set up before the hook carried the instructions keep a Doco
-  // block and its `Doco workspace:` line in AGENTS.md or CLAUDE.md. The agent
-  // moves the workspace into .doco/workspace and removes the block, which
-  // would otherwise sit beside what the hook brings.
-  it("moves a project's older Doco block out of AGENTS.md and CLAUDE.md", () => {
+  // block and its `Doco workspace:` line in AGENTS.md or CLAUDE.md, and an
+  // older hook script that reads that line and loads no instructions. The
+  // agent moves the workspace into .doco/workspace, saves the current script,
+  // and only then removes the block, so the hook never loses the workspace.
+  it("moves a project's older Doco block out of AGENTS.md and CLAUDE.md, updating its hook first", () => {
     expect(text).toContain("Check these at the start of each session and fix what is missing.");
     const step2 = text.slice(position("2. **Workspace.**"), position("3. **Hook.**"));
     expect(step2).toContain(
@@ -78,7 +79,11 @@ describe("agentInstructions", () => {
     );
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
-      "remove any older Doco block (from `<!-- doco:begin` to `<!-- doco:end -->`) and its `Doco workspace:` line from AGENTS.md and CLAUDE.md",
+      "If the project doesn't run the Doco hook, or AGENTS.md or CLAUDE.md still holds an older Doco block (from `<!-- doco:begin` to `<!-- doco:end -->`), install the hook as https://doco.test/agents#hook shows",
+    );
+    expect(step3).toContain("replacing any older copy of its script.");
+    expect(step3).toContain(
+      "Then remove that block and its `Doco workspace:` line: the hook brings these instructions now.",
     );
   });
 
@@ -93,7 +98,7 @@ describe("agentInstructions", () => {
     );
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
-      "If the project doesn't run the Doco hook, install it as https://doco.test/agents#hook shows, with its token from `doco_hook_token`.",
+      "install the hook as https://doco.test/agents#hook shows, with its token from `doco_hook_token`",
     );
     expect(text).not.toContain("owner");
   });
