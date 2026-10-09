@@ -1,6 +1,6 @@
-// The steps that get a workspace going, on top of its page until every one is
-// done: connect GitHub, connect other sources of knowledge (or skip them), ask
-// your agent to start using Doco. Someone who joined from an invite only has
+// The steps that get a workspace going, all its page shows until every one is
+// done (decision_01M4GFFG59ZACNB1J5PEAKM9TC): connect GitHub, connect other
+// sources of knowledge (or skip them), ask your agent to start using Doco. Someone who joined from an invite only has
 // the last. The page keeps the person on the first step not done. Connecting
 // GitHub goes through the GitHub setup (routes/integrations.github.tsx), which
 // asks which repositories to bring; the other sources are one click each
@@ -9,9 +9,9 @@
 // which connects itself to Doco (the person signs in once): its note in the
 // workspace's Agents chats Doco, and the first brief of the Doco hook it turns
 // on with the token it gets from doco_hook_token. Once the last one is done, a
-// dialog over the page says the workspace is set up, and closing it leaves the
-// page without the steps (Alexander, 2026-10-07: a button to the page he was
-// on read wrong).
+// dialog over the page says the workspace is set up, and closing it reloads
+// the page, which shows the workspace in place of the steps (Alexander,
+// 2026-10-07: a button to the page he was on read wrong).
 
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -51,7 +51,7 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
   const revalidator = useRevalidator();
   const creator = view.joinedAs === "creator";
 
-  // Reloading the page once the dialog closes drops the steps from it.
+  // Reloading the page once the dialog closes shows the workspace instead.
   if (finished) {
     return (
       <SetUpDialog

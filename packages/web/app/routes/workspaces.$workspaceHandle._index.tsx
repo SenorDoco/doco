@@ -1,9 +1,11 @@
-// /workspaces/:workspaceHandle — per-Workspace home. On top, until they're
-// done, the steps that get the workspace going for the signed-in person
-// (components/onboarding-stepper.tsx), on the first one not done. Then the
-// same summary card the Workspaces page shows for it (Doco icons, silence
-// alerts, New Doco or source / Invite person / Invite agent, latest activity),
-// then the detailed list of its Docos. Below those, a wide two-column layout
+// /workspaces/:workspaceHandle — per-Workspace home. Until they're done, the
+// page is only the steps that get the workspace going for the signed-in person
+// (components/onboarding-stepper.tsx), on the first one not done, and nothing
+// else is loaded for it (decision_01M4GFFG59ZACNB1J5PEAKM9TC). Once they are,
+// or for someone with no steps there: the same summary card the Workspaces
+// page shows for it (Doco icons, silence alerts, New Doco or source / Invite
+// person / Invite agent, latest activity), then the detailed list of its
+// Docos. Below those, a wide two-column layout
 // at `lg` (1024px) and up; below that — the same width at which the nav
 // collapses to a hamburger — it renders as a single column so the constitution
 // keeps a readable measure instead of being crushed beside the 420px sidebar.
@@ -91,6 +93,7 @@ export async function loader({
   } = await loadWorkspaceForRead(params.workspaceHandle, me?.id ?? null);
   const canInviteUsers = myRole === "owner";
   const onboarding = me ? await loadOnboardingView({ request, workspace, userId: me.id }) : null;
+  if (onboarding) return { workspace, canInviteUsers, onboarding };
 
   return withClient(async (c) => {
     const docoIds = docoRows.map((r) => r.id);
@@ -208,9 +211,9 @@ export async function loader({
 
     return {
       workspace,
-      summary,
-      onboarding,
       canInviteUsers,
+      onboarding: null,
+      summary,
       canEditConstitution: canInviteUsers,
       docos,
       byDay,
@@ -253,34 +256,10 @@ export function meta({ params }: { params: { workspaceHandle: string } }) {
   return [{ title: `${params.workspaceHandle} · Doco` }];
 }
 
-export default function WorkspaceHome({
-  loaderData,
-}: {
-  loaderData: Awaited<ReturnType<typeof loader>>;
-}) {
-  const {
-    workspace,
-    summary,
-    onboarding,
-    canInviteUsers,
-    canEditConstitution,
-    docos,
-    byDay,
-    lastWeek,
-    items,
-    baseUrl,
-  } = loaderData;
-  const docoItems: DocoListEntry[] = docos.map((d) => ({
-    id: d.docoId,
-    href: `/${d.handle}`,
-    handle: d.handle,
-    ownerHandle: workspace.handle,
-    template: d.template,
-    items: d.items,
-    lastUpdatedAt: d.lastUpdatedAt,
-    visibility: d.visibility,
-  }));
+type LoaderData = Awaited<ReturnType<typeof loader>>;
 
+export default function WorkspaceHome({ loaderData }: { loaderData: LoaderData }) {
+  const { workspace, canInviteUsers } = loaderData;
   return (
     <PageMain className="py-6 space-y-6">
       <PageHeader
@@ -300,8 +279,31 @@ export default function WorkspaceHome({
         <p className="font-mono text-xs text-muted-foreground">{workspace.id}</p>
       </PageHeader>
 
-      {onboarding ? <OnboardingStepper view={onboarding} /> : null}
+      {loaderData.onboarding ? (
+        <OnboardingStepper view={loaderData.onboarding} />
+      ) : (
+        <WorkspaceSections home={loaderData} />
+      )}
+    </PageMain>
+  );
+}
 
+/** Everything the page shows once the person's setup steps are done. */
+function WorkspaceSections({ home }: { home: Extract<LoaderData, { onboarding: null }> }) {
+  const { workspace, summary, canEditConstitution, docos, byDay, lastWeek, items, baseUrl } = home;
+  const docoItems: DocoListEntry[] = docos.map((d) => ({
+    id: d.docoId,
+    href: `/${d.handle}`,
+    handle: d.handle,
+    ownerHandle: workspace.handle,
+    template: d.template,
+    items: d.items,
+    lastUpdatedAt: d.lastUpdatedAt,
+    visibility: d.visibility,
+  }));
+
+  return (
+    <>
       <WorkspaceSummaryCard workspace={summary} baseUrl={baseUrl} showName={false} />
 
       <DocoListCard
@@ -382,7 +384,7 @@ export default function WorkspaceHome({
           </Card>
         </aside>
       </div>
-    </PageMain>
+    </>
   );
 }
 
