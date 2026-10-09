@@ -177,6 +177,50 @@ describe("groupKnownGitHubInstallations", () => {
   });
 });
 
+describe("repository order", () => {
+  // Alexander, 2026-10-09: repositories read A to Z whatever their case, so
+  // "Zeta" no longer comes before "alpha".
+  afterEach(() => {
+    vi.mocked(withClient).mockReset();
+  });
+
+  it("sorts the repositories Doco already knows A to Z, ignoring case", () => {
+    const [known] = groupKnownGitHubInstallations([
+      {
+        handle: "acme-prs",
+        githubIntegration: {
+          connections: [
+            { repo: "acme/Zeta", installation_id: 42 },
+            { repo: "acme/alpha", installation_id: 42 },
+            { repo: "acme/Beta", installation_id: 42 },
+          ],
+        },
+      },
+    ]);
+    expect(known?.connected_repositories).toEqual(["acme/alpha", "acme/Beta", "acme/Zeta"]);
+  });
+
+  it("sorts the repositories GitHub lists A to Z, ignoring case", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        {
+          handle: "acme-prs",
+          gh: { installation_authorizations: [{ installation_id: 42, account: "acme" }] },
+        },
+      ],
+    }));
+    vi.mocked(withClient).mockImplementation(async (callback) => callback({ query } as never));
+
+    const [choice] = await listGitHubInstallationChoicesForDocos(["doco_1"], {
+      getInstallation: (async () => ({ account: "acme" })) as never,
+      mintToken: (async () => ({ token: "ghs_x", expires_at: "" })) as never,
+      listRepos: (async () => ["acme/Zeta", "acme/alpha", "acme/Beta"]) as never,
+    });
+
+    expect(choice?.repositories).toEqual(["acme/alpha", "acme/Beta", "acme/Zeta"]);
+  });
+});
+
 describe("normalizeInstallationAuthorizations", () => {
   it("reads the repo-picker authorization shape", () => {
     expect(

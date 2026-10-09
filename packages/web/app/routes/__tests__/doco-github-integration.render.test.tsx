@@ -120,6 +120,23 @@ describe("GitHub integration · neumorphic roles", () => {
     expect(tokens).not.toContain("border");
   });
 
+  it("lists the connected repositories A to Z, ignoring case", () => {
+    fixture.loaderData = {
+      ...baseLoaderData,
+      connections: [
+        { repo: "acme/Zeta", installation_id: 1 },
+        { repo: "acme/alpha", installation_id: 1 },
+        { repo: "acme/Beta", installation_id: 1 },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<DocoGitHubIntegration />);
+    const listed = [...html.matchAll(/<span class="font-mono text-sm">([^<]+)<\/span>/g)].map(
+      (m) => m[1],
+    );
+    expect(listed).toEqual(["acme/alpha", "acme/Beta", "acme/Zeta"]);
+  });
+
   it("makes each option to pick a key, since the whole row is clickable", () => {
     fixture.loaderData = { ...baseLoaderData, installationChoices: [torrenegra] };
 

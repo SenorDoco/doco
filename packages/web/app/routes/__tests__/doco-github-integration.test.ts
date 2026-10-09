@@ -388,6 +388,30 @@ describe("/:docoHandle/integrations/github", () => {
     ).toEqual(["Doco-to/api", "Doco-to/web"]);
   });
 
+  it("lists an organization's repositories A to Z, ignoring case", () => {
+    expect(
+      connectedOrgRepositories(
+        [
+          {
+            installation_id: 42,
+            account: "acme",
+            repositories: ["acme/Zeta", "acme/alpha"],
+            connected_repositories: [],
+            source_doco_handles: ["acme-prs"],
+          },
+          {
+            installation_id: 43,
+            account: "Beta",
+            repositories: ["Beta/docs"],
+            connected_repositories: [],
+            source_doco_handles: ["acme-prs"],
+          },
+        ],
+        new Set([42, 43]),
+      ),
+    ).toEqual(["acme/alpha", "acme/Zeta", "Beta/docs"]);
+  });
+
   it("returns no covered repositories when nothing is connected at the org level", () => {
     expect(
       connectedOrgRepositories(
