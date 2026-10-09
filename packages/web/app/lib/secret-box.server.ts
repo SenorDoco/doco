@@ -1,5 +1,8 @@
 // Authenticated encryption (AES-256-GCM) for third-party credentials stored in
-// Postgres, so a database dump alone never yields a working token.
+// Postgres, so a database dump alone never yields a working token, and for the
+// tokens the server issues and later trusts (sealToken): sign-in sessions,
+// OAuth states, invite cookies. Only this key can make one that opens, so the
+// encryption is also the signature.
 //
 // Key: DOCO_ENCRYPTION_KEY — 32 random bytes, base64 (`openssl rand -base64 32`).
 // Stored form: `v1:<iv>.<auth tag>.<ciphertext>`, each part base64url.
@@ -38,7 +41,28 @@ export function decryptSecret(stored: string): string {
     .split(".")
     .map((part) => Buffer.from(part, "base64url"));
   if (!iv || !tag || !ciphertext) throw new Error("Malformed encrypted secret.");
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv);
+  // The full 16-byte tag, always: Node otherwise accepts a tag cut down to 4
+  // bytes, which would make forging a token a matter of guessing.
+  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+}
+
+/** A token only this server can make: `value` sealed with the key, readable
+ *  by `openToken` for `ttlMs`. */
+export function sealToken(value: unknown, ttlMs: number, now = Date.now()): string {
+  return encryptSecret(JSON.stringify([value, now + ttlMs]));
+}
+
+/** The value `sealToken` sealed, or null when the token is forged, tampered
+ *  with, sealed under another key, or expired. Throws without a key, so a
+ *  misconfigured server fails loudly instead of trusting no one quietly. */
+export function openToken(token: string, now = Date.now()): unknown {
+  encryptionKey();
+  try {
+    const [value, expiresAt] = JSON.parse(decryptSecret(token)) as unknown[];
+    return typeof expiresAt === "number" && now < expiresAt ? value : null;
+  } catch {
+    return null;
+  }
 }

@@ -74,31 +74,27 @@ async function mirrorRow() {
   return r.rows[0] ?? null;
 }
 
-describe("the signed OAuth state", () => {
-  const state = {
-    docoId: "doco_notion",
-    workspaceId: "workspace_1",
-    userId: "user_owner",
-    nonce: "n",
-    issuedAt: 1_000_000,
-  };
+describe("the sealed OAuth state", () => {
+  const state = { docoId: "doco_notion", workspaceId: "workspace_1", userId: "user_owner" };
+  const now = 1_000_000;
 
   it("round-trips, and rejects tampering, another key, and expiry", () => {
-    const signed = signNotionState(state, "secret");
-    expect(verifyNotionState(signed, "secret", 1_000_000 + 60_000)).toEqual(state);
-    expect(verifyNotionState(`${signed}x`, "secret", 1_000_000)).toBeNull();
-    expect(verifyNotionState(signed, "other", 1_000_000)).toBeNull();
-    expect(verifyNotionState(signed, "", 1_000_000)).toBeNull();
-    expect(verifyNotionState(signed, "secret", 1_000_000 + 61 * 60_000)).toBeNull();
-    expect(verifyNotionState("garbage", "secret", 1_000_000)).toBeNull();
+    const sealed = signNotionState(state, now);
+    expect(verifyNotionState(sealed, now + 60_000)).toEqual(state);
+    const [head, , body] = sealed.split(".");
+    const otherTag = randomBytes(16).toString("base64url");
+    expect(verifyNotionState(`${head}.${otherTag}.${body}`, now)).toBeNull();
+    expect(verifyNotionState(sealed, now + 61 * 60_000)).toBeNull();
+    expect(verifyNotionState("garbage", now)).toBeNull();
+    vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+    expect(verifyNotionState(sealed, now)).toBeNull();
   });
 
   it("keeps where to return on the site, and drops one off it", () => {
     const back = { ...state, next: "/workspaces/acme" };
-    expect(verifyNotionState(signNotionState(back, "secret"), "secret", 1_000_000)).toEqual(back);
+    expect(verifyNotionState(signNotionState(back, now), now)).toEqual(back);
     for (const next of ["//evil.test/x", "https://evil.test/x", "/\\evil.test"]) {
-      const signed = signNotionState({ ...state, next }, "secret");
-      expect(verifyNotionState(signed, "secret", 1_000_000)).toEqual(state);
+      expect(verifyNotionState(signNotionState({ ...state, next }, now), now)).toEqual(state);
     }
   });
 
@@ -113,7 +109,7 @@ describe("the signed OAuth state", () => {
     expect(parsed.searchParams.get("redirect_uri")).toBe(
       "https://doco.test/integrations/notion/callback",
     );
-    expect(verifyNotionState(parsed.searchParams.get("state") ?? "", "secret")).toMatchObject({
+    expect(verifyNotionState(parsed.searchParams.get("state") ?? "")).toMatchObject({
       docoId: "doco_notion",
       workspaceId: "workspace_1",
       userId: "user_owner",

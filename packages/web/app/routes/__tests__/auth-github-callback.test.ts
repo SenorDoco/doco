@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -77,6 +78,7 @@ function invite(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
   mocks.findUserByGitHubLogin.mockResolvedValue(null);
   mocks.addUser.mockResolvedValue("user_new");
   mocks.findInvite.mockResolvedValue(invite());
@@ -122,6 +124,18 @@ describe("/auth/github/callback — who may create an account", () => {
 
     expect(mocks.addUser).toHaveBeenCalled();
     expect(res.headers.get("Location")).toBe("/workspaces");
+  });
+
+  it("sends a newcomer with a signup cookie the server didn't set to /sign-up for the code", async () => {
+    // Signed the way the cookie used to be, under the default key in the
+    // public source: it must not stand in for the code.
+    const payload = `v1.${Math.floor(Date.now() / 1000)}`;
+    const sig = createHmac("sha256", "doco-dev-default-invite-key").update(payload).digest("hex");
+
+    const res = await loader({ request: callback([`doco_signup_invite=${payload}.${sig}`]) });
+
+    expect(mocks.addUser).not.toHaveBeenCalled();
+    expect(res.headers.get("Location")).toBe("/sign-up?error=invite_required");
   });
 });
 

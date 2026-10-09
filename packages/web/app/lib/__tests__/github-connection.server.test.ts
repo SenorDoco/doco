@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { randomBytes } from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
@@ -509,75 +510,66 @@ describe("normalizeConnections", () => {
 });
 
 describe("buildInstallUrl", () => {
-  const saved = { ...process.env };
+  beforeEach(() => {
+    vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+  });
   afterEach(() => {
-    process.env = { ...saved };
+    vi.unstubAllEnvs();
   });
   const target = { userId: "user_1", docoIds: ["doco_1", "doco_2"], next: "/integrations/github" };
-  it("builds the install URL with a signed state binding the Docos, the installer and the way back", () => {
-    process.env.DOCO_GITHUB_APP_SLUG = "doco-pr-sync";
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+  it("builds the install URL with a sealed state binding the Docos, the installer and the way back", () => {
+    vi.stubEnv("DOCO_GITHUB_APP_SLUG", "doco-pr-sync");
+    vi.stubEnv("DOCO_GITHUB_APP_CLIENT_SECRET", "app-secret");
     const url = new URL(buildInstallUrl(target) ?? "");
     expect(`${url.origin}${url.pathname}`).toBe(
       "https://github.com/apps/doco-pr-sync/installations/new",
     );
-    expect(verifyInstallState(url.searchParams.get("state") ?? "")).toMatchObject(target);
+    expect(verifyInstallState(url.searchParams.get("state") ?? "")).toEqual(target);
   });
   it("returns null when the slug isn't configured", () => {
-    process.env.DOCO_GITHUB_APP_SLUG = "";
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    vi.stubEnv("DOCO_GITHUB_APP_SLUG", "");
+    vi.stubEnv("DOCO_GITHUB_APP_CLIENT_SECRET", "app-secret");
     expect(buildInstallUrl(target)).toBeNull();
   });
-  it("returns null when the App's client secret (the state key) isn't configured", () => {
-    process.env.DOCO_GITHUB_APP_SLUG = "doco-pr-sync";
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "";
+  it("returns null when the App's client secret (needed to verify the install) isn't configured", () => {
+    vi.stubEnv("DOCO_GITHUB_APP_SLUG", "doco-pr-sync");
+    vi.stubEnv("DOCO_GITHUB_APP_CLIENT_SECRET", "");
     expect(buildInstallUrl(target)).toBeNull();
   });
 });
 
 describe("verifyInstallState", () => {
-  const saved = { ...process.env };
+  beforeEach(() => {
+    vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+  });
   afterEach(() => {
-    process.env = { ...saved };
+    vi.unstubAllEnvs();
   });
   const now = Date.UTC(2026, 8, 26, 12);
-  const state = {
-    userId: "user_1",
-    docoIds: ["doco_1"],
-    next: "/prs/integrations/github",
-    issuedAt: now,
-  };
+  const state = { userId: "user_1", docoIds: ["doco_1"], next: "/prs/integrations/github" };
 
   it("round-trips a fresh state", () => {
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const signed = signInstallState(state) ?? "";
-    expect(verifyInstallState(signed, now + 60_000)).toEqual(state);
+    expect(verifyInstallState(signInstallState(state, now), now + 60_000)).toEqual(state);
   });
   it("rejects a bare Doco id (the old unsigned state)", () => {
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
     expect(verifyInstallState("doco_1", now)).toBeNull();
   });
-  it("rejects a state whose payload was edited", () => {
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const signed = signInstallState(state) ?? "";
-    const [, sig] = signed.split(".");
-    const forged = `${Buffer.from(JSON.stringify({ ...state, docoIds: ["doco_2"] })).toString("base64url")}.${sig}`;
-    expect(verifyInstallState(forged, now)).toBeNull();
+  it("rejects a state whose payload was swapped", () => {
+    const [head, tag] = signInstallState(state, now).split(".");
+    const [, , body] = signInstallState({ ...state, docoIds: ["doco_2"] }, now).split(".");
+    expect(verifyInstallState(`${head}.${tag}.${body}`, now)).toBeNull();
   });
   it("rejects a state older than an hour", () => {
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
-    const signed = signInstallState(state) ?? "";
-    expect(verifyInstallState(signed, now + 61 * 60_000)).toBeNull();
+    expect(verifyInstallState(signInstallState(state, now), now + 61 * 60_000)).toBeNull();
   });
   it("rejects a state that names no Doco or would send the user off the site", () => {
-    process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
     for (const bad of [
       { ...state, docoIds: [] },
       { ...state, next: "https://evil.example/" },
       { ...state, next: "//evil.example/" },
       { ...state, next: "/\\evil.example/" },
     ]) {
-      expect(verifyInstallState(signInstallState(bad) ?? "", now), JSON.stringify(bad)).toBeNull();
+      expect(verifyInstallState(signInstallState(bad, now), now), JSON.stringify(bad)).toBeNull();
     }
   });
 });

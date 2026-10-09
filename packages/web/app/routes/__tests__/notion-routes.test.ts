@@ -37,8 +37,6 @@ const state = {
   docoId: "doco_notion",
   workspaceId: "workspace_1",
   userId: "user_owner",
-  nonce: "n",
-  issuedAt: 1,
 };
 const tokens = { access_token: "a", workspace_id: "ws-1", bot_id: "b" };
 
@@ -70,7 +68,7 @@ describe("/integrations/notion/callback", () => {
     expect(await callback("code=c1&state=signed")).toBe(
       "/acme-notion/integrations/notion?notion=mirroring",
     );
-    expect(mocks.verifyNotionState).toHaveBeenCalledWith("signed", "secret");
+    expect(mocks.verifyNotionState).toHaveBeenCalledWith("signed");
     expect(mocks.exchangeNotionCode).toHaveBeenCalledWith(
       "c1",
       "https://doco.test/integrations/notion/callback",
