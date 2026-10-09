@@ -182,14 +182,17 @@ describe("OnboardingStepper", () => {
     expect(wrote).toContain("Waiting for the hook&#x27;s first brief");
     const hooked = currentStep(render({ ...ON_AGENT, agent: { ...ON_AGENT.agent, hook: true } }));
     expect(hooked).toContain("The hook is on. Waiting for your agent to write in");
-    expect(hooked).not.toContain("run hooks");
+    expect(hooked).not.toContain("My agent doesn&#x27;t run hooks");
   });
 
-  // Every agent Doco supports runs hooks, so nobody skips the hook.
+  // Every agent Doco supports runs hooks, so nobody skips the hook: the step
+  // has no "My agent doesn't run hooks" way out (PR #1369 removed it). The
+  // message in the step may say "run hooks" itself: its instructions tell an
+  // agent that doesn't to have the user send them to one that does.
   it("offers no way around the hook", () => {
     const step = currentStep(render(ON_AGENT));
     expect(step).not.toContain("finish-hook");
-    expect(step).not.toContain("run hooks");
+    expect(step).not.toContain("My agent doesn&#x27;t run hooks");
   });
 
   it("walks someone who joined from an invite only through asking their agent", () => {
