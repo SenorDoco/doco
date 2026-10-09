@@ -1,7 +1,7 @@
 // GET|POST /api/activity-digest — Vercel Cron, daily at 13:00 UTC. Emails each
-// workspace's members the activity digest due today: daily during the
-// workspace's first week, weekly after (lib/activity-digest.ts). A no-op until
-// email is configured.
+// workspace's members the activity digest due today: the daily one, and on
+// Mondays the weekly one for who switched to it (lib/activity-digest.ts). A
+// no-op until email is configured.
 // Auth: only Vercel Cron's `Authorization: Bearer <CRON_SECRET>`.
 import { withClient } from "@doco/db";
 import { sendActivityDigests } from "~/lib/activity-digest.server";

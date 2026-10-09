@@ -79,6 +79,15 @@ describe("emailHtml", () => {
     );
     expect(html).not.toContain("border:");
   });
+
+  // The site's plain key: the page's clay with purple text, for the action
+  // beside the main one.
+  it("draws a quiet button as a clay key with purple text", () => {
+    const html = emailHtml([{ link: "https://doco.to/y", label: "Switch", quiet: true }]);
+    expect(html).toMatch(
+      /<a href="https:\/\/doco.to\/y" style="[^"]*background-color:#f3f2ee;color:#9c44a5[^"]*box-shadow:5px 5px 12px rgba\(23,22,18,0.11\),-5px -5px 12px #ffffff[^"]*">Switch<\/a>/,
+    );
+  });
 });
 
 describe("Doco's emails", () => {
@@ -112,7 +121,7 @@ describe("Doco's emails", () => {
     digest: digestEmail({
       baseUrl: base,
       workspaceHandle: "acme",
-      due: { kind: "weekly" },
+      setting: "weekly",
       summary: {
         writes: 0,
         queries: 0,
@@ -121,7 +130,7 @@ describe("Doco's emails", () => {
         topQueryers: [],
         topIntegrations: [],
       },
-      unsubscribeUrl: `${base}/digest/unsubscribe?t=tok`,
+      token: "tok",
     }),
   };
 

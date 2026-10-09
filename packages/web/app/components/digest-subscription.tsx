@@ -1,13 +1,14 @@
-// What the activity digest's unsubscribe link (and its "Subscribe again"
-// button) shows: whether the person still gets a workspace's digest, and the
-// one click that changes it. No sign-in needed: the link's token names them.
+// What the activity digest's links show: how often the person now gets a
+// workspace's digest, and the one click that changes it. No sign-in needed:
+// the link's token names them.
 
-import { Form, Link } from "react-router";
+import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
 import { NarrowPageMain } from "~/components/page-main";
+import type { DigestSetting } from "~/lib/activity-digest";
 
 export type DigestSubscriptionView =
-  | { state: "subscribed" | "unsubscribed"; workspaceHandle: string; token: string }
+  | { state: DigestSetting; workspaceHandle: string; token: string }
   /** No longer a member of the workspace. */
   | { state: "gone" }
   /** The link's token was cut short or tampered with. */
@@ -32,44 +33,53 @@ export function DigestSubscription({ view }: { view: DigestSubscriptionView }) {
 }
 
 const TITLES: Record<DigestSubscriptionView["state"], string> = {
-  subscribed: "You're subscribed",
-  unsubscribed: "You're unsubscribed",
+  daily: "You'll get it every day",
+  weekly: "You'll get it every Monday",
+  off: "You're unsubscribed",
   gone: "You're no longer a member",
   invalid: "This link doesn't work",
 };
 
 function Body({ view }: { view: DigestSubscriptionView }) {
   if (view.state === "invalid") {
-    return <p>The unsubscribe link is incomplete. Open it again from the digest email.</p>;
+    return <p>The link is incomplete. Open it again from the digest email.</p>;
   }
   if (view.state === "gone") {
     return <p>You left this workspace, so you won't get its activity digest.</p>;
   }
   const ws = view.workspaceHandle;
   const t = new URLSearchParams({ t: view.token });
+  const to = (setting: string) => `/digest/${setting}?${t}`;
   const open = (
     <Link to={`/workspaces/${ws}`} className="text-primary hover:underline">
       Open {ws}
     </Link>
   );
-  if (view.state === "unsubscribed") {
+  if (view.state === "off") {
     return (
       <>
         <p>You won't get {ws}'s activity digest anymore.</p>
-        <Form method="post" action={`/digest/subscribe?${t}`} className="flex items-center gap-4">
-          <button type="submit" className={BUTTON}>
+        <p className="flex items-center gap-4">
+          <Link to={to("daily")} className={BUTTON}>
             Subscribe again
-          </button>
+          </Link>
           {open}
-        </Form>
+        </p>
       </>
     );
   }
+  const other = view.state === "daily" ? "weekly" : "daily";
   return (
     <>
-      <p>You'll get {ws}'s activity digest again.</p>
+      <p>
+        Each digest covers the previous {view.state === "daily" ? "24 hours" : "7 days"} of activity
+        in {ws}.
+      </p>
       <p className="flex items-center gap-4">
-        <Link to={`/digest/unsubscribe?${t}`} className="hover:underline">
+        <Link to={to(other)} className={BUTTON}>
+          Switch to {other}
+        </Link>
+        <Link to={to("unsubscribe")} className="hover:underline">
           Unsubscribe
         </Link>
         {open}

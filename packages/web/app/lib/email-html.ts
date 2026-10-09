@@ -2,12 +2,12 @@
 // #f3f2ee background and its face, Merriweather, and the site's one clay as
 // far as mail allows. Mail clients take inline styles and hex colors only, so
 // the palette (app.css) is restated here in hex, and the three roles are
-// restated as inline box-shadows: the column is a slab, the button a purple
-// key, preformatted text a well, and nothing has an outline. Apple Mail, iOS
-// Mail and Gmail honour the shadows; Outlook drops them and shows the same
-// email flat on the page. Most clients (Gmail, Outlook) won't load the web
-// fonts and fall back to Georgia and their own monospace; Apple Mail loads
-// them. Pure.
+// restated as inline box-shadows: the column is a slab, a button a key (purple,
+// or clay with purple text), preformatted text a well, and nothing has an
+// outline. Apple Mail, iOS Mail and Gmail honour the shadows; Outlook drops
+// them and shows the same email flat on the page. Most clients (Gmail,
+// Outlook) won't load the web fonts and fall back to Georgia and their own
+// monospace; Apple Mail loads them. Pure.
 
 const BACKGROUND = "#f3f2ee"; // --color-background
 const FOREGROUND = "#171612"; // --color-foreground
@@ -37,8 +37,9 @@ export type EmailBlock =
   | { list: string[] }
   /** Preformatted text, such as the message to send an agent. */
   | { pre: string }
-  /** A button. */
-  | { link: string; label: string }
+  /** A button: a purple key, or for the action beside the main one a quiet
+   *  key, the page's clay with purple text (the site's plain .neu-button). */
+  | { link: string; label: string; quiet?: boolean }
   /** Numbers side by side, each above its label. */
   | { stats: { value: string; label: string }[] }
   /** Small print closing the email, with a link after it. */
@@ -84,7 +85,10 @@ function block(b: EmailBlock): string {
   if ("footer" in b) {
     return `<p style="margin:32px 0 0;font-size:12px;color:${MUTED}">${escapeHtml(b.footer)} <a href="${escapeHtml(b.link)}" style="color:${PRIMARY}">${escapeHtml(b.label)}</a></p>`;
   }
-  return `<p style="margin:0 0 16px"><a href="${escapeHtml(b.link)}" style="display:inline-block;padding:10px 16px;border-radius:6px;background-color:${PRIMARY};color:#ffffff;text-decoration:none;font-weight:700;box-shadow:${KEY}">${escapeHtml(b.label)}</a></p>`;
+  const colors = b.quiet
+    ? `background-color:${BACKGROUND};color:${PRIMARY}`
+    : `background-color:${PRIMARY};color:#ffffff`;
+  return `<p style="margin:0 0 16px"><a href="${escapeHtml(b.link)}" style="display:inline-block;padding:10px 16px;border-radius:6px;${colors};text-decoration:none;font-weight:700;box-shadow:${KEY}">${escapeHtml(b.label)}</a></p>`;
 }
 
 /** A whole email document: the blocks on a 600px slab on the site's background. */
