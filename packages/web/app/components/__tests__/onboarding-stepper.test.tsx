@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
+import { agentConnectGuides } from "~/lib/agent-connect-guides";
 import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import type { OnboardingView } from "~/lib/onboarding-view.server";
 import { OnboardingStepper } from "../onboarding-stepper";
@@ -12,6 +13,7 @@ const CREATOR: OnboardingView = {
   steps: [
     { step: "github", done: false },
     { step: "sources", done: false },
+    { step: "mcp", done: false },
     { step: "agent", done: false },
   ],
   pending: "github",
@@ -34,6 +36,7 @@ const CREATOR: OnboardingView = {
       connected: false,
     },
   ],
+  mcp: { guides: agentConnectGuides("https://doco.to") },
   agent: {
     instructions: agentInstructionsForWorkspace("https://doco.to", "acme"),
     agentsChatsHandle: "acme-agents-chats",
@@ -47,6 +50,7 @@ const ON_SOURCES: OnboardingView = {
   steps: [
     { step: "github", done: true },
     { step: "sources", done: false },
+    { step: "mcp", done: false },
     { step: "agent", done: false },
   ],
   pending: "sources",
@@ -59,20 +63,35 @@ const ON_SOURCES: OnboardingView = {
   },
 };
 
-const ON_AGENT: OnboardingView = {
+const ON_MCP: OnboardingView = {
   ...ON_SOURCES,
   steps: [
     { step: "github", done: true },
     { step: "sources", done: true },
+    { step: "mcp", done: false },
+    { step: "agent", done: false },
+  ],
+  pending: "mcp",
+};
+
+const ON_AGENT: OnboardingView = {
+  ...ON_MCP,
+  steps: [
+    { step: "github", done: true },
+    { step: "sources", done: true },
+    { step: "mcp", done: true },
     { step: "agent", done: false },
   ],
   pending: "agent",
 };
 
 const INVITEE: OnboardingView = {
-  ...ON_AGENT,
+  ...ON_MCP,
   joinedAs: "invitee",
-  steps: [{ step: "agent", done: false }],
+  steps: [
+    { step: "mcp", done: false },
+    { step: "agent", done: false },
+  ],
   github: { available: true, docos: [] },
   sources: [],
 };
@@ -99,12 +118,12 @@ describe("OnboardingStepper", () => {
   it("starts a workspace's creator on connecting GitHub, which asks which repositories", () => {
     const html = render(CREATOR);
     expect(html).toContain("Set up acme");
-    expect(html).toContain("Three steps to shared knowledge");
+    expect(html).toContain("Four steps to shared knowledge");
     expect(html).toContain("Connect GitHub");
     expect(html).toContain("Connect other sources of knowledge");
+    expect(html).toContain("Connect Doco to your agent");
     expect(html).toContain("Ask your agent to start using Doco");
-    // The agent connects itself to Doco, so connecting it isn't a step.
-    expect(html).not.toContain("Connect Doco to your agent");
+    // The agent turns the hook on itself, so that isn't a step.
     expect(html).not.toContain("Turn on the Doco hook");
     const step = currentStep(html);
     // The GitHub setup: it creates the workspace's GitHub Docos and has the
@@ -148,22 +167,40 @@ describe("OnboardingStepper", () => {
     expect(step).not.toContain("Skip for now");
   });
 
-  // Alexander, 2026-10-07: Doco supports Claude Code, Codex and Gemini CLI,
-  // which add Doco to themselves, so the one message connects the agent too:
-  // the person only signs in. It also turns on the Doco hook, so the step
-  // waits for the agent's note and the hook's first brief, and says which is
-  // still missing.
+  // Alexander, 2026-10-09: the person connects Doco to their agent before
+  // inviting it ("ask the user to first install the Doco MCP and then invite
+  // the agent"), from a terminal or the agent's desktop app, and the step
+  // waits for the sign-in, which the poll sees as a live connection.
+  it("walks the person through connecting Doco to their agent, each way, and waits for the sign-in", () => {
+    const html = render(ON_MCP);
+    const step = currentStep(html);
+    expect(step).toContain("Which agent do you use?");
+    expect(step).toContain("claude mcp add --transport http --scope user doco https://doco.to/mcp");
+    expect(step).toContain("In the Claude desktop app");
+    expect(step).toContain("claude_desktop_config.json");
+    expect(step).toContain("[mcp_servers.doco]");
+    expect(step).toContain("~/.gemini/settings.json");
+    expect(step).toContain("Waiting for you to sign in to Doco from your agent");
+    expect(step).not.toContain("Message for your agent");
+    expect(step).not.toContain("Copy this message");
+  });
+
+  // The message comes after the connection, so it only has the agent start
+  // using Doco here and turn on the Doco hook: the step waits for the agent's
+  // note and the hook's first brief, and says which is still missing.
   it("gives the message for the agent with a copy button and waits for its note and its hook", () => {
     const html = render(ON_AGENT);
     const step = currentStep(html);
     expect(step).toContain("Message for your agent");
     expect(step).toContain("Copy");
-    expect(step).toContain("send it to Claude Code, Codex or Gemini CLI in your project");
-    expect(step).toContain("adds Doco to itself (sign in to Doco when it asks)");
+    expect(step).toContain("send it to the agent you just connected, in your project");
+    expect(step).not.toContain("adds Doco to itself");
+    expect(step).not.toContain("Claude Code, Codex or Gemini CLI");
     expect(step).toContain("in the workspace acme");
     expect(step).toContain("turns on the Doco hook");
     expect(step).toContain("before each prompt and each file edit");
     expect(step).not.toContain("Which agent do you use?");
+    expect(step).not.toContain("claude mcp add");
     expect(step).toContain("Waiting for your agent&#x27;s note in");
     expect(step).toContain("acme-agents-chats");
     expect(step).toContain("and the hook&#x27;s first brief");
@@ -195,13 +232,24 @@ describe("OnboardingStepper", () => {
     expect(step).not.toContain("My agent doesn&#x27;t run hooks");
   });
 
-  it("walks someone who joined from an invite only through asking their agent", () => {
+  it("walks someone who joined from an invite through connecting their agent, then asking it", () => {
     const html = render(INVITEE);
     expect(html).toContain("Get started in acme");
-    expect(html).toContain("One step left: ask your agent to start using Doco here.");
+    expect(html).toContain(
+      "Two steps left: connect Doco to your agent, then ask it to start using Doco here.",
+    );
     expect(html).not.toContain("Connect GitHub");
     expect(html).not.toContain("Connect other sources of knowledge");
-    expect(currentStep(html)).toContain("Message for your agent");
+    expect(currentStep(html)).toContain("Which agent do you use?");
+    const asking = render({
+      ...INVITEE,
+      steps: [
+        { step: "mcp", done: true },
+        { step: "agent", done: false },
+      ],
+      pending: "agent",
+    });
+    expect(currentStep(asking)).toContain("Message for your agent");
   });
 
   it("explains a step that came back refused", () => {

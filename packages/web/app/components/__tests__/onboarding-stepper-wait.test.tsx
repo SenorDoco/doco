@@ -4,8 +4,9 @@
 // while an agent set up torre. When the agent's hook first ran, the agent step
 // reloaded the page on every render, about 70 requests a second for five
 // minutes, which starved the database the brief runs on
-// (decision_01M4ESD5BZKX3JYKYK84VKK8RR). The step now shows what its poll says
-// in place and reloads nothing while it waits.
+// (decision_01M4ESD5BZKX3JYKYK84VKK8RR). The steps that wait on the agent now
+// show what their poll says in place, and reload the page once, when the
+// person moves on to the next step.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { RouterProvider, createMemoryRouter, useLoaderData } from "react-router";
@@ -16,27 +17,34 @@ import { OnboardingStepper } from "../onboarding-stepper";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const ON_AGENT: OnboardingView = {
-  workspaceHandle: "acme",
-  joinedAs: "invitee",
-  steps: [{ step: "agent", done: false }],
-  pending: "agent",
-  github: { available: true, docos: [] },
-  sources: [],
-  agent: {
-    instructions: agentInstructionsForWorkspace("https://doco.to", "acme"),
-    agentsChatsHandle: "acme-agents-chats",
-    wrote: false,
-    hook: false,
-  },
-};
-
 /** What the server knows of the person's setup, which the agent moves on. */
-let server: { wrote: boolean; hook: boolean; done: boolean };
+let server: { connected: boolean; wrote: boolean; hook: boolean };
 let pageLoads: number;
 let renders: number;
 let container: HTMLDivElement;
 let root: Root;
+
+function viewNow(): OnboardingView {
+  const done = server.connected && server.wrote && server.hook;
+  return {
+    workspaceHandle: "acme",
+    joinedAs: "invitee",
+    steps: [
+      { step: "mcp", done: server.connected },
+      { step: "agent", done },
+    ],
+    pending: !server.connected ? "mcp" : done ? null : "agent",
+    github: { available: true, docos: [] },
+    sources: [],
+    mcp: { guides: [] },
+    agent: {
+      instructions: agentInstructionsForWorkspace("https://doco.to", "acme"),
+      agentsChatsHandle: "acme-agents-chats",
+      wrote: server.wrote,
+      hook: server.hook,
+    },
+  } as OnboardingView;
+}
 
 /** A round trip, so a request can be overtaken by the next one. */
 const roundTrip = () => new Promise((resolve) => setTimeout(resolve, 200));
@@ -49,14 +57,14 @@ function Page() {
   return <OnboardingStepper view={view} />;
 }
 
-beforeEach(async () => {
-  vi.useFakeTimers();
-  server = { wrote: false, hook: false, done: false };
+async function mount(initial: Partial<typeof server>) {
+  server = { connected: false, wrote: false, hook: false, ...initial };
   pageLoads = 0;
   renders = 0;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  const first = viewNow();
   const router = createMemoryRouter(
     [
       {
@@ -65,7 +73,7 @@ beforeEach(async () => {
         loader: async () => {
           pageLoads++;
           await roundTrip();
-          return { view: { ...ON_AGENT, agent: { ...ON_AGENT.agent, ...server } } };
+          return { view: viewNow() };
         },
         element: <Page />,
       },
@@ -73,9 +81,10 @@ beforeEach(async () => {
         path: "/workspaces/acme/onboarding",
         loader: async () => {
           await roundTrip();
+          const view = viewNow();
           return {
-            steps: [{ step: "agent", done: server.done }],
-            pending: server.done ? null : "agent",
+            steps: view.steps,
+            pending: view.pending,
             agent: { wrote: server.wrote, hook: server.hook },
           };
         },
@@ -83,10 +92,14 @@ beforeEach(async () => {
     ],
     {
       initialEntries: ["/workspaces/acme"],
-      hydrationData: { loaderData: { workspace: { view: ON_AGENT } } },
+      hydrationData: { loaderData: { workspace: { view: first } } },
     },
   );
   await act(async () => root.render(<RouterProvider router={router} />));
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
 });
 
 afterEach(() => {
@@ -95,10 +108,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+/** Let time pass a second at a time: React flushes effects when each act
+ *  ends, so a reload an effect starts gets its round trip in the next one. */
+async function wait(ms: number) {
+  for (let left = ms; left > 0; left -= 1_000) {
+    await act(() => vi.advanceTimersByTimeAsync(Math.min(1_000, left)));
+  }
+}
 
 describe("OnboardingStepper's agent step", () => {
   it("says the hook is on once the poll does, without reloading the page", async () => {
+    await mount({ connected: true });
     server.hook = true;
     await wait(20_000);
 
@@ -107,6 +127,7 @@ describe("OnboardingStepper's agent step", () => {
   });
 
   it("says the agent wrote its note once the poll does, without reloading the page", async () => {
+    await mount({ connected: true });
     server.wrote = true;
     await wait(20_000);
 
@@ -115,10 +136,28 @@ describe("OnboardingStepper's agent step", () => {
   });
 
   it("says the workspace is set up once the poll says every step is done", async () => {
-    server = { wrote: true, hook: true, done: true };
+    await mount({ connected: true });
+    server = { connected: true, wrote: true, hook: true };
     await wait(5_000);
 
     expect(document.body.textContent).toContain("acme is set up");
     expect(pageLoads).toBe(0);
+  });
+});
+
+// Alexander, 2026-10-09: the person connects Doco to their agent first, and
+// the page waits for the sign-in, then moves on to the message for the agent.
+describe("OnboardingStepper's connect step", () => {
+  it("moves on to the message for the agent once the poll says Doco is connected, reloading the page once", async () => {
+    await mount({});
+    expect(container.textContent).toContain("Waiting for you to sign in to Doco from your agent");
+    expect(container.textContent).not.toContain("Message for your agent");
+    server.connected = true;
+    await wait(8_000);
+
+    expect(container.textContent).toContain("Message for your agent");
+    expect(pageLoads).toBe(1);
+    await wait(20_000);
+    expect(pageLoads).toBe(1);
   });
 });

@@ -3,13 +3,14 @@
 // for who it goes to ("Copy invite" for a person, "Copy prompt" for an agent)
 // and a way out (components/dialog.tsx).
 //
-// An agent's invite is the one step a workspace's setup gives an invitee: send
-// the agent the prompt, and it connects itself to Doco (Alexander,
-// 2026-10-07).
+// An agent's invite is the last step a workspace's setup gives an invitee:
+// connect Doco to the agent (as /agents/connect shows), then send it the
+// prompt (Alexander, 2026-10-09: the person connects first, and the prompt
+// stays short).
 
 import { type ReactNode, useState } from "react";
 import { Dialog, DialogFooter } from "~/components/dialog";
-import { agentInstructionsForWorkspace } from "~/lib/agent-instructions";
+import { CONNECT_AGENT_PATH, agentInstructionsForWorkspace } from "~/lib/agent-instructions";
 import { buildHumanInvitePrompt } from "~/lib/invite-prompts";
 import { STEP_TITLES } from "~/lib/onboarding-steps";
 
@@ -37,7 +38,7 @@ export function PersonInviteDialog({
   );
 }
 
-/** Invite an agent to a workspace: send it the prompt, which connects it. */
+/** Invite an agent to a workspace: connect Doco to it, then send it the prompt. */
 export function AgentInviteDialog({
   workspaceHandle,
   baseUrl,
@@ -52,7 +53,16 @@ export function AgentInviteDialog({
   return (
     <Dialog
       title={STEP_TITLES.agent}
-      description={`Copy this prompt and send it to Claude Code, Codex or Gemini CLI in your project. Your agent adds Doco to itself (sign in to Doco when it asks) and starts using it in ${workspaceHandle}.`}
+      description={
+        <>
+          First connect Doco to your agent, as{" "}
+          <a href={CONNECT_AGENT_PATH} className="font-semibold">
+            Connect Doco to your agent
+          </a>{" "}
+          shows. Then copy this prompt and send it to your agent in your project: it starts using
+          Doco in {workspaceHandle}.
+        </>
+      }
       onClose={onClose}
     >
       <MessageWell message={message} />

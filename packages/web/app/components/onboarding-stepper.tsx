@@ -1,24 +1,28 @@
 // The steps that get a workspace going, all its page shows until every one is
 // done (decision_01M4GFFG59ZACNB1J5PEAKM9TC): connect GitHub, connect other
-// sources of knowledge (or skip them), ask your agent to start using Doco. Someone who joined from an invite only has
-// the last. The page keeps the person on the first step not done. Connecting
+// sources of knowledge (or skip them), connect Doco to your agent, ask your
+// agent to start using Doco. Someone who joined from an invite only has the
+// last two. The page keeps the person on the first step not done. Connecting
 // GitHub goes through the GitHub setup (routes/integrations.github.tsx), which
 // asks which repositories to bring; the other sources are one click each
 // (routes/workspaces.$workspaceHandle.onboarding.tsx) and come back here
-// saying what happened. The last waits in view for what happens in the agent,
-// which connects itself to Doco (the person signs in once): its note in the
-// workspace's Agents chats Doco, and the first brief of the Doco hook it turns
-// on with the token it gets from doco_hook_token. Once the last one is done, a
-// dialog over the page says the workspace is set up, and closing it reloads
-// the page, which shows the workspace in place of the steps (Alexander,
-// 2026-10-07: a button to the page he was on read wrong).
+// saying what happened. The last two wait in view for what happens in the
+// agent: the person signing in to Doco from it (Alexander, 2026-10-09: the
+// person connects Doco first, in a terminal or the agent's desktop app, then
+// sends the message), then its note in the workspace's Agents chats Doco and
+// the first brief of the Doco hook it turns on with the token it gets from
+// doco_hook_token. Once the last one is done, a dialog over the page says the
+// workspace is set up, and closing it reloads the page, which shows the
+// workspace in place of the steps (Alexander, 2026-10-07: a button to the
+// page he was on read wrong).
 
 import { CheckCircle2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Form, Link, useFetcher, useRevalidator, useSearchParams } from "react-router";
 import { AgentInstructionsBlock } from "~/components/agent-instructions-block";
 import { BRAND_ICONS, GitHubIcon } from "~/components/brand-icons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/card";
+import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { Dialog, DialogFooter, closeDialog } from "~/components/dialog";
 import { DocoTypeIcon } from "~/components/doco-type-icon";
 import { cn } from "~/lib/cn";
@@ -48,6 +52,7 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
   const [searchParams] = useSearchParams();
   const refusal = REFUSALS[searchParams.get("onboarding") ?? ""];
   const [finished, setFinished] = useState(false);
+  const finish = useCallback(() => setFinished(true), []);
   const revalidator = useRevalidator();
   const creator = view.joinedAs === "creator";
 
@@ -69,8 +74,8 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
         </CardTitle>
         <CardDescription>
           {creator
-            ? "Three steps to shared knowledge and context for your team and its agents."
-            : `You joined ${view.workspaceHandle}. One step left: ask your agent to start using Doco here.`}
+            ? "Four steps to shared knowledge and context for your team and its agents."
+            : `You joined ${view.workspaceHandle}. Two steps left: connect Doco to your agent, then ask it to start using Doco here.`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-0">
@@ -89,7 +94,7 @@ export function OnboardingStepper({ view }: { view: OnboardingView }) {
               current={step === view.pending}
             >
               {step === view.pending ? (
-                <StepBody step={step} view={view} onFinished={() => setFinished(true)} />
+                <StepBody step={step} view={view} onFinished={finish} />
               ) : done ? (
                 <DoneSummary step={step} view={view} />
               ) : null}
@@ -156,15 +161,17 @@ function StepBody({
   const action = `/workspaces/${view.workspaceHandle}/onboarding`;
   if (step === "github") return <GitHubStep view={view} />;
   if (step === "sources") return <SourcesStep view={view} action={action} />;
+  if (step === "mcp") return <McpStep view={view} action={action} onFinished={onFinished} />;
   return <AgentStep view={view} action={action} onFinished={onFinished} />;
 }
 
 /**
- * Ask where the steps stand every few seconds while the agent step waits on
- * the agent, and open the end of the setup the moment it is done. The step
- * shows what the poll says in place and reloads nothing while it waits: once
- * reloading the page on every render flooded doco.to and starved the brief
- * (decision_01M4ESD5BZKX3JYKYK84VKK8RR).
+ * Ask where the steps stand every few seconds while a step waits on the
+ * agent, and move on the moment it does: reload the page once when the
+ * person is on to the next step, or open the end of the setup once every one
+ * is done. The step shows what the poll says in place and reloads nothing
+ * else while it waits: once reloading the page on every render flooded
+ * doco.to and starved the brief (decision_01M4ESD5BZKX3JYKYK84VKK8RR).
  */
 function useWaitForAgent(
   view: OnboardingView,
@@ -175,6 +182,7 @@ function useWaitForAgent(
     pending: OnboardingStep | null;
     agent: { wrote: boolean; hook: boolean } | null;
   }>();
+  const revalidator = useRevalidator();
 
   const load = fetcher.load;
   useEffect(() => {
@@ -182,10 +190,20 @@ function useWaitForAgent(
     return () => clearInterval(timer);
   }, [load, action]);
 
-  const finished = fetcher.data?.pending === null;
+  const polled = fetcher.data?.pending;
+  const finished = polled === null;
   useEffect(() => {
     if (finished) onFinished();
   }, [finished, onFinished]);
+
+  // One reload when the poll first says the person is on a later step: these
+  // two booleans change only when the poll's answer or the page's step does,
+  // never on a render, so the effect can't run itself in a loop.
+  const movedOn = polled !== undefined && polled !== null && polled !== view.pending;
+  const revalidate = revalidator.revalidate;
+  useEffect(() => {
+    if (movedOn) revalidate();
+  }, [movedOn, revalidate]);
 
   return { ...view.agent, ...fetcher.data?.agent };
 }
@@ -302,6 +320,32 @@ function SourcesStep({ view, action }: { view: OnboardingView; action: string })
   );
 }
 
+function McpStep({
+  view,
+  action,
+  onFinished,
+}: {
+  view: OnboardingView;
+  action: string;
+  onFinished: () => void;
+}) {
+  useWaitForAgent(view, action, onFinished);
+  return (
+    <div className="space-y-4 text-sm">
+      <p className="text-muted-foreground">
+        Add Doco to the agent you use, in a terminal or in its desktop app, so it can read and write
+        in {view.workspaceHandle}. When Doco asks what the agent may reach, include{" "}
+        {view.workspaceHandle}.
+      </p>
+      <ConnectAgentGuide guides={view.mcp.guides} />
+      <Waiting>
+        Waiting for you to sign in to Doco from your agent. This page moves on by itself once you
+        do.
+      </Waiting>
+    </div>
+  );
+}
+
 function AgentStep({
   view,
   action,
@@ -317,10 +361,10 @@ function AgentStep({
   return (
     <div className="space-y-3 text-sm">
       <p className="text-muted-foreground">
-        Copy this message and send it to Claude Code, Codex or Gemini CLI in your project. Your
-        agent adds Doco to itself (sign in to Doco when it asks), notes in{" "}
-        <span className="font-mono text-foreground">{where}</span> that it received the
-        instructions, and turns on the Doco hook, which loads them at every session and briefs it
+        Copy this message and send it to the agent you just connected, in your project. It starts
+        using Doco in {view.workspaceHandle}, notes in{" "}
+        <span className="font-mono text-foreground">{where}</span> that it received the message, and
+        turns on the Doco hook, which loads Doco&apos;s instructions at every session and briefs it
         from {view.workspaceHandle} before each prompt and each file edit.
       </p>
       <AgentInstructionsBlock

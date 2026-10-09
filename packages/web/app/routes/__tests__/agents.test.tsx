@@ -35,8 +35,8 @@ describe("/agents", () => {
   });
 
   // Alexander, 2026-10-07: Doco supports Claude Code, Codex and Gemini CLI,
-  // which connect themselves, and the hook brings the instructions, so the
-  // project keeps only its workspace.
+  // and the hook brings the instructions, so the project keeps only its
+  // workspace. The person connects Doco to their agent first (2026-10-09).
   it("names the agents Doco supports, and keeps the project to its workspace", () => {
     const loaderData = loader({ request: new Request("https://doco.test/agents") });
     const html = renderToStaticMarkup(

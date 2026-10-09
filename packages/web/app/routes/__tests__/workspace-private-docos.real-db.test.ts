@@ -216,12 +216,12 @@ describe("workspace home only lists Docos the caller can read", () => {
   });
 
   it("shows a member whose setup step is open only that step, and loads nothing else", async () => {
-    // A reader with no onboarding row walks the invitee's one step: asking
-    // their agent, which hasn't written yet.
+    // A reader with no onboarding row walks the invitee's two steps, and is
+    // on the first: connecting Doco to their agent, which isn't yet.
     dbm.setUp = false;
     as("user_member");
     const data = await homeLoad("acme");
-    expect(data.onboarding?.pending).toBe("agent");
+    expect(data.onboarding?.pending).toBe("mcp");
     expect(Object.keys(data).sort()).toEqual(["canInviteUsers", "onboarding", "workspace"]);
     expect(JSON.stringify(data)).not.toContain("secret-plans");
   });
