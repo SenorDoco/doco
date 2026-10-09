@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getDocoByIdOrHandle: vi.fn(),
   getDocoLevelRole: vi.fn(),
   getCurrentPrincipalAsync: vi.fn(),
+  getUserById: vi.fn(),
   connectPicked: vi.fn(),
   getDocoConnectionsContext: vi.fn(),
   getInstallationAccount: vi.fn(),
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   importInstallationConnections: vi.fn(),
   kickBackfillRun: vi.fn(),
   recordInstallationAuthorization: vi.fn(),
+  recordInstallationRequest: vi.fn(),
   setBackfillState: vi.fn(),
   subscribeInstallation: vi.fn(),
   waitUntil: vi.fn(),
@@ -22,6 +24,7 @@ vi.mock("@doco/db", () => {
   const rank = { reader: 1, writer: 2, owner: 3 } as const;
   return {
     getDocoByIdOrHandle: mocks.getDocoByIdOrHandle,
+    getUserById: mocks.getUserById,
     roleAtLeast: (have: keyof typeof rank | null, want: keyof typeof rank) =>
       Boolean(have && rank[have] >= rank[want]),
   };
@@ -55,6 +58,7 @@ vi.mock("~/lib/github-connection.server", async (importOriginal) => ({
   importInstallationConnections: mocks.importInstallationConnections,
   listGitHubInstallationChoicesForDocos: mocks.listGitHubInstallationChoicesForDocos,
   recordInstallationAuthorization: mocks.recordInstallationAuthorization,
+  recordInstallationRequest: mocks.recordInstallationRequest,
   setBackfillState: mocks.setBackfillState,
   subscribeInstallation: mocks.subscribeInstallation,
 }));
@@ -96,6 +100,7 @@ describe("api.github.setup loader", () => {
       owner_id: "workspace_1",
     }));
     mocks.getCurrentPrincipalAsync.mockResolvedValue({ id: "user_1" });
+    mocks.getUserById.mockResolvedValue({ id: "user_1", github_login: "Ana" });
     mocks.getDocoLevelRole.mockResolvedValue("writer");
     mocks.getDocoConnectionsContext.mockResolvedValue({
       handle: "prs",
@@ -108,6 +113,7 @@ describe("api.github.setup loader", () => {
     mocks.importInstallationConnections.mockResolvedValue({ repos: [] });
     mocks.kickBackfillRun.mockResolvedValue(undefined);
     mocks.recordInstallationAuthorization.mockResolvedValue([]);
+    mocks.recordInstallationRequest.mockResolvedValue(undefined);
     mocks.setBackfillState.mockResolvedValue(undefined);
     mocks.subscribeInstallation.mockResolvedValue([]);
   });
@@ -130,6 +136,66 @@ describe("api.github.setup loader", () => {
     expect(mocks.importInstallationConnections).not.toHaveBeenCalled();
     expect(mocks.exchangeInstallationCode).toHaveBeenCalledWith("gh-code");
     expect(mocks.listUserInstallationIds).toHaveBeenCalledWith("ghu_user");
+  });
+
+  // Someone who isn't an owner of the organization gets Request on GitHub's
+  // install page: GitHub emails the owners and sends them back with no
+  // installation yet. Doco remembers who asked, for which Docos, so the
+  // installation lands there once an owner approves it.
+  it("remembers a request GitHub sent to the organization's owners and says so", async () => {
+    const state = signedState(
+      "user_1",
+      ["doco_1", "doco_2"],
+      "/integrations/github?workspace=acme",
+    );
+    const response = await loader({
+      request: setupRequest(`setup_action=request&state=${encodeURIComponent(state)}`),
+    });
+
+    expect(response.headers.get("Location")).toBe(
+      "/integrations/github?workspace=acme&github=requested",
+    );
+    expect(mocks.recordInstallationRequest).toHaveBeenCalledTimes(2);
+    expect(mocks.recordInstallationRequest).toHaveBeenCalledWith("doco_1", "Ana");
+    expect(mocks.recordInstallationRequest).toHaveBeenCalledWith("doco_2", "Ana");
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
+  });
+
+  // Install & request: GitHub installs on the repositories the person
+  // administers and asks the owners for the rest.
+  it("records the installation GitHub made and remembers the request for the rest", async () => {
+    const response = await loader({
+      request: setupRequest(
+        `installation_id=42&setup_action=request&code=gh-code&state=${encodeURIComponent(signedState())}`,
+      ),
+    });
+
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=connected");
+    expect(mocks.recordInstallationRequest).toHaveBeenCalledWith("doco_1", "Ana");
+    expect(mocks.recordInstallationAuthorization).toHaveBeenCalledWith(
+      "doco_1",
+      expect.objectContaining({ installation_id: 42, account: "acme" }),
+    );
+  });
+
+  it("remembers no request on a Doco the requester can't write to", async () => {
+    mocks.getDocoLevelRole.mockResolvedValue("reader");
+    const response = await loader({
+      request: setupRequest(`setup_action=request&state=${encodeURIComponent(signedState())}`),
+    });
+
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=forbidden");
+    expect(mocks.recordInstallationRequest).not.toHaveBeenCalled();
+  });
+
+  it("returns to the page the connect started from when GitHub names no installation", async () => {
+    const response = await loader({
+      request: setupRequest(`code=gh-code&state=${encodeURIComponent(signedState())}`),
+    });
+
+    expect(response.headers.get("Location")).toBe("/prs/integrations/github?github=setup_error");
+    expect(mocks.recordInstallationRequest).not.toHaveBeenCalled();
+    expect(mocks.recordInstallationAuthorization).not.toHaveBeenCalled();
   });
 
   it("refuses an installation the installing GitHub user cannot access", async () => {

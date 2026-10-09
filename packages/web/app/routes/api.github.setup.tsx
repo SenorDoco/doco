@@ -2,6 +2,14 @@
 // authorization (OAuth) during installation" enabled, GitHub redirects here
 // (GET) with ?installation_id=…&setup_action=…&state=…&code=….
 //
+// Only an owner of a GitHub organization can install the App there. Anyone
+// else gets Request on GitHub's install page: GitHub emails the organization's
+// owners and sends the person here with setup_action=request and no
+// installation (or, for Install & request, with the installation of what they
+// may install). Each Doco the state names then remembers the request, and what
+// an owner installs on it lands there through the webhook
+// (fulfillInstallationRequests).
+//
 // Nothing in that query string is trusted on its own:
 //   - `state` must be one we signed (see buildInstallUrl) for the signed-in user;
 //   - `code` is exchanged for the installing GitHub user's token, and the
@@ -12,7 +20,7 @@
 // setup page or a Doco's GitHub page), where the user picks exactly which
 // repos to connect: every repository of an organization, or the ones they
 // want. Nothing is connected here.
-import { getDocoByIdOrHandle, roleAtLeast } from "@doco/db";
+import { getDocoByIdOrHandle, getUserById, roleAtLeast } from "@doco/db";
 import { redirect } from "react-router";
 import { getDocoLevelRole } from "~/lib/doco-access.server";
 import {
@@ -22,17 +30,15 @@ import {
 } from "~/lib/github-app.server";
 import {
   recordInstallationAuthorization,
+  recordInstallationRequest,
   verifyInstallState,
 } from "~/lib/github-connection.server";
 import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
-  const installationId = Number(url.searchParams.get("installation_id"));
   const state = verifyInstallState(url.searchParams.get("state") ?? "");
-  if (!Number.isInteger(installationId) || installationId <= 0 || !state) {
-    return redirect("/workspaces?github=setup_error");
-  }
+  if (!state) return redirect("/workspaces?github=setup_error");
   const back = (outcome: string) =>
     redirect(`${state.next}${state.next.includes("?") ? "&" : "?"}github=${outcome}`);
 
@@ -48,6 +54,18 @@ export async function loader({ request }: { request: Request }) {
     docoIds.push(doco.id);
   }
 
+  if (url.searchParams.get("setup_action") === "request") {
+    const githubLogin = (await getUserById(me.id))?.github_login;
+    if (githubLogin) {
+      for (const docoId of docoIds) await recordInstallationRequest(docoId, githubLogin);
+    }
+    // Install & request: GitHub installed on what the person may install and
+    // asked the owners for the rest, so the installation is recorded below too.
+    if (!url.searchParams.get("installation_id")) return back("requested");
+  }
+
+  const installationId = Number(url.searchParams.get("installation_id"));
+  if (!Number.isInteger(installationId) || installationId <= 0) return back("setup_error");
   const code = url.searchParams.get("code");
   if (!code) return back("authorization_required");
 

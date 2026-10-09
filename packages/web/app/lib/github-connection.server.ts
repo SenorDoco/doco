@@ -992,6 +992,97 @@ export async function recordInstallationAuthorization(
   return next;
 }
 
+// ─── Installation requests ───────────────────────────────────────────────
+// Only an owner of a GitHub organization can install the App there; anyone
+// else gets Request on GitHub's install page, GitHub emails the owners, and
+// the person comes back with no installation yet. Each Doco they connected
+// from remembers the request as docos.data.github_integration
+// .installation_requests = [{ github_login, requested_at }], one per GitHub
+// login. When GitHub reports the installation an owner made on that request,
+// it lands on those Docos (selectable, as after an install) and the request is
+// answered.
+
+/** Remember that `githubLogin` asked an organization's owners to install the
+ *  App for `docoId`. Asking again refreshes the one request per login. */
+export async function recordInstallationRequest(
+  docoId: string,
+  githubLogin: string,
+): Promise<void> {
+  const login = githubLogin.toLowerCase();
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                COALESCE(data, '{}'::jsonb)
+                  || jsonb_build_object(
+                       'github_integration',
+                       COALESCE(data->'github_integration', '{}'::jsonb)),
+                '{github_integration,installation_requests}',
+                COALESCE((
+                  SELECT jsonb_agg(r)
+                    FROM jsonb_array_elements(data->'github_integration'->'installation_requests') r
+                   WHERE r->>'github_login' <> $2
+                ), '[]'::jsonb)
+                  || jsonb_build_array(jsonb_build_object(
+                       'github_login', $2::text, 'requested_at', now())),
+                true),
+              updated_at = now()
+        WHERE id = $1`,
+      [docoId, login],
+    );
+  });
+}
+
+/**
+ * An organization's owner installed the App (or gave it more repositories) on
+ * `githubLogin`'s request: make `installationId` selectable on every Doco that
+ * login asked from, and answer those requests. Returns those Docos' ids.
+ */
+export async function fulfillInstallationRequests(
+  githubLogin: string,
+  installationId: number,
+): Promise<string[]> {
+  const login = githubLogin.toLowerCase();
+  const docoIds = await withClient(async (c) => {
+    const r = await c.query<{ id: string }>(
+      `SELECT id FROM docos
+        WHERE data->'github_integration'->'installation_requests'
+                @> jsonb_build_array(jsonb_build_object('github_login', $1::text))
+        ORDER BY id`,
+      [login],
+    );
+    return r.rows.map((row) => row.id);
+  });
+  if (docoIds.length === 0) return [];
+  const { account, repository_selection } = await getInstallationAccount(installationId);
+  const connectedAt = new Date().toISOString();
+  for (const docoId of docoIds) {
+    await recordInstallationAuthorization(docoId, {
+      installation_id: installationId,
+      account,
+      ...(repository_selection ? { repository_selection } : {}),
+      connected_at: connectedAt,
+    });
+  }
+  await withClient(async (c) => {
+    await c.query(
+      `UPDATE docos
+          SET data = jsonb_set(
+                data,
+                '{github_integration,installation_requests}',
+                COALESCE((
+                  SELECT jsonb_agg(r)
+                    FROM jsonb_array_elements(data->'github_integration'->'installation_requests') r
+                   WHERE r->>'github_login' <> $1
+                ), '[]'::jsonb)),
+              updated_at = now()
+        WHERE id = ANY($2::text[])`,
+      [login, docoIds],
+    );
+  });
+  return docoIds;
+}
+
 /** Read docos.data.github_integration.installations as a list. Pure. */
 export function normalizeInstallations(raw: unknown): GitHubInstallationSub[] {
   if (!raw || typeof raw !== "object") return [];

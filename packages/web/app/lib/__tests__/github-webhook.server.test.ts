@@ -129,14 +129,28 @@ describe("parseInstallationRepositoriesEvent", () => {
       installationId: 42,
       addedRepos: ["acme/a"],
       removedRepos: ["acme/old", "acme/gone"],
+      requester: null,
     });
   });
+  it("names who asked an owner for the repositories, when someone did", () => {
+    expect(
+      parseInstallationRepositoriesEvent({
+        action: "added",
+        installation: { id: 42 },
+        repositories_added: [{ full_name: "acme/a" }],
+        requester: { login: "Ana", id: 7 },
+      }),
+    ).toMatchObject({ installationId: 42, requester: "Ana" });
+  });
   it("tolerates missing / junk fields", () => {
-    expect(parseInstallationRepositoriesEvent({ action: "removed", installation: {} })).toEqual({
+    expect(
+      parseInstallationRepositoriesEvent({ action: "removed", installation: {}, requester: {} }),
+    ).toEqual({
       action: "removed",
       installationId: null,
       addedRepos: [],
       removedRepos: [],
+      requester: null,
     });
     expect(parseInstallationRepositoriesEvent(null)).toBeNull();
   });
@@ -203,10 +217,24 @@ describe("parseInstallationEvent", () => {
     expect(parseInstallationEvent({ action: "deleted", installation: { id: 7 } })).toEqual({
       action: "deleted",
       installationId: 7,
+      requester: null,
     });
   });
+  it("names who asked an owner for the installation, when someone did", () => {
+    expect(
+      parseInstallationEvent({
+        action: "created",
+        installation: { id: 7 },
+        requester: { login: "Ana", id: 70 },
+      }),
+    ).toEqual({ action: "created", installationId: 7, requester: "Ana" });
+  });
   it("tolerates junk", () => {
-    expect(parseInstallationEvent({})).toEqual({ action: "", installationId: null });
+    expect(parseInstallationEvent({ requester: { login: 5 } })).toEqual({
+      action: "",
+      installationId: null,
+      requester: null,
+    });
     expect(parseInstallationEvent(null)).toBeNull();
   });
 });
