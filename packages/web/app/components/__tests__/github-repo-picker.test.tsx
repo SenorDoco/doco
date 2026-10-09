@@ -169,4 +169,14 @@ describe("RepositoryPicker", () => {
       "Every repository here is already connected.",
     );
   });
+
+  // Alexander, 2026-10-09: "They shouldn't be side by side. They should be
+  // one-column lists."
+  it("stacks the options and the repositories in one column, never side by side", async () => {
+    await render([TORRE_LABS]);
+    await choose("torre-labs", "Select repositories");
+
+    expect(repoCheckboxes()).toEqual(["torre-labs/heda", "torre-labs/vader"]);
+    expect(container.innerHTML).not.toContain("grid-cols");
+  });
 });
