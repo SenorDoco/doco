@@ -200,6 +200,16 @@ export interface ParsedInstallationEvent {
   /** "created" | "deleted" | "suspend" | "unsuspend" | "new_permissions_accepted". */
   action: string;
   installationId: number | null;
+  /** GitHub login of who asked the organization's owners for it, when an owner
+   *  approved someone's request; null otherwise. */
+  requester: string | null;
+}
+
+/** The `requester` login GitHub sets on an installation approved on someone's
+ *  request. Pure. */
+function requesterLogin(raw: unknown): string | null {
+  const login = raw && typeof raw === "object" ? (raw as { login?: unknown }).login : null;
+  return typeof login === "string" && login ? login : null;
 }
 
 /**
@@ -210,10 +220,11 @@ export interface ParsedInstallationEvent {
  */
 export function parseInstallationEvent(payload: unknown): ParsedInstallationEvent | null {
   if (!payload || typeof payload !== "object") return null;
-  const p = payload as { action?: unknown; installation?: { id?: unknown } };
+  const p = payload as { action?: unknown; installation?: { id?: unknown }; requester?: unknown };
   return {
     action: typeof p.action === "string" ? p.action : "",
     installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
+    requester: requesterLogin(p.requester),
   };
 }
 
@@ -225,6 +236,8 @@ export interface ParsedInstallationReposEvent {
   addedRepos: string[];
   /** Full names of repos whose access was revoked from the installation. */
   removedRepos: string[];
+  /** GitHub login of who asked the organization's owners for the repos. */
+  requester: string | null;
 }
 
 /** Pull "owner/name" strings out of a raw repositories array. Pure. */
@@ -256,12 +269,14 @@ export function parseInstallationRepositoriesEvent(
     installation?: { id?: unknown };
     repositories_added?: unknown;
     repositories_removed?: unknown;
+    requester?: unknown;
   };
   return {
     action: typeof p.action === "string" ? p.action : "",
     installationId: typeof p.installation?.id === "number" ? p.installation.id : null,
     addedRepos: repoFullNames(p.repositories_added),
     removedRepos: repoFullNames(p.repositories_removed),
+    requester: requesterLogin(p.requester),
   };
 }
 

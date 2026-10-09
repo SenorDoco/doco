@@ -276,6 +276,10 @@ const SETUP_NOTICES: Record<string, { text: string; error: boolean }> = {
   },
   signin_required: { text: "Sign in, then run Connect again.", error: true },
   connected: { text: "GitHub is connected. Choose the repositories below.", error: false },
+  requested: {
+    text: "GitHub sent your request to the organization's owners. Once one of them approves it, its repositories show up here.",
+    error: false,
+  },
 };
 
 /** What the GitHub install callback reported (`?github=<outcome>`), if anything. */

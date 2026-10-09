@@ -12,6 +12,7 @@ const {
   restartSkippedImports,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
+  fulfillInstallationRequests,
   findDocoByInstallation,
   findDocoTargetsForGitHubRepo,
   syncRepoCodebase,
@@ -31,6 +32,7 @@ const {
   restartSkippedImports: vi.fn(async () => ["doco_code", "doco_bugs"]),
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
+  fulfillInstallationRequests: vi.fn(async (): Promise<string[]> => []),
   findDocoByInstallation: vi.fn(async () => [
     { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: "github-issues" },
   ]),
@@ -58,6 +60,7 @@ vi.mock("~/lib/github-connection.server", () => ({
   restartSkippedImports,
   detachReposEverywhere,
   unsubscribeInstallationEverywhere,
+  fulfillInstallationRequests,
 }));
 // Keep the real parsers + signature verifier (loaded via a test-relative path);
 // override only the DB lookup. The route imports these from "~/lib/…", an alias
@@ -132,6 +135,21 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     const res = await send("installation", { action: "created", installation: { id: 7 } });
     expect(await res.json()).toMatchObject({ ignored: true });
     expect(unsubscribeInstallationEverywhere).not.toHaveBeenCalled();
+    expect(fulfillInstallationRequests).not.toHaveBeenCalled();
+  });
+
+  // An owner approved someone's request: the new installation lands on the
+  // Docos that person asked for it from.
+  it("installation created on someone's request → lands on the Docos they asked from", async () => {
+    fulfillInstallationRequests.mockResolvedValueOnce(["doco_prs", "doco_code"]);
+    const res = await send("installation", {
+      action: "created",
+      installation: { id: 7 },
+      requester: { login: "Ana", id: 70 },
+    });
+    expect(await res.json()).toMatchObject({ ok: true, fulfilled: ["doco_prs", "doco_code"] });
+    expect(fulfillInstallationRequests).toHaveBeenCalledWith("Ana", 7);
+    expect(unsubscribeInstallationEverywhere).not.toHaveBeenCalled();
   });
 
   it("installation_repositories removed → detaches those repos", async () => {
@@ -161,6 +179,18 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     expect(kickBackfillRun).toHaveBeenCalledWith("https://doco.to", "doco_1");
     expect(waitUntil).toHaveBeenCalledTimes(1);
     expect(detachReposEverywhere).not.toHaveBeenCalled();
+    expect(fulfillInstallationRequests).not.toHaveBeenCalled();
+  });
+
+  it("installation_repositories added on someone's request → the installation lands on the Docos they asked from", async () => {
+    const res = await send("installation_repositories", {
+      action: "added",
+      installation: { id: 42 },
+      repositories_added: [{ full_name: "acme/new" }],
+      requester: { login: "Ana", id: 70 },
+    });
+    expect(await res.json()).toMatchObject({ ok: true, added: 1 });
+    expect(fulfillInstallationRequests).toHaveBeenCalledWith("Ana", 42);
   });
 
   it("pull_request_review approved → upserts the PR with approved:true", async () => {

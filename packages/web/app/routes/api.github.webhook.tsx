@@ -10,6 +10,8 @@
 //   - installation_repositories (removed) → detach those repos' connections.
 //   - installation (deleted)  → uninstall: detach the installation everywhere.
 //   - installation (new_permissions_accepted) → import again what GitHub refused before.
+//   - installation (created) / installation_repositories (added) on someone's
+//     request → the installation lands on the Docos that person asked from.
 // Idempotent on the item URL / installation id / file sha, so re-deliveries
 // are safe.
 import { waitUntil } from "@vercel/functions";
@@ -19,6 +21,7 @@ import { listPullRequestFiles, mintInstallationToken } from "~/lib/github-app.se
 import {
   connectRepositories,
   detachReposEverywhere,
+  fulfillInstallationRequests,
   restartSkippedImports,
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
@@ -115,6 +118,15 @@ export async function action({ request }: { request: Request }) {
     if (!evt || evt.installationId == null) {
       return Response.json({ ok: true, ignored: true });
     }
+    // An organization's owner approved someone's request to install the App →
+    // it lands on the Docos that person asked from, ready to pick repositories.
+    if (evt.action === "created" && evt.requester) {
+      const fulfilled = await fulfillInstallationRequests(evt.requester, evt.installationId);
+      console.info(
+        `[github webhook] installation ${evt.installationId} created on ${evt.requester}'s request → ${fulfilled.length} doco(s)`,
+      );
+      return Response.json({ ok: true, event, action: evt.action, fulfilled });
+    }
     // The account accepted permissions the App asks for (Contents, say) →
     // import again every Doco that skipped a repository GitHub refused.
     if (evt.action === "new_permissions_accepted") {
@@ -168,6 +180,9 @@ export async function action({ request }: { request: Request }) {
       );
       waitUntil(kickBackfillRun(origin, doco.docoId));
     }
+    // Given on someone's request → the installation lands on the Docos that
+    // person asked from, as when GitHub creates one on a request.
+    if (evt.requester) await fulfillInstallationRequests(evt.requester, installationId);
     return Response.json({
       ok: true,
       event,
