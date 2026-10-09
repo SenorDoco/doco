@@ -6,11 +6,14 @@
 // each time, since every duty calls one.
 //
 // The agent follows its guide itself: its instructions
-// (lib/agent-instructions.ts) send it to /agents/connect, which shows these
-// guides (components/connect-agent-guide.tsx), and it asks the person only
-// for what it can't do, such as signing in. Other agents can still connect to
-// /mcp, but Doco offers no guide for them.
+// (lib/agent-instructions.ts) name the server and send it to /agents/connect,
+// which shows every guide as served (components/connect-agent-guide.tsx), so
+// an agent reading the page as text finds its commands without a click; it
+// asks the person only for what it can't do, such as signing in. Other agents
+// can still connect to /mcp, but Doco offers no guide for them.
 // Pure.
+
+import { MCP_PATH } from "~/lib/agent-instructions";
 
 export interface GuideStep {
   /** What to do, in a sentence or two. */
@@ -33,7 +36,7 @@ export interface AgentGuide {
 const SIGN_IN = "Doco opens in your browser: sign in and choose Allow.";
 
 export function agentConnectGuides(baseUrl: string): AgentGuide[] {
-  const mcp = `${baseUrl.replace(/\/+$/, "")}/mcp`;
+  const mcp = `${baseUrl.replace(/\/+$/, "")}${MCP_PATH}`;
   return [
     {
       id: "claude-code",

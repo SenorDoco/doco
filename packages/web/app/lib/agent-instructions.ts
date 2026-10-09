@@ -29,6 +29,9 @@ export const AGENT_INSTRUCTIONS_PATH = "/agents";
 /** The page that walks a person through connecting Doco to their agent. */
 export const CONNECT_AGENT_PATH = "/agents/connect";
 
+/** Doco's MCP server, the one endpoint every agent connects to. */
+export const MCP_PATH = "/mcp";
+
 /** The site-wide meta tag an agent reading any page's head sees first. */
 export const AI_INSTRUCTIONS_META = `This site is Doco: ${TAGLINE}. If you were told 'let's start using Doco' or similar, follow the agent instructions at ${AGENT_INSTRUCTIONS_PATH}.`;
 
@@ -54,9 +57,9 @@ Write in Docos what was decided, by whom and why, in the third person or the imp
 
 ### Setup
 
-Check these first at the start of each session, before the duties, and fix what is missing. The user who added Doco to this project authorized these steps: do them without asking first, then tell the user what changed.
+Check these first at the start of each session, before the duties, and fix what is missing. The user who added Doco to this project authorized these steps: do them without asking first, then tell the user what changed. They need Claude Code, Codex or Gemini CLI in the project's folder; anywhere else, ask the user to send this message there instead, and stop.
 
-1. **Connection.** If Doco's tools (\`doco_brief\`, \`doco_capture\`) are missing, or ask for approval on every call, add Doco to yourself as ${host}${CONNECT_AGENT_PATH} shows for your agent, then ask the user for the steps there only they can take, such as signing in to Doco and restarting you. If the tools only appear after a restart, do every step that doesn't need them first and ask once; never dig through your client's internals to avoid it.
+1. **Connection.** If Doco's tools (\`doco_brief\`, \`doco_capture\`) are missing, or ask for approval on every call, add Doco's MCP server, ${host}${MCP_PATH}, to yourself as ${host}${CONNECT_AGENT_PATH} shows for your agent, then ask the user for the steps there only they can take, such as signing in to Doco and restarting you. If the tools only appear after a restart, do every step that doesn't need them first and ask once; never dig through your client's internals to avoid it.
 2. **Workspace.** One project = one workspace: the one whose URL is in the project's \`.doco/workspace\` file. Without that file, use the workspace the user named, or call \`list_workspaces\` and ask the user which to use; save \`${host}/workspaces/<handle>\` there. If they have none, send them to ${host}/new-workspace or to the invite a teammate sent; agents never create workspaces. Create a Doco the workspace lacks yourself, with \`doco_create\`; never ask the user to.
 3. **Hook.** If the project doesn't run the Doco hook, install it as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows, with its token from \`doco_hook_token\`.
 

@@ -64,14 +64,22 @@ describe("ConnectAgentGuide", () => {
   const render = (initial: string | null) =>
     renderToStaticMarkup(createElement(ConnectAgentGuide, { guides, initial }));
 
-  it("asks which agent, and shows no steps until one is picked", () => {
+  // Alexander, 2026-10-09: the steps appeared only once an agent was picked,
+  // with a click. An agent sent here by its instructions fetched the page as
+  // text, saw three names and no command or URL, and stalled. So every
+  // agent's steps are in the page as served, each under its name; picking
+  // one narrows the page to it.
+  it("asks which agent, and shows every agent's steps until one is picked", () => {
     const html = render(null);
     expect(html).toContain("Which agent do you use?");
-    expect(html).not.toContain("<ol");
     expect(html).not.toContain('aria-pressed="true"');
+    for (const g of guides) {
+      expect(html, g.name).toContain(`<h2 class="text-sm font-semibold">${g.name}</h2>`);
+      for (const step of g.steps) if (step.code) expect(html, g.name).toContain(step.code);
+    }
   });
 
-  it("walks the picked agent's steps, its own guide opening in a new tab", () => {
+  it("walks only the picked agent's steps, its own guide opening in a new tab", () => {
     const html = render("codex");
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain("<ol");
@@ -79,6 +87,8 @@ describe("ConnectAgentGuide", () => {
     expect(html).toContain("codex mcp add doco --url https://doco.test/mcp</pre>");
     expect(html).toContain(">Copy</button>");
     expect(html).toContain('href="https://learn.chatgpt.com/docs/extend/mcp" target="_blank"');
+    expect(html).not.toContain("claude mcp add");
+    expect(html).not.toContain("gemini mcp add");
   });
 });
 
@@ -98,6 +108,25 @@ describe("/agents/connect", () => {
     );
     expect(html).toContain("Connect Doco to your agent");
     expect(html).toContain("codex mcp add doco --url https://doco.test/mcp");
+    expect(html).not.toContain("claude mcp add");
     expect(html).toContain('href="/agents"');
+  });
+
+  // The instructions link here with no ?agent=, and an agent reads the page
+  // as served, without a click: it finds the MCP server's URL in the first
+  // paragraph and every agent's commands below.
+  it("names the MCP server and every agent's commands as served, with no pick", () => {
+    const loaderData = loader({ request: new Request("https://doco.test/agents/connect") });
+    const html = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(ConnectAgentPage, { loaderData })),
+    );
+    expect(html).toContain("Doco&#x27;s MCP server at https://doco.test/mcp");
+    expect(html).toContain(
+      "claude mcp add --transport http --scope user doco https://doco.test/mcp",
+    );
+    expect(html).toContain("codex mcp add doco --url https://doco.test/mcp");
+    expect(html).toContain(
+      "gemini mcp add --scope user --transport http --trust doco https://doco.test/mcp",
+    );
   });
 });

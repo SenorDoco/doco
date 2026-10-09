@@ -33,10 +33,13 @@ describe("agentInstructions", () => {
   // command, so the agent connects itself (as /agents/connect shows for it)
   // and the person only signs in. Before, agents carried no setup steps and
   // sent the person to that page (decision_01M4AQBTJPPD2K7K4K5VG030QE).
-  it("has the agent connect itself to Doco as /agents/connect shows, leaving the sign-in to the user", () => {
+  // Alexander, 2026-10-09: an agent that fetched /agents/connect and /agents
+  // as text found neither the MCP server's URL nor a command there and
+  // stalled, so the block names the server; the commands stay on the page.
+  it("has the agent connect itself to Doco's MCP server as /agents/connect shows, leaving the sign-in to the user", () => {
     const step = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
     expect(step).toContain(
-      "are missing, or ask for approval on every call, add Doco to yourself as https://doco.test/agents/connect shows for your agent",
+      "are missing, or ask for approval on every call, add Doco's MCP server, https://doco.test/mcp, to yourself as https://doco.test/agents/connect shows for your agent",
     );
     expect(step).toContain(
       "then ask the user for the steps there only they can take, such as signing in to Doco and restarting you",
@@ -44,7 +47,18 @@ describe("agentInstructions", () => {
     expect(text).not.toContain("Never set it up or sign in for them.");
     // The commands live on the page, one per agent, not in the block.
     expect(text).not.toContain("claude mcp add");
-    expect(text).not.toContain("https://doco.test/mcp");
+  });
+
+  // Alexander, 2026-10-09: a person sent the "Start using Doco" message to a
+  // chat with no project folder. The agent had nowhere to save
+  // .doco/workspace or the hook, and ended with a table of four things it was
+  // waiting on. Setup is for a supported agent in the project's folder;
+  // anywhere else, the agent says so and stops.
+  it("needs a supported agent in the project's folder, and says so anywhere else", () => {
+    const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
+    expect(setup).toContain(
+      "They need Claude Code, Codex or Gemini CLI in the project's folder; anywhere else, ask the user to send this message there instead, and stop.",
+    );
   });
 
   // Alexander, 2026-10-08 (decision_01M4ER9B3KXN0SFJ307F0YKHKM): a Codex agent
@@ -81,7 +95,7 @@ describe("agentInstructions", () => {
     expect(text).not.toContain("doco:begin");
     expect(text).not.toContain("Doco workspace:");
     expect(text).not.toContain("AGENTS.md");
-    expect(text).not.toContain("older");
+    expect(text).not.toMatch(/\bolder\b/);
   });
 
   // Alexander, 2026-10-08 (decision_01M4ER9B3KXN0SFJ307F0YKHKM): a Codex agent
@@ -215,9 +229,11 @@ describe("agentInstructions", () => {
 
   // Claude Code keeps only the first 4096 characters of an MCP server's
   // instructions, and the hosted server sends this block whole. Alexander,
-  // 2026-10-06: shorter and simpler, once setup moved to the website.
+  // 2026-10-06: shorter and simpler, once setup moved to the website. The
+  // MCP server's URL and the line on where setup runs (2026-10-09) took it
+  // past 3,000.
   it("fits whole in the instructions an MCP client keeps, with room to spare", () => {
-    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3000);
+    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3200);
   });
 
   // Alexander, 2026-09-30: one template for every place Doco instructs an
