@@ -1,6 +1,7 @@
 // The activity digest: the email every member of a workspace gets about what
-// happened in it, with the totals of queries, writes and imports and who and
-// what made the most of each. It goes out at 13:00 UTC every day, covering the
+// happened in it. It opens with the top three records added in it
+// (lib/digest-top-three.server.ts picks them), then the totals of queries,
+// writes and imports and who and what made the most of each. It goes out at 13:00 UTC every day, covering the
 // previous 24 hours, unless the member switched it to weekly: then every
 // Monday, covering the previous 7 days. Each one has a button that switches it
 // between the two and a link that unsubscribes. Pure: which digests are due,
@@ -21,6 +22,16 @@ export const DIGEST_TOP_LIMIT = 5;
 export type DigestSetting = "daily" | "weekly" | "off";
 export type Cadence = Exclude<DigestSetting, "off">;
 
+/** One of the top three: what a record added in the period says, in a
+ *  sentence, and where it lives. */
+export interface TopItem {
+  id: string;
+  docoId: string;
+  docoHandle: string;
+  takeaway: string;
+  url: string;
+}
+
 const DAY_MS = 86_400_000;
 
 /** The digests that go out at `at`: the daily one, and on Mondays the weekly. */
@@ -37,6 +48,11 @@ export function digestPeriod(cadence: Cadence, at: Date): { since: string; until
   };
 }
 
+/** The time a digest covers, as its email says it. */
+export function periodLabel(cadence: Cadence): string {
+  return cadence === "daily" ? "the last 24 hours" : "the last 7 days";
+}
+
 const count = (n: number) => n.toLocaleString("en-US");
 const actorLine = (a: TopActor) => `${a.username} ${viaLabel(a.via)}: ${count(a.count)}`;
 
@@ -45,17 +61,19 @@ export function digestEmail(opts: {
   workspaceHandle: string;
   setting: Cadence;
   summary: ActivitySummary;
+  /** The top three the member may read, the most important first. */
+  top: TopItem[];
   /** Names the member to /digest/<setting> (lib/activity-digest.server.ts). */
   token: string;
 }): Omit<Email, "to"> {
-  const { workspaceHandle: ws, setting, summary: s } = opts;
+  const { workspaceHandle: ws, setting, summary: s, top } = opts;
   const base = opts.baseUrl.replace(/\/+$/, "");
   const url = `${base}/workspaces/${ws}`;
   const t = new URLSearchParams({ t: opts.token });
   const other = setting === "daily" ? "weekly" : "daily";
   const switchUrl = `${base}/digest/${other}?${t}`;
   const unsubscribeUrl = `${base}/digest/unsubscribe?${t}`;
-  const period = setting === "daily" ? "the last 24 hours" : "the last 7 days";
+  const period = periodLabel(setting);
   const none = `None in ${period}.`;
   const intro = `Here's what happened in ${ws} in ${period}.`;
   const stats = [
@@ -68,10 +86,14 @@ export function digestEmail(opts: {
     ["Top contributors", s.topContributors.map(actorLine)],
     ["Top integrations", s.topIntegrations.map((i) => `${i.name}: ${count(i.count)}`)],
   ];
+  const topTitle = `Top three added in ${period}`;
   const switchLabel = `Switch to ${other}`;
   const footer = `You get this digest ${setting === "daily" ? "every day" : "every Monday"} as a member of ${ws}.`;
 
   const text = [
+    ...(top.length > 0
+      ? [[topTitle, ...top.map((i) => `- ${i.takeaway} (${i.docoHandle}: ${i.url})`)].join("\n")]
+      : []),
     intro,
     stats.map((st) => `${st.value} ${st.label}`).join(" · "),
     ...lists.map(([title, lines]) =>
@@ -83,6 +105,12 @@ export function digestEmail(opts: {
   ].join("\n\n");
 
   const blocks: EmailBlock[] = [
+    ...(top.length > 0
+      ? [
+          { heading: topTitle },
+          { list: top.map((i) => ({ text: i.takeaway, link: i.url, label: i.docoHandle })) },
+        ]
+      : []),
     intro,
     { stats },
     ...lists.flatMap(([title, lines]): EmailBlock[] => [

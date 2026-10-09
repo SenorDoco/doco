@@ -44,10 +44,10 @@ describe("emailHtml", () => {
     expect(html).not.toContain("Ubuntu+Mono");
   });
 
-  it("sets headings, lists, numbers and small print, escaped", () => {
+  it("sets headings, lists (an item may end in a link), numbers and small print, escaped", () => {
     const html = emailHtml([
       { heading: "Top <queryers>" },
-      { list: ["ana & bo"] },
+      { list: ["ana & bo", { text: "Ship <it>.", link: "https://doco.to/a?b&c", label: "acme" }] },
       { stats: [{ value: "1,340", label: "queries" }] },
       {
         footer: "You get this as a member.",
@@ -55,8 +55,15 @@ describe("emailHtml", () => {
         label: "Unsubscribe",
       },
     ]);
-    expect(html).toContain('font-weight:700">Top &lt;queryers&gt;</p>');
+    // A heading that opens the email sits flush with the top of the slab.
+    expect(html).toContain('<p style="margin:0 0 8px;font-weight:700">Top &lt;queryers&gt;</p>');
+    expect(emailHtml(["Hi.", { heading: "Top" }])).toContain(
+      '<p style="margin:24px 0 8px;font-weight:700">Top</p>',
+    );
     expect(html).toContain("<li>ana &amp; bo</li>");
+    expect(html).toContain(
+      '<li>Ship &lt;it&gt;. (<a href="https://doco.to/a?b&amp;c" style="color:#9c44a5">acme</a>)</li>',
+    );
     expect(html).toMatch(/font-size:24px[^>]*>1,340<\/div><div style="color:#5c5b56">queries</);
     expect(html).toContain(
       'You get this as a member. <a href="https://doco.to/u?t=a&amp;b" style="color:#9c44a5">Unsubscribe</a>',
@@ -130,6 +137,7 @@ describe("Doco's emails", () => {
         topQueryers: [],
         topIntegrations: [],
       },
+      top: [],
       token: "tok",
     }),
   };
