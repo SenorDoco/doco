@@ -1,29 +1,29 @@
-// Session + User lookup. The session cookie stores the user id (OAuth
-// identity).
+// Session + User lookup. The session cookie seals the signed-in user's id
+// with the server's key (decision_01M4GKEM9P2P6F6Q7JWVP9ATVG), so only a
+// cookie the server set signs anyone in.
 
 import { type UserRow, getUserById } from "@doco/db";
+import { readCookie } from "./cookie";
+import { openToken, sealToken } from "./secret-box.server";
 
 const COOKIE_NAME = "doco_session";
+const SESSION_SECONDS = 30 * 24 * 3600;
 
-export function getSessionPrincipalId(request: Request): string | null {
-  const header = request.headers.get("cookie");
-  if (!header) return null;
-  const parts = header.split(";").map((p) => p.trim());
-  for (const p of parts) {
-    const eq = p.indexOf("=");
-    if (eq < 0) continue;
-    const name = p.slice(0, eq);
-    const value = decodeURIComponent(p.slice(eq + 1));
-    if (name === COOKIE_NAME && /^(user|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(value)) {
-      return value;
-    }
-  }
-  return null;
+export function getSessionPrincipalId(request: Request, now = Date.now()): string | null {
+  const token = readCookie(request.headers.get("cookie"), COOKIE_NAME);
+  if (!token) return null;
+  const id = openToken(token, now);
+  return typeof id === "string" && /^(user|principal)_[0-9A-HJKMNP-TV-Z]{26}$/.test(id) ? id : null;
+}
+
+/** The `doco_session=…` pair that signs `principalId` in: the Set-Cookie
+ *  value's head, and the Cookie header for the server's own calls as them. */
+export function sessionCookie(principalId: string): string {
+  return `${COOKIE_NAME}=${encodeURIComponent(sealToken(principalId, SESSION_SECONDS * 1000))}`;
 }
 
 export function setSessionCookie(principalId: string): string {
-  const max = 30 * 24 * 3600;
-  return `${COOKIE_NAME}=${encodeURIComponent(principalId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${max}`;
+  return `${sessionCookie(principalId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}`;
 }
 
 export function clearSessionCookie(): string {

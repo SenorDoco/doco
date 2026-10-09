@@ -54,6 +54,7 @@ import {
   createSenorDocoIntegrationContextCache,
 } from "./senor-doco-integration-context.server";
 import { buildSenorDocoCorePrompt } from "./senor-doco-prompt.server";
+import { sessionCookie } from "./session.server";
 
 export const SLACK_BOT_SCOPES = [
   "app_mentions:read",
@@ -1418,7 +1419,7 @@ async function executeSlackDocoApiAsUser(
     method: request.method,
     path: request.path,
     origin,
-    cookieHeader: `doco_session=${encodeURIComponent(actor.userId)}`,
+    cookieHeader: sessionCookie(actor.userId),
     body: request.body,
     userAgent: "Doco-Slack-Assistant/1",
     authoringSurface: "slack",

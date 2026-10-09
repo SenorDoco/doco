@@ -1,14 +1,13 @@
-// Turning a Doco into a Notion mirror, and managing it: the signed OAuth
+// Turning a Doco into a Notion mirror, and managing it: the sealed OAuth
 // state the consent form mints, recording the mirror after Notion's
 // authorization (tokens encrypted at rest), the status the mirror page shows,
 // and stopping it. The copy itself is kept by the sync
 // (lib/notion-mirror-sync.server.ts) and the webhook path
 // (lib/notion-mirror.server.ts).
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { withClient } from "@doco/db";
 import { isLocalPath } from "./local-path";
 import { type NotionTokenResponse, getNotionConfig, notionAuthorizeUrl } from "./notion-api.server";
-import { decryptSecret, encryptSecret } from "./secret-box.server";
+import { decryptSecret, encryptSecret, openToken, sealToken } from "./secret-box.server";
 
 export interface NotionOAuthState {
   docoId: string;
@@ -19,58 +18,32 @@ export interface NotionOAuthState {
   /** Where to send them once the mirror is on, instead of the Doco's Notion
    *  page: a workspace's onboarding, which offers the next source. */
   next?: string;
-  nonce: string;
-  issuedAt: number;
 }
 
 const STATE_TTL_MS = 60 * 60 * 1000;
 
-function stateSignature(payload: string, key: string): string {
-  return createHmac("sha256", key).update(payload).digest("base64url");
+/** Seal the state the callback trusts. */
+export function signNotionState(state: NotionOAuthState, nowMs = Date.now()): string {
+  return sealToken(state, STATE_TTL_MS, nowMs);
 }
 
-/** Sign the state the callback trusts. The client secret doubles as the key:
- *  the flow can't exchange the code without it anyway. Pure. */
-export function signNotionState(state: NotionOAuthState, key: string): string {
-  const payload = Buffer.from(JSON.stringify(state)).toString("base64url");
-  return `${payload}.${stateSignature(payload, key)}`;
-}
-
-/** The state a callback carries, or null when unsigned, tampered with,
- *  malformed, or older than an hour. Pure given the clock. */
-export function verifyNotionState(
-  raw: string,
-  key: string,
-  nowMs = Date.now(),
-): NotionOAuthState | null {
-  const [payload, given, extra] = raw.split(".");
-  if (!key || !payload || !given || extra !== undefined) return null;
-  const expected = Buffer.from(stateSignature(payload, key));
-  const actual = Buffer.from(given);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
-  let state: NotionOAuthState;
-  try {
-    state = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as NotionOAuthState;
-  } catch {
-    return null;
-  }
+/** The state a callback carries, or null when forged, tampered with,
+ *  malformed, or older than an hour. A way back off this site is dropped. */
+export function verifyNotionState(raw: string, nowMs = Date.now()): NotionOAuthState | null {
+  const state = openToken(raw, nowMs) as Partial<NotionOAuthState> | null;
   if (
+    !state ||
     typeof state.docoId !== "string" ||
     typeof state.workspaceId !== "string" ||
-    typeof state.userId !== "string" ||
-    typeof state.nonce !== "string" ||
-    !Number.isFinite(state.issuedAt)
+    typeof state.userId !== "string"
   ) {
     return null;
   }
-  if (nowMs - state.issuedAt > STATE_TTL_MS || state.issuedAt - nowMs > 60_000) return null;
   return {
     docoId: state.docoId,
     workspaceId: state.workspaceId,
     userId: state.userId,
     ...(isLocalPath(state.next) ? { next: state.next } : {}),
-    nonce: state.nonce,
-    issuedAt: state.issuedAt,
   };
 }
 
@@ -91,10 +64,7 @@ export function buildNotionAuthorizeUrl(
 ): string | null {
   const config = getNotionConfig();
   if (!config.configured) return null;
-  const state = signNotionState(
-    { ...args, nonce: randomBytes(16).toString("base64url"), issuedAt: Date.now() },
-    config.clientSecret,
-  );
+  const state = signNotionState(args);
   return notionAuthorizeUrl({
     clientId: config.clientId,
     redirectUri: notionRedirectUri(request),

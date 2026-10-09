@@ -1,6 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret-box.server";
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncryptedSecret,
+  openToken,
+  sealToken,
+} from "../secret-box.server";
 
 const KEY = randomBytes(32).toString("base64");
 
@@ -44,5 +50,44 @@ describe("secret box", () => {
 
   it("does not mistake a plaintext token for an encrypted one", () => {
     expect(isEncryptedSecret("xoxb-123")).toBe(false);
+  });
+});
+
+describe("sealed tokens", () => {
+  const now = Date.UTC(2026, 9, 9, 12);
+
+  it("open to the value they sealed until they expire", () => {
+    const token = sealToken({ userId: "user_1" }, 60_000, now);
+    expect(openToken(token, now + 59_999)).toEqual({ userId: "user_1" });
+    expect(openToken(token, now + 60_000)).toBeNull();
+  });
+
+  it("never show the value they carry", () => {
+    expect(sealToken("user_1", 60_000, now)).not.toContain("user_1");
+  });
+
+  it("open to nothing when tampered with, sealed under another key, or never sealed", () => {
+    const [head, , body] = sealToken("user_1", 60_000, now).split(".");
+    const otherTag = randomBytes(16).toString("base64url");
+    expect(openToken(`${head}.${otherTag}.${body}`, now)).toBeNull();
+    expect(openToken("user_1", now)).toBeNull();
+    expect(openToken("v1:not.a.token", now)).toBeNull();
+
+    const token = sealToken("user_1", 60_000, now);
+    process.env.DOCO_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+    expect(openToken(token, now)).toBeNull();
+  });
+
+  it("open to nothing with a truncated tag, which would make a forgery guessable", () => {
+    const [head, tag, body] = sealToken("user_1", 60_000, now).split(".");
+    const short = Buffer.from(tag ?? "", "base64url")
+      .subarray(0, 4)
+      .toString("base64url");
+    expect(openToken(`${head}.${short}.${body}`, now)).toBeNull();
+  });
+
+  it("refuse to open without a 32-byte key, so a missing key fails loudly", () => {
+    process.env.DOCO_ENCRYPTION_KEY = "too-short";
+    expect(() => openToken("user_1", now)).toThrow(/DOCO_ENCRYPTION_KEY/);
   });
 });

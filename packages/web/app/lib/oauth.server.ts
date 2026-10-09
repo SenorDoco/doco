@@ -1,4 +1,6 @@
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { readCookie } from "./cookie";
+import { openToken, sealToken } from "./secret-box.server";
 
 /**
  * GitHub OAuth helper (ADR-095).
@@ -21,8 +23,6 @@ export interface OAuthConfig {
   clientSecret: string;
   /** Public-facing callback URL (matches what's registered with the GitHub app). */
   redirectUri: string;
-  /** HMAC key used to sign the state cookie. Per-host secret; read from DOCO_GITHUB_STATE_KEY or generated. */
-  stateKey: Buffer;
 }
 
 export function readOAuthConfig(request: Request): OAuthConfig | null {
@@ -34,22 +34,12 @@ export function readOAuthConfig(request: Request): OAuthConfig | null {
   const redirectUri =
     process.env.DOCO_GITHUB_REDIRECT_URI ?? `${url.protocol}//${url.host}/auth/github/callback`;
 
-  const stateKeyRaw = process.env.DOCO_GITHUB_STATE_KEY ?? "doco-dev-default-state-key";
-  return {
-    clientId,
-    clientSecret,
-    redirectUri,
-    stateKey: Buffer.from(stateKeyRaw, "utf8"),
-  };
+  return { clientId, clientSecret, redirectUri };
 }
 
 /** Build the GitHub authorize URL + the cookie that pins the state. */
 export function startOAuth(config: OAuthConfig): { url: string; setCookie: string } {
-  const nonce = randomBytes(16).toString("hex");
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const payload = `${nonce}.${issuedAt}`;
-  const sig = sign(payload, config.stateKey);
-  const state = `${payload}.${sig}`;
+  const state = sealToken(randomBytes(16).toString("hex"), STATE_TTL_SECONDS * 1000);
 
   const authorizeUrl = new URL(GITHUB_AUTHORIZE);
   authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -68,14 +58,13 @@ export function startOAuth(config: OAuthConfig): { url: string; setCookie: strin
   return { url: authorizeUrl.toString(), setCookie };
 }
 
-/** Verify the returned `state` matches the cookie + signature + TTL. */
+/** Whether the returned `state` is the one this browser's cookie pins, and
+ *  one the server issued in the last ten minutes. */
 export function verifyOAuthState(
-  config: OAuthConfig,
   returnedState: string,
   cookieHeader: string | null,
-): "valid" | "missing_cookie" | "mismatch" | "expired" | "bad_signature" {
-  if (!cookieHeader) return "missing_cookie";
-  const cookieState = parseCookie(cookieHeader, STATE_COOKIE_NAME);
+): "valid" | "missing_cookie" | "mismatch" | "invalid" {
+  const cookieState = readCookie(cookieHeader, STATE_COOKIE_NAME);
   if (!cookieState) return "missing_cookie";
   if (
     cookieState.length !== returnedState.length ||
@@ -83,16 +72,7 @@ export function verifyOAuthState(
   ) {
     return "mismatch";
   }
-  const parts = returnedState.split(".");
-  if (parts.length !== 3) return "bad_signature";
-  const [nonce, issuedAtStr, sig] = parts as [string, string, string];
-  const expected = sign(`${nonce}.${issuedAtStr}`, config.stateKey);
-  if (sig !== expected) return "bad_signature";
-  const issuedAt = Number(issuedAtStr);
-  if (!Number.isFinite(issuedAt) || Date.now() / 1000 - issuedAt > STATE_TTL_SECONDS) {
-    return "expired";
-  }
-  return "valid";
+  return openToken(returnedState) === null ? "invalid" : "valid";
 }
 
 export function clearOAuthStateCookie(): string {
@@ -115,17 +95,10 @@ export function clearOAuthReturnCookie(): string {
 }
 
 export function readOAuthReturnCookie(cookieHeader: string | null): string | null {
-  if (!cookieHeader) return null;
-  for (const part of cookieHeader.split(";").map((p) => p.trim())) {
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    if (part.slice(0, eq) !== RETURN_COOKIE_NAME) continue;
-    const value = decodeURIComponent(part.slice(eq + 1));
-    if (!value.startsWith("/")) return null; // same-origin only
-    if (value.startsWith("//")) return null; // protocol-relative — reject
-    return value;
-  }
-  return null;
+  const value = readCookie(cookieHeader, RETURN_COOKIE_NAME);
+  if (!value?.startsWith("/")) return null; // same-origin only
+  if (value.startsWith("//")) return null; // protocol-relative — reject
+  return value;
 }
 
 export interface GitHubUser {
@@ -198,20 +171,4 @@ export async function fetchGitHubPrimaryEmail(accessToken: string): Promise<stri
   const verified = list.find((e) => e.verified);
   if (verified) return verified.email;
   return list[0]?.email ?? null;
-}
-
-// ─── helpers ───────────────────────────────────────────────────────────────
-
-function sign(payload: string, key: Buffer): string {
-  return createHmac("sha256", key).update(payload).digest("hex");
-}
-
-function parseCookie(header: string, name: string): string | null {
-  for (const part of header.split(";").map((p) => p.trim())) {
-    const eq = part.indexOf("=");
-    if (eq < 0) continue;
-    if (part.slice(0, eq) !== name) continue;
-    return decodeURIComponent(part.slice(eq + 1));
-  }
-  return null;
 }

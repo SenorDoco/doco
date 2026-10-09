@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../internal-fetch.server", () => ({
@@ -6,6 +6,7 @@ vi.mock("../internal-fetch.server", () => ({
 }));
 
 import { internalFetch } from "../internal-fetch.server";
+import { openToken } from "../secret-box.server";
 import {
   SLACK_BOT_SCOPES,
   buildSlackConnectCommandResponse,
@@ -837,6 +838,7 @@ describe("slack.server", () => {
   });
 
   it("runs Slack doco_api writes as the linked Doco user", async () => {
+    vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
     vi.mocked(internalFetch).mockResolvedValueOnce(
       Response.json({
         ok: true,
@@ -886,11 +888,14 @@ describe("slack.server", () => {
       method: "POST",
       path: "/torre-org-chart/api/principals.json",
       origin: "https://doco.test",
-      cookieHeader: "doco_session=user_01ABC",
+      cookieHeader: expect.stringMatching(/^doco_session=/),
       body: { name: "Francisco Laso — Algorithms Engineer", kind: "human" },
       userAgent: "Doco-Slack-Assistant/1",
       authoringSurface: "slack",
     });
+    // The call carries a session the server sealed for the linked user.
+    const cookie = vi.mocked(internalFetch).mock.lastCall?.[0].cookieHeader ?? "";
+    expect(openToken(decodeURIComponent(cookie.slice("doco_session=".length)))).toBe("user_01ABC");
     expect(String(result.result.content)).toContain("Principal added");
   });
 });

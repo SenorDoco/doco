@@ -1,11 +1,11 @@
 // Notion sends the owner back here after the authorization page (and its
 // page picker). Nothing in the query string is trusted on its own: the state
-// must be one the consent form signed for the signed-in user, the Doco must
+// must be one the consent form sealed for the signed-in user, the Doco must
 // still live in the workspace that user owns, and the code is exchanged for
 // the token pair before the mirror is recorded. Then the sync takes over.
 import { getDocoById, getWorkspaceRole } from "@doco/db";
 import { redirect } from "react-router";
-import { exchangeNotionCode, getNotionConfig } from "~/lib/notion-api.server";
+import { exchangeNotionCode } from "~/lib/notion-api.server";
 import {
   enableNotionMirror,
   notionRedirectUri,
@@ -15,10 +15,7 @@ import { getCurrentPrincipalAsync } from "~/lib/session.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
-  const state = verifyNotionState(
-    url.searchParams.get("state") ?? "",
-    getNotionConfig().clientSecret,
-  );
+  const state = verifyNotionState(url.searchParams.get("state") ?? "");
   if (!state) throw redirect("/workspaces?notion=invalid_state");
   const doco = await getDocoById(state.docoId);
   if (!doco || doco.workspace_id !== state.workspaceId) {

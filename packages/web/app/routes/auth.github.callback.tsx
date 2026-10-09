@@ -37,7 +37,7 @@ export async function loader({ request }: { request: Request }) {
 
   const cookieHeader = request.headers.get("cookie");
   const returnPath = readOAuthReturnCookie(cookieHeader);
-  const verdict = verifyOAuthState(config, state, cookieHeader);
+  const verdict = verifyOAuthState(state, cookieHeader);
   if (verdict !== "valid") {
     throw new Response(`OAuth state ${verdict}.`, { status: 400 });
   }

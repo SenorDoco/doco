@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -79,7 +80,7 @@ function signedState(
   docoIds = ["doco_1"],
   next = "/prs/integrations/github",
 ): string {
-  return signInstallState({ userId, docoIds, next, issuedAt: Date.now() }) ?? "";
+  return signInstallState({ userId, docoIds, next });
 }
 
 function setupRequest(
@@ -92,6 +93,7 @@ describe("api.github.setup loader", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.DOCO_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
     mocks.exchangeInstallationCode.mockResolvedValue("ghu_user");
     mocks.listUserInstallationIds.mockResolvedValue(new Set([42]));
     mocks.getDocoByIdOrHandle.mockImplementation(async (id: string) => ({
@@ -299,14 +301,12 @@ describe("api.github.setup loader", () => {
       { installation_id: 42, account: "acme", repositories: ["acme/app", "acme/api"] },
     ]);
     mocks.connectPicked.mockResolvedValue(true);
-    const state =
-      signInstallState({
-        userId: "user_1",
-        docoIds: ["doco_1", "doco_2"],
-        next: "/integrations/github?workspace=acme",
-        connectAll: true,
-        issuedAt: Date.now(),
-      } as InstallState) ?? "";
+    const state = signInstallState({
+      userId: "user_1",
+      docoIds: ["doco_1", "doco_2"],
+      next: "/integrations/github?workspace=acme",
+      connectAll: true,
+    } as InstallState);
     const response = await loader({
       request: setupRequest(`installation_id=42&code=gh-code&state=${encodeURIComponent(state)}`),
     });
