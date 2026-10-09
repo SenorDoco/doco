@@ -1,6 +1,9 @@
-// Connecting Doco to an agent: pick the agent, and the steps for it follow,
-// each thing to paste with a Copy button. /agents/connect shows it, where an
-// agent's instructions send it to add Doco to itself.
+// Connecting Doco to an agent: every agent's steps, each under its name and
+// each thing to paste with a Copy button; pick an agent and only its steps
+// stay. /agents/connect shows it, where an agent's instructions send it to add
+// Doco to itself, and that agent reads the page as served, without a click
+// (Alexander, 2026-10-09: one found three names and no command there), so
+// nothing waits on a pick.
 
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
@@ -17,7 +20,7 @@ export function ConnectAgentGuide({
   initial?: string | null;
 }) {
   const [picked, setPicked] = useState(initial);
-  const guide = guides.find((g) => g.id === picked) ?? null;
+  const shown = guides.filter((g) => g.id === picked);
 
   return (
     <div className="space-y-4 text-sm">
@@ -40,7 +43,9 @@ export function ConnectAgentGuide({
           ))}
         </div>
       </fieldset>
-      {guide ? <GuideSteps guide={guide} /> : null}
+      {(shown.length > 0 ? shown : guides).map((g) => (
+        <GuideSteps key={g.id} guide={g} />
+      ))}
     </div>
   );
 }
@@ -48,6 +53,7 @@ export function ConnectAgentGuide({
 function GuideSteps({ guide }: { guide: AgentGuide }) {
   return (
     <section aria-label={`Connect Doco to ${guide.name}`} className="space-y-3">
+      <h2 className="text-sm font-semibold">{guide.name}</h2>
       {guide.note ? <p className="text-xs text-muted-foreground">{guide.note}</p> : null}
       <ol className="space-y-3">
         {guide.steps.map((step, i) => (

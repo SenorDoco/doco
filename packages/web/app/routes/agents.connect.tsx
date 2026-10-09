@@ -3,17 +3,20 @@ import { Link } from "react-router";
 import { ConnectAgentGuide } from "~/components/connect-agent-guide";
 import { PageMain } from "~/components/page-main";
 import { agentConnectGuides } from "~/lib/agent-connect-guides";
-import { AGENT_INSTRUCTIONS_PATH } from "~/lib/agent-instructions";
+import { AGENT_INSTRUCTIONS_PATH, MCP_PATH } from "~/lib/agent-instructions";
 
 /**
  * /agents/connect: how to connect Doco to Claude Code, Codex or Gemini CLI,
  * the agents Doco supports for now. An agent whose Doco tools are missing
- * follows its steps here itself, so the page needs no sign-in; `?agent=<id>`
- * opens one agent's steps.
+ * follows its steps here itself, reading the page as served, so the page
+ * needs no sign-in and shows every agent's steps and the MCP server's URL
+ * without a click; `?agent=<id>` narrows it to one agent's steps.
  */
 export function loader({ request }: { request: Request }) {
+  const baseUrl = getPublicBaseUrl(request).replace(/\/+$/, "");
   return {
-    guides: agentConnectGuides(getPublicBaseUrl(request)),
+    mcp: `${baseUrl}${MCP_PATH}`,
+    guides: agentConnectGuides(baseUrl),
     agent: new URL(request.url).searchParams.get("agent"),
   };
 }
@@ -39,8 +42,8 @@ export default function ConnectAgentPage({
         <h1 className="text-2xl font-semibold">Connect Doco to your agent</h1>
         <p className="text-sm text-muted-foreground">
           Doco works with Claude Code, Codex and Gemini CLI for now. Your agent reads and writes
-          Doco through Doco's MCP server, and adds it to itself with these steps when its
-          instructions ask; you sign in to Doco once, and allow it.
+          Doco through Doco's MCP server at {loaderData.mcp}, and adds it to itself with these steps
+          when its instructions ask; you sign in to Doco once, and allow it.
         </p>
       </header>
       <ConnectAgentGuide guides={loaderData.guides} initial={loaderData.agent} />
