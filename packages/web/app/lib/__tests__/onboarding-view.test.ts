@@ -41,7 +41,10 @@ describe("loadOnboardingView", () => {
       workspaceHandle: ACME.handle,
       userId: "user_bo",
       joinedAs: "invitee",
-      steps: [{ step: "agent", done: false }],
+      steps: [
+        { step: "mcp", done: true },
+        { step: "agent", done: false },
+      ],
       agent: { wrote: true, hook: false },
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_bo" });
@@ -65,12 +68,34 @@ describe("loadOnboardingView", () => {
       steps: [
         { step: "github", done: false },
         { step: "sources", done: false },
+        { step: "mcp", done: false },
         { step: "agent", done: false },
       ],
       agent: { wrote: false, hook: false },
     });
     const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_ana" });
     expect(view?.pending).toBe("github");
+    expect(mocks.ensureWorkspaceDoco).not.toHaveBeenCalled();
+  });
+
+  // Alexander, 2026-10-09: the person connects Doco to their agent before
+  // inviting it, so the page carries each agent's guide, with Doco's URL.
+  it("hands over every agent's connect guide for the connect step", async () => {
+    mocks.loadOnboardingProgress.mockResolvedValue({
+      workspaceId: ACME.id,
+      workspaceHandle: ACME.handle,
+      userId: "user_bo",
+      joinedAs: "invitee",
+      steps: [
+        { step: "mcp", done: false },
+        { step: "agent", done: false },
+      ],
+      agent: { wrote: false, hook: false },
+    });
+    const view = await loadOnboardingView({ request, workspace: ACME, userId: "user_bo" });
+    expect(view?.pending).toBe("mcp");
+    expect(view?.mcp.guides.map((g) => g.id)).toEqual(["claude-code", "codex", "gemini-cli"]);
+    expect(JSON.stringify(view?.mcp.guides)).toContain("https://doco.to/mcp");
     expect(mocks.ensureWorkspaceDoco).not.toHaveBeenCalled();
   });
 });

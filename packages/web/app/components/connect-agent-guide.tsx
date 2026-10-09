@@ -1,14 +1,15 @@
-// Connecting Doco to an agent: every agent's steps, each under its name and
-// each thing to paste with a Copy button; pick an agent and only its steps
-// stay. /agents/connect shows it, where an agent's instructions send it to add
-// Doco to itself, and that agent reads the page as served, without a click
-// (Alexander, 2026-10-09: one found three names and no command there), so
-// nothing waits on a pick.
+// Connecting Doco to an agent: every agent's ways in, each under its name
+// (in a terminal, or in its desktop app), each step with its thing to paste
+// and a Copy button; pick an agent and only its ways stay. A workspace's
+// setup shows it as the step before the message for the agent, and
+// /agents/connect shows it to anyone, with every agent's steps in the page
+// as served (Alexander, 2026-10-09: a page read as text had three names and
+// nothing else), so nothing waits on a pick.
 
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { CopyButton } from "~/components/agent-instructions-block";
-import type { AgentGuide } from "~/lib/agent-connect-guides";
+import type { AgentGuide, GuideWay } from "~/lib/agent-connect-guides";
 import { cn } from "~/lib/cn";
 
 export function ConnectAgentGuide({
@@ -44,19 +45,38 @@ export function ConnectAgentGuide({
         </div>
       </fieldset>
       {(shown.length > 0 ? shown : guides).map((g) => (
-        <GuideSteps key={g.id} guide={g} />
+        <GuideWays key={g.id} guide={g} />
       ))}
     </div>
   );
 }
 
-function GuideSteps({ guide }: { guide: AgentGuide }) {
+function GuideWays({ guide }: { guide: AgentGuide }) {
   return (
     <section aria-label={`Connect Doco to ${guide.name}`} className="space-y-3">
       <h2 className="text-sm font-semibold">{guide.name}</h2>
       {guide.note ? <p className="text-xs text-muted-foreground">{guide.note}</p> : null}
+      {guide.ways.map((way) => (
+        <WaySteps key={way.name} way={way} />
+      ))}
+      <p className="text-xs text-muted-foreground">
+        Stuck?{" "}
+        <a href={guide.docs} target="_blank" rel="noreferrer" className="font-semibold">
+          {guide.name}'s own guide
+          <ExternalLink aria-hidden className="ml-0.5 inline h-3 w-3 align-[-0.125em]" />
+        </a>{" "}
+        has the details.
+      </p>
+    </section>
+  );
+}
+
+function WaySteps({ way }: { way: GuideWay }) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-muted-foreground">{way.name}</h3>
       <ol className="space-y-3">
-        {guide.steps.map((step, i) => (
+        {way.steps.map((step, i) => (
           <li key={step.text} className="flex gap-3">
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-muted-foreground neu-well">
               {i + 1}
@@ -75,14 +95,6 @@ function GuideSteps({ guide }: { guide: AgentGuide }) {
           </li>
         ))}
       </ol>
-      <p className="text-xs text-muted-foreground">
-        Stuck?{" "}
-        <a href={guide.docs} target="_blank" rel="noreferrer" className="font-semibold">
-          {guide.name}'s own guide
-          <ExternalLink aria-hidden className="ml-0.5 inline h-3 w-3 align-[-0.125em]" />
-        </a>{" "}
-        has the details.
-      </p>
-    </section>
+    </div>
   );
 }

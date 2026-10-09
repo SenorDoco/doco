@@ -29,9 +29,9 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
       <h1 className="sr-only">Instructions for agents</h1>
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          Doco works with Claude Code, Codex and Gemini CLI for now. Your agent connects itself to
-          Doco as <Link to={CONNECT_AGENT_PATH}>Connect Doco to your agent</Link> shows; you sign in
-          once.
+          Doco works with Claude Code, Codex and Gemini CLI for now. First connect Doco to your
+          agent, as <Link to={CONNECT_AGENT_PATH}>Connect Doco to your agent</Link> shows; then give
+          it these instructions.
         </p>
         <AgentInstructionsBlock
           title="To use Doco with your agent(s), give them these instructions:"

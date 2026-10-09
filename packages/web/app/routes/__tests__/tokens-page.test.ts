@@ -210,10 +210,10 @@ describe("/tokens page action", () => {
     expect(actorScopeLabel(null)).toBe("All your workspaces");
   });
 
-  // Alexander, 2026-10-07: Doco supports Claude Code, Codex and Gemini CLI,
-  // which connect themselves to Doco as /agents/connect shows, so the panel
-  // hands over the instructions alone.
-  it("hands over the instructions, with which the agent connects itself", () => {
+  // Alexander, 2026-10-07: Doco supports Claude Code, Codex and Gemini CLI.
+  // The person connects Doco to their agent as /agents/connect shows
+  // (2026-10-09), so the panel hands over the instructions alone.
+  it("hands over the instructions, after sending the person to connect their agent", () => {
     const markup = renderToStaticMarkup(
       createElement(
         MemoryRouter,

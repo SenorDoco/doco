@@ -367,16 +367,16 @@ export function ExistingTokensPanel({
 export function ManualMcpPanel({ host }: { host: string }) {
   // ONE hosted MCP endpoint at /mcp. Connect once; the token's grant is the
   // scope (one workspace, several, or specific docos — list_workspaces
-  // enumerates the reach). The agent connects itself, as its instructions
-  // (the one template, as on /agents) say.
+  // enumerates the reach). The person connects the agent, as /agents/connect
+  // shows, then gives it the instructions (the one template, as on /agents).
   const baseUrl = host.replace(/\/+$/, "");
 
   return (
     <section className="space-y-4" data-testid="manual-mcp-panel">
       <p className="text-sm text-muted-foreground">
-        Doco works with Claude Code, Codex and Gemini CLI for now. Your agent connects itself to
-        Doco as <Link to={CONNECT_AGENT_PATH}>Connect Doco to your agent</Link> shows; you sign in
-        once.
+        Doco works with Claude Code, Codex and Gemini CLI for now. First connect Doco to your agent,
+        as <Link to={CONNECT_AGENT_PATH}>Connect Doco to your agent</Link> shows; then give it these
+        instructions.
       </p>
       <AgentInstructionsBlock
         title="Give your agent these instructions"

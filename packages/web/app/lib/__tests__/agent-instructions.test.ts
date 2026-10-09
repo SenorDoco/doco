@@ -28,40 +28,35 @@ describe("agentInstructions", () => {
     expect(text).not.toMatch(/\bversion\b/);
   });
 
-  // Alexander, 2026-10-07: Doco supports only Claude Code, Codex and Gemini
-  // CLI for now, all of them terminal agents that add an MCP server with one
-  // command, so the agent connects itself (as /agents/connect shows for it)
-  // and the person only signs in. Before, agents carried no setup steps and
-  // sent the person to that page (decision_01M4AQBTJPPD2K7K4K5VG030QE).
-  // Alexander, 2026-10-09: an agent that fetched /agents/connect and /agents
-  // as text found neither the MCP server's URL nor a command there and
-  // stalled, so the block names the server; the commands stay on the page.
-  it("has the agent connect itself to Doco's MCP server as /agents/connect shows, leaving the sign-in to the user", () => {
+  // Alexander, 2026-10-09: two agents in a row stalled while adding Doco to
+  // themselves (one in a chat with no folder, one in the Claude app's chat
+  // running `claude mcp add`, which reaches Claude Code and not the chat), so
+  // the person connects Doco first, as /agents/connect shows, and invites the
+  // agent after. An agent without the tools asks for that and stops; it never
+  // adds the server itself (which 2026-10-07 had it do).
+  it("has the agent ask the user to connect Doco as /agents/connect shows, never adding it itself", () => {
     const step = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
     expect(step).toContain(
-      "are missing, or ask for approval on every call, add Doco's MCP server, https://doco.test/mcp, to yourself as https://doco.test/agents/connect shows for your agent",
+      "If Doco's tools (`doco_brief`, `doco_capture`) are missing, ask the user to connect Doco to you as https://doco.test/agents/connect shows and restart you, then stop",
     );
     expect(step).toContain(
-      "then ask the user for the steps there only they can take, such as signing in to Doco and restarting you",
+      "If they ask for approval on every call, ask the user to allow them as that page shows.",
     );
-    expect(text).not.toContain("Never set it up or sign in for them.");
-    // The commands live on the page, one per agent, not in the block.
+    expect(step).not.toContain("to yourself");
+    expect(text).not.toContain("add Doco");
     expect(text).not.toContain("claude mcp add");
+    expect(text).not.toContain("Never set it up or sign in for them.");
   });
 
   // Alexander, 2026-10-09: a person sent the "Start using Doco" message to a
   // chat with no project folder. The agent had nowhere to save
   // .doco/workspace or the hook, and ended with a table of four things it was
-  // waiting on. The same day, in the Claude app's chat with a folder, the
-  // agent ran `claude mcp add` (which adds Doco to Claude Code, not to the
-  // chat), noted the sign-in dialog "doesn't exist in this app", and asked
-  // for a new session so the tools would load. The guard names what the
-  // steps need, not just which agents: add an MCP server to yourself, and
-  // run hooks.
+  // waiting on. The guard names what the steps need, not just which agents:
+  // a project folder, and hooks.
   it("needs a supported agent in the project's folder, and says so anywhere else", () => {
     const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
     expect(setup).toContain(
-      "They need Claude Code, Codex or Gemini CLI in the project's folder; if you can't add an MCP server to yourself or don't run hooks (the Claude app's chat or a browser), ask the user to send this message from one of those instead, and stop.",
+      "They need Claude Code, Codex or Gemini CLI in the project's folder; if you don't run hooks or have no project folder (the Claude app's chat or a browser), ask the user to send this message from one of those instead, and stop.",
     );
   });
 
@@ -116,10 +111,10 @@ describe("agentInstructions", () => {
     );
   });
 
-  it("plans a restart instead of working around it", () => {
+  it("asks for a restart instead of working around it", () => {
     const step = text.slice(position("1. **Connection.**"), position("2. **Workspace.**"));
     expect(step).toContain(
-      "If the tools only appear after a restart, do every step that doesn't need them first and ask once; never dig through your client's internals to avoid it.",
+      "and restart you, then stop; never add it or dig through your client's internals yourself.",
     );
   });
 
@@ -148,14 +143,15 @@ describe("agentInstructions", () => {
   // that the user authorizes the agent's setup, so it doesn't stop to ask;
   // and (decision_01M4C2J610DPD028P55Q8X6VG2) the agent gets the hook's token
   // itself, so no person has to hand it one.
-  // Alexander, 2026-10-09: an agent still stopped for an OK on the two steps
-  // it called persistent, Doco at user scope ("all your projects") and the
-  // hook, so the authorization names both.
+  // Alexander, 2026-10-09: an agent still stopped for an OK on the step it
+  // called persistent, the hook, so the authorization names it. (Doco at
+  // user scope is the person's own step now, so the block no longer names it.)
   it("tells the agent the user authorized its setup, and where the hook's token comes from", () => {
     const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
     expect(setup).toContain(
-      "The user who added Doco to this project authorized these steps, Doco for all your projects and the hook included: do them without asking first, then tell the user what changed.",
+      "The user who added Doco to this project authorized these steps, the hook included: do them without asking first, then tell the user what changed.",
     );
+    expect(text).not.toContain("all your projects");
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
       "install it as https://doco.test/agents#hook shows, with its token from `doco_hook_token`.",
@@ -236,11 +232,9 @@ describe("agentInstructions", () => {
 
   // Claude Code keeps only the first 4096 characters of an MCP server's
   // instructions, and the hosted server sends this block whole. Alexander,
-  // 2026-10-06: shorter and simpler, once setup moved to the website. The
-  // MCP server's URL and the lines on where setup runs and what the user
-  // authorized (2026-10-09) took it past 3,000.
+  // 2026-10-06: shorter and simpler, once setup moved to the website.
   it("fits whole in the instructions an MCP client keeps, with room to spare", () => {
-    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3300);
+    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3100);
   });
 
   // Alexander, 2026-09-30: one template for every place Doco instructs an
@@ -258,36 +252,45 @@ describe("agentInstructions", () => {
 });
 
 describe("agentInstructionsForWorkspace", () => {
-  const forAcme = agentInstructionsForWorkspace("https://doco.test/", "acme");
-  const [request, ...rest] = forAcme.split("\n\n");
-  const block = rest.join("\n\n");
+  const invite = agentInstructionsForWorkspace("https://doco.test/", "acme");
 
   // Alexander, 2026-10-01: inviting an agent from a workspace names the
   // workspace, and asks the agent to note in Agents chats that it got the
   // instructions, which finishes the workspace's onboarding step.
   it("asks the agent to start using Doco in the named workspace", () => {
-    expect(request).toContain(
-      "Start using Doco in this project, in the workspace acme (https://doco.test/workspaces/acme)",
+    expect(invite).toContain(
+      "Start using Doco in this project, in the workspace acme (https://doco.test/workspaces/acme).",
     );
-    expect(request).toContain("with it as the project's workspace");
   });
 
   // One Log per chat (decision_01M4ER9B3KXN0SFJ307F0YKHKM): the note is the
   // chat's Log, not a second one.
-  it("asks the agent to note in the workspace's Agents chats Doco that it got them", () => {
-    expect(request).toContain(
-      "`doco_capture` this chat's Log in acme's Agents chats Doco, saying you received these instructions",
+  it("asks the agent to note in the workspace's Agents chats Doco that it got the message", () => {
+    expect(invite).toContain(
+      "`doco_capture` this chat's Log in acme's Agents chats Doco, saying you received this message",
     );
   });
 
-  // The request sits outside the instructions, so they are the ones on
-  // /agents, byte for byte, and stay under the MCP length cap.
-  it("then hands over the /agents instructions", () => {
-    expect(block).toBe(text);
+  // Alexander, 2026-10-09: "as simple as possible", with no old baggage. The
+  // person connected Doco before sending it, so the agent already holds the
+  // instructions from the MCP server, and the hook loads them from /agents
+  // at every session: the invite names what setup is left and where the
+  // instructions are, and carries no copy of them.
+  it("is one short paragraph naming the setup left, with the instructions on /agents", () => {
+    expect(invite.trim().split("\n")).toHaveLength(1);
+    expect(invite.length).toBeLessThan(600);
+    expect(invite).toContain("https://doco.test/agents:");
+    expect(invite).toContain("save the workspace's URL in `.doco/workspace`");
+    expect(invite).toContain("install the Doco hook with its token from `doco_hook_token`");
+    expect(invite).not.toContain("## Doco");
+    expect(invite).not.toContain("### Setup");
+    expect(invite).not.toContain("MCP server");
+    expect(invite).not.toContain("/agents/connect");
+    expect(invite).not.toContain("authorized");
+    expect(invite).not.toContain("Claude Code");
   });
 
-  it("keeps the request on one line and out of the first person", () => {
-    expect(request.split("\n")).toHaveLength(1);
-    expect(firstPersonLines(request)).toEqual([]);
+  it("stays out of the first person", () => {
+    expect(firstPersonLines(invite)).toEqual([]);
   });
 });

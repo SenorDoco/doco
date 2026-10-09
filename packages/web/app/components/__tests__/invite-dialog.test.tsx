@@ -76,10 +76,9 @@ describe("PersonInviteDialog", () => {
   });
 });
 
-// Alexander, 2026-10-07: inviting an agent takes the one step a workspace's
-// setup gives an invitee: send it the prompt. Doco supports only Claude Code,
-// Codex and Gemini CLI for now, which add Doco to themselves, so connecting
-// the agent is no longer a step of its own.
+// Alexander, 2026-10-09: the person connects Doco to their agent first, as
+// /agents/connect shows, then sends it the prompt, which only has the agent
+// start using Doco in the workspace.
 describe("AgentInviteDialog", () => {
   const render = () =>
     act(async () =>
@@ -96,14 +95,18 @@ describe("AgentInviteDialog", () => {
     await render();
     expect(dialog().open).toBe(true);
     expect(dialog().textContent).toContain("Ask your agent to start using Doco");
-    expect(dialog().textContent).toContain(
-      "send it to Claude Code, Codex or Gemini CLI in your project",
+    expect(dialog().textContent).toContain("First connect Doco to your agent");
+    expect(dialog().querySelector('a[href="/agents/connect"]')?.textContent).toBe(
+      "Connect Doco to your agent",
     );
+    expect(dialog().textContent).toContain("send it to your agent in your project");
+    expect(dialog().textContent).not.toContain("adds Doco to itself");
     expect(dialog().textContent).not.toContain("Step 1 of 2");
     expect(dialog().textContent).not.toContain("Which agent do you use?");
     expect(dialog().querySelector("pre")?.textContent).toContain(
       "in the workspace torre (https://doco.test/workspaces/torre)",
     );
+    expect(dialog().querySelector("pre")?.textContent).not.toContain("## Doco");
     expect(document.activeElement).toBe(button("Copy prompt"));
     await act(async () => button("Copy prompt")?.click());
     expect(writeText).toHaveBeenCalledWith(
