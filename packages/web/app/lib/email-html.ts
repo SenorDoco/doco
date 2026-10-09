@@ -33,8 +33,8 @@ export type EmailBlock =
   | string
   /** A section's title. */
   | { heading: string }
-  /** A bulleted list. */
-  | { list: string[] }
+  /** A bulleted list; an item may end in a link, such as where it lives. */
+  | { list: (string | { text: string; link: string; label: string })[] }
   /** Preformatted text, such as the message to send an agent. */
   | { pre: string }
   /** A button: a purple key, or for the action beside the main one a quiet
@@ -61,13 +61,22 @@ function paragraph(text: string): string {
   );
 }
 
-function block(b: EmailBlock): string {
+/** `first` is the block that opens the email: a heading there sits flush with
+ *  the top of the slab. */
+function block(b: EmailBlock, first: boolean): string {
   if (typeof b === "string") return `<p style="margin:0 0 16px">${paragraph(b)}</p>`;
   if ("heading" in b) {
-    return `<p style="margin:24px 0 8px;font-weight:700">${escapeHtml(b.heading)}</p>`;
+    const top = first ? "0" : "24px";
+    return `<p style="margin:${top} 0 8px;font-weight:700">${escapeHtml(b.heading)}</p>`;
   }
   if ("list" in b) {
-    const items = b.list.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    const items = b.list
+      .map((item) =>
+        typeof item === "string"
+          ? `<li>${escapeHtml(item)}</li>`
+          : `<li>${escapeHtml(item.text)} (<a href="${escapeHtml(item.link)}" style="color:${PRIMARY}">${escapeHtml(item.label)}</a>)</li>`,
+      )
+      .join("");
     return `<ul style="margin:0 0 16px;padding-left:20px">${items}</ul>`;
   }
   if ("pre" in b) {
@@ -100,7 +109,7 @@ export function emailHtml(blocks: EmailBlock[]): string {
     `<body style="margin:0;padding:0;background-color:${BACKGROUND}">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BACKGROUND}" style="background-color:${BACKGROUND}"><tr><td style="padding:40px 16px">`,
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width:600px;margin:0 auto;border-radius:12px;box-shadow:${SLAB}"><tr><td style="padding:32px 28px;font-family:${SERIF};font-size:15px;line-height:1.6;color:${FOREGROUND}">`,
-    blocks.map(block).join("\n"),
+    blocks.map((b, i) => block(b, i === 0)).join("\n"),
     "</td></tr></table></td></tr></table></body></html>",
   ].join("\n");
 }

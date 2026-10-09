@@ -1,10 +1,10 @@
 // Sends the activity digest (lib/activity-digest.ts) to every member of each
 // workspace, daily or, for who switched it to weekly, on Mondays, unless they
 // unsubscribed, it is their personal workspace (workspaces.personal_user_id),
-// or nothing happened in its period. Each member's numbers cover only the
-// Docos they may read, as the workspace page shows them. A workspace's
-// `digest_sent_at` is claimed before sending, so two runs at the same hour
-// never both send it.
+// or nothing happened in its period. Each member's numbers, and the top three
+// it opens with, cover only the Docos they may read, as the workspace page
+// shows them. A workspace's `digest_sent_at` is claimed before sending, so two
+// runs at the same hour never both send it.
 //
 // The digest's links (/digest/daily, /digest/weekly, /digest/unsubscribe)
 // carry the workspace and member encrypted (lib/secret-box.server.ts), so each
@@ -14,11 +14,13 @@ import {
   type Cadence,
   DIGEST_TOP_LIMIT,
   type DigestSetting,
+  type TopItem,
   digestEmail,
   digestPeriod,
   settingsDue,
 } from "./activity-digest";
 import { summarizeActivity } from "./activity-log.server";
+import { rankTopItems } from "./digest-top-three.server";
 import { listReadableDocosInWorkspace } from "./doco-access.server";
 import { sendEmail } from "./email.server";
 import { decryptSecret, encryptSecret } from "./secret-box.server";
@@ -76,8 +78,10 @@ export async function sendActivityDigests(
       [at.toISOString()],
     )
   ).rows;
-  let claimed = 0;
-  let sent = 0;
+  const claimed: {
+    w: (typeof workspaces)[number];
+    members: { user_id: string; email: string; digest: Cadence }[];
+  }[] = [];
   for (const w of workspaces) {
     const claim = await c.query(
       `UPDATE workspaces SET digest_sent_at = $2
@@ -86,7 +90,6 @@ export async function sendActivityDigests(
       [w.id, at.toISOString()],
     );
     if (claim.rows.length === 0) continue;
-    claimed += 1;
     const members = (
       await c.query<{ user_id: string; email: string; digest: Cadence }>(
         `SELECT u.id AS user_id, u.email, wu.digest
@@ -99,24 +102,42 @@ export async function sendActivityDigests(
         [w.id, w.personal_user_id, due],
       )
     ).rows;
+    claimed.push({ w, members });
+  }
+  // Each workspace's top three, ranked once for each digest its members get,
+  // and every ranking at once, since each is a model call.
+  const tops = new Map<string, TopItem[]>();
+  await Promise.all(
+    claimed.flatMap(({ w, members }) =>
+      [...new Set(members.map((m) => m.digest))].map(async (cadence) => {
+        tops.set(`${w.id} ${cadence}`, await rankTopItems(c, w.id, cadence, at, baseUrl));
+      }),
+    ),
+  );
+  let sent = 0;
+  for (const { w, members } of claimed) {
     for (const m of members) {
-      const docos = await listReadableDocosInWorkspace(w.id, m.user_id);
+      const docoIds = (await listReadableDocosInWorkspace(w.id, m.user_id)).map((d) => d.id);
       const summary = await summarizeActivity(
         c,
-        { docoIds: docos.map((d) => d.id), workspaceId: w.id },
+        { docoIds, workspaceId: w.id },
         digestPeriod(m.digest, at),
         DIGEST_TOP_LIMIT,
       );
       if (summary.queries + summary.writes + summary.imports === 0) continue;
+      const top = (tops.get(`${w.id} ${m.digest}`) ?? [])
+        .filter((i) => docoIds.includes(i.docoId))
+        .slice(0, 3);
       const message = digestEmail({
         baseUrl,
         workspaceHandle: w.handle,
         setting: m.digest,
         summary,
+        top,
         token: digestToken({ workspaceId: w.id, userId: m.user_id }),
       });
       if ((await sendEmail({ to: m.email, ...message })).sent) sent += 1;
     }
   }
-  return { workspaces: claimed, sent };
+  return { workspaces: claimed.length, sent };
 }
