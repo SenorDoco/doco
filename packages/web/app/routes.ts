@@ -30,7 +30,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  *   /sign-in, /sign-out, /sign-up  auth (cookie locally; OAuth in prod per ADR-066, ADR-094)
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
- *   /digest/unsubscribe, /digest/subscribe  the activity digest email's one-click unsubscribe, and subscribing again
+ *   /digest/daily, /digest/weekly, /digest/unsubscribe  the activity digest email's one-click switch between daily and weekly, and its unsubscribe
  *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
@@ -221,9 +221,8 @@ export default [
   // install the hosted MCP connector at /mcp. There is no separate join wizard.
   // decision_01KS14CW9ZN23FF5CGG0Z7TH4G.
   route("invite/:code", "routes/invite.$code.tsx"),
-  // The activity digest email's unsubscribe link and its "Subscribe again".
-  route("digest/unsubscribe", "routes/digest.unsubscribe.tsx"),
-  route("digest/subscribe", "routes/digest.subscribe.tsx"),
+  // The activity digest email's links: daily, weekly and unsubscribe.
+  route("digest/:setting", "routes/digest.$setting.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth
   // path — the invite URL itself is browser-only.

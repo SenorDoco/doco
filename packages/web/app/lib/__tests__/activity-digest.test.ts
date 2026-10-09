@@ -1,55 +1,33 @@
-// The activity digest's schedule and message: daily during a workspace's first
-// week (the previous 24 hours, saying it turns weekly from the second week),
-// then weekly (the previous 7 days), with queries, writes and imports and who
-// and what made the most of each, and a one-click unsubscribe.
+// The activity digest's schedule and message: every day (the previous 24
+// hours) unless the member switched it to weekly (every Monday, the previous 7
+// days), with queries, writes and imports and who and what made the most of
+// each, a button that switches between daily and weekly, and a one-click
+// unsubscribe.
 import { describe, expect, it } from "vitest";
-import { digestDue, digestEmail, digestPeriod } from "../activity-digest";
+import { digestEmail, digestPeriod, settingsDue } from "../activity-digest";
 import type { ActivitySummary } from "../activity-log.server";
 
 const DAY = 86_400_000;
 
-describe("digestDue", () => {
-  // Created on Monday Sep 7 at 15:30 UTC; digests go out at 13:00 UTC.
-  const created = new Date("2026-09-07T15:30:00Z");
-  const at = (day: number) => new Date(Date.UTC(2026, 8, day, 13));
-
-  it("sends a daily digest on each of the first seven sending times after creation", () => {
-    expect(digestDue(created, at(7))).toBeNull();
-    for (let n = 1; n <= 7; n++) {
-      expect(digestDue(created, at(7 + n))).toEqual({ kind: "daily", day: n });
+describe("settingsDue", () => {
+  it("sends the daily digest every day and the weekly one on Mondays", () => {
+    // Monday Sep 7, 2026, then the rest of that week.
+    expect(settingsDue(new Date("2026-09-07T13:00:00Z"))).toEqual(["daily", "weekly"]);
+    for (let day = 8; day <= 13; day++) {
+      expect(settingsDue(new Date(Date.UTC(2026, 8, day, 13)))).toEqual(["daily"]);
     }
-  });
-
-  it("then sends a weekly digest every seventh day, starting the week after", () => {
-    for (let n = 8; n <= 13; n++) expect(digestDue(created, at(7 + n))).toBeNull();
-    expect(digestDue(created, at(21))).toEqual({ kind: "weekly" });
-    expect(digestDue(created, at(22))).toBeNull();
-    expect(digestDue(created, at(28))).toEqual({ kind: "weekly" });
-  });
-
-  it("leaves no gap: the digests cover every hour since the workspace was created", () => {
-    const sends: { at: Date; since: number }[] = [];
-    for (let day = 8; day <= 35; day++) {
-      const due = digestDue(created, at(day));
-      if (due) sends.push({ at: at(day), since: Date.parse(digestPeriod(due, at(day)).since) });
-    }
-    expect(sends[0].since).toBeLessThanOrEqual(created.getTime());
-    for (let i = 1; i < sends.length; i++) {
-      expect(sends[i].since).toBe(sends[i - 1].at.getTime());
-    }
+    expect(settingsDue(new Date("2026-09-14T13:00:00Z"))).toEqual(["daily", "weekly"]);
   });
 });
 
 describe("digestPeriod", () => {
-  const at = new Date("2026-09-10T13:00:00Z");
+  const at = new Date("2026-09-07T13:00:00Z");
   it("covers the previous 24 hours for a daily digest and 7 days for a weekly one", () => {
-    expect(digestPeriod({ kind: "daily", day: 3 }, at)).toEqual({
+    expect(digestPeriod("daily", at)).toEqual({
       since: new Date(at.getTime() - DAY).toISOString(),
       until: at.toISOString(),
     });
-    expect(digestPeriod({ kind: "weekly" }, at).since).toBe(
-      new Date(at.getTime() - 7 * DAY).toISOString(),
-    );
+    expect(digestPeriod("weekly", at).since).toBe(new Date(at.getTime() - 7 * DAY).toISOString());
   });
 });
 
@@ -72,11 +50,11 @@ describe("digestEmail", () => {
     baseUrl: "https://doco.test",
     workspaceHandle: "acme",
     summary,
-    unsubscribeUrl: "https://doco.test/digest/unsubscribe?t=tok",
+    token: "tok",
   };
 
   it("gives the last 24 hours' totals and tops, queries first", () => {
-    const email = digestEmail({ ...base, due: { kind: "daily", day: 2 } });
+    const email = digestEmail({ ...base, setting: "daily" });
     expect(email.subject).toBe("Your daily digest for acme on Doco");
     expect(email.text).toContain("Here's what happened in acme in the last 24 hours.");
     expect(email.text).toContain("1,340 queries · 12 writes · 2,102 imports");
@@ -93,39 +71,45 @@ describe("digestEmail", () => {
     expect(email.html).toContain('href="https://doco.test/workspaces/acme"');
   });
 
-  it("says during the first week that it turns weekly from the second week", () => {
-    const email = digestEmail({ ...base, due: { kind: "daily", day: 2 } });
-    const note =
-      "This digest comes every day during acme's first week (day 2 of 7). From the second week on, it comes once a week and covers the previous 7 days.";
-    expect(email.text).toContain(note);
-    expect(email.html).toContain(note);
+  it("comes every day, with a button that switches it to weekly", () => {
+    const email = digestEmail({ ...base, setting: "daily" });
+    expect(email.text).toContain("Switch to weekly: https://doco.test/digest/weekly?t=tok");
+    expect(email.html).toMatch(
+      /<a href="https:\/\/doco.test\/digest\/weekly\?t=tok"[^>]*>Switch to weekly<\/a>/,
+    );
+    expect(email.text).toContain("You get this digest every day as a member of acme.");
+    expect(email.text).not.toContain("first week");
   });
 
-  it("covers the last 7 days once weekly, without the first week's note", () => {
-    const email = digestEmail({ ...base, due: { kind: "weekly" } });
+  it("covers the last 7 days once weekly, with a button that switches it back to daily", () => {
+    const email = digestEmail({ ...base, setting: "weekly" });
     expect(email.subject).toBe("Your weekly digest for acme on Doco");
     expect(email.text).toContain("Here's what happened in acme in the last 7 days.");
-    expect(email.text).not.toContain("first week");
+    expect(email.text).toContain("Switch to daily: https://doco.test/digest/daily?t=tok");
+    expect(email.html).toMatch(
+      /<a href="https:\/\/doco.test\/digest\/daily\?t=tok"[^>]*>Switch to daily<\/a>/,
+    );
+    expect(email.text).toContain("You get this digest every Monday as a member of acme.");
   });
 
   it("says when a list is empty", () => {
     const email = digestEmail({
       ...base,
-      due: { kind: "weekly" },
+      setting: "weekly",
       summary: { ...summary, topIntegrations: [] },
     });
     expect(email.text).toContain("Top integrations\n- None in the last 7 days.");
   });
 
-  it("unsubscribes in one click, from the email and from the mail client", () => {
-    const email = digestEmail({ ...base, due: { kind: "weekly" } });
-    expect(email.text).toContain(
-      "You get this digest as a member of acme. Unsubscribe: https://doco.test/digest/unsubscribe?t=tok",
-    );
-    expect(email.html).toContain('href="https://doco.test/digest/unsubscribe?t=tok"');
-    expect(email.headers).toEqual({
-      "List-Unsubscribe": "<https://doco.test/digest/unsubscribe?t=tok>",
-      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  for (const setting of ["daily", "weekly"] as const) {
+    it(`unsubscribes in one click from the ${setting} digest and from the mail client`, () => {
+      const email = digestEmail({ ...base, setting });
+      expect(email.text).toContain("Unsubscribe: https://doco.test/digest/unsubscribe?t=tok");
+      expect(email.html).toContain('href="https://doco.test/digest/unsubscribe?t=tok"');
+      expect(email.headers).toEqual({
+        "List-Unsubscribe": "<https://doco.test/digest/unsubscribe?t=tok>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      });
     });
-  });
+  }
 });
