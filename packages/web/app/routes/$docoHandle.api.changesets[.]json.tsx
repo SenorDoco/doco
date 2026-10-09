@@ -12,6 +12,7 @@ import {
   type AuthoringWriteContext,
   type CaptureError,
   type EntityPatch,
+  NO_FIELDS_CHANGED,
   updateEntity,
 } from "~/lib/capture.server";
 import { loadDocoRouteForRead, requireDocoTypeWritesForRequest } from "~/lib/doco-access.server";
@@ -508,6 +509,11 @@ async function applyLifecyclePatch(
     actorId: ctx.actorId,
     authoring: ctx.authoring,
   });
+  // A node already in the lifecycle asked for (a Log is born retired) is
+  // where the op wants it: done, not a failure.
+  if ("error" in result && result.error === NO_FIELDS_CHANGED) {
+    return { op_index: index, op: opName, ok: true, id, skipped: true, footer_lines: [] };
+  }
   if ("error" in result) {
     return { op_index: index, op: opName, ok: false, error: result.error };
   }

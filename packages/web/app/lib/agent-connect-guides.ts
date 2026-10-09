@@ -49,7 +49,7 @@ export function agentConnectGuides(baseUrl: string): AgentGuide[] {
     code: "/mcp",
   };
   const claudeAllow = {
-    text: "So Claude Code doesn't stop to ask on every call, run /permissions and add this Allow rule to your user settings:",
+    text: "So Claude Code runs Doco's tools without asking you or, in auto mode, checking each call first, run /permissions and add this Allow rule to your user settings:",
     code: "mcp__doco",
   };
   const codexAllow = {

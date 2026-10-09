@@ -107,7 +107,7 @@ describe("agentInstructions", () => {
       "Check these first at the start of each session, before the duties, and fix what is missing.",
     );
     expect(text.slice(position("3. **Hook.**"))).toContain(
-      "Setup is done when Doco's tools answer, `.doco/workspace` is saved, the hook has run once with its token, and the chat's Log is in Agents chats; give the user its link.",
+      "Setup is done when Doco's tools answer, `.doco/workspace` is saved, the hook is installed with its token, and the chat's Log is in Agents chats; give the user its link.",
     );
   });
 
@@ -129,8 +129,10 @@ describe("agentInstructions", () => {
       position("**Record the conversation.**"),
       position("**Document every decision.**"),
     );
+    // 2026-10-09: an agent spent minutes finding how to replace its chat's
+    // Log, so the duty names the op.
     expect(record).toContain(
-      "Keep one Log per chat in the workspace's Agents chats Doco, captured with `doco_capture` and superseded as the chat goes on",
+      "Keep one Log per chat in the workspace's Agents chats Doco, captured with `doco_capture`, superseded with `doco_changeset` as the chat goes on",
     );
     const decide = text.slice(
       position("**Document every decision.**"),
@@ -154,9 +156,18 @@ describe("agentInstructions", () => {
     expect(text).not.toContain("all your projects");
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
-      "install it as https://doco.test/agents#hook shows, with its token from `doco_hook_token`.",
+      "install it as `doco_hook_token` shows; it runs by itself, so don't run it by hand.",
     );
     expect(text).not.toContain("owner");
+  });
+
+  // 2026-10-09: two of an agent's six refusals by Claude Code's auto mode on
+  // its first connection came from data that served no purpose: a person's
+  // email in its Log, and a token it printed while checking its config.
+  it("names people by name, never by email, and never prints a token", () => {
+    expect(text.slice(0, position("### Setup"))).toContain(
+      "Name people, not emails; never print a token.",
+    );
   });
 
   // Alexander, 2026-10-02: agents drift from instructions read once a
@@ -282,6 +293,12 @@ describe("agentInstructionsForWorkspace", () => {
     expect(invite).toContain("https://doco.test/agents:");
     expect(invite).toContain("save the workspace's URL in `.doco/workspace`");
     expect(invite).toContain("install the Doco hook with its token from `doco_hook_token`");
+    // 2026-10-09: Claude Code's auto mode refused an agent's edits to
+    // .claude/settings.json twice: a change to the agent's own settings needs
+    // the user's own message to ask for it by name, and this is that message.
+    expect(invite).toContain(
+      "in your hook settings (`.claude/settings.json`, `.codex/hooks.json` or `.gemini/settings.json`)",
+    );
     expect(invite).not.toContain("## Doco");
     expect(invite).not.toContain("### Setup");
     expect(invite).not.toContain("MCP server");
