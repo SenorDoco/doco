@@ -34,7 +34,7 @@ describe("How Doco works", () => {
       "Agents capture more knowledge",
     ]);
     expect(steps.map((step) => step.match(/<p[^>]*>(.*?)<\/p>/)?.[1])).toEqual([
-      "Including chats, GitHub, Slack, Notion, and AI agents",
+      "Including team chats, GitHub, Slack, Notion, and AI agents",
       "When agents work, Doco tells them what to keep in mind for their task at hand",
       "Important decisions and chats are collected and shared",
     ]);

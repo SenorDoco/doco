@@ -4,7 +4,7 @@
 const STEPS = [
   {
     title: "Your knowledge is collected",
-    text: "Including chats, GitHub, Slack, Notion, and AI agents",
+    text: "Including team chats, GitHub, Slack, Notion, and AI agents",
   },
   {
     title: "Agents query such knowledge",
