@@ -58,18 +58,21 @@ describe("/new-doco GitHub PR template", () => {
     expect(response.headers.get("Location")).toBe("/acme-prs/integrations/github");
   });
 
-  it("continues GitHub bugs Doco creation into picking the repositories to bring bugs from", async () => {
-    mocks.createDocoInWorkspace.mockResolvedValue({ docoId: "doco_5", handle: "acme-github-bugs" });
+  it("continues GitHub issues Doco creation into picking the repositories to bring issues from", async () => {
+    mocks.createDocoInWorkspace.mockResolvedValue({
+      docoId: "doco_5",
+      handle: "acme-github-issues",
+    });
     const response = (await action({
       request: postNewDoco({
-        template_handle: "github-bugs",
+        template_handle: "github-issues",
         workspace_id: "workspace_1",
-        name: "acme-github-bugs",
+        name: "acme-github-issues",
       }),
     }).catch((error: Response) => error)) as Response;
 
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe("/acme-github-bugs/integrations/github");
+    expect(response.headers.get("Location")).toBe("/acme-github-issues/integrations/github");
   });
 
   it("continues codebase Doco creation into picking the repositories to copy", async () => {

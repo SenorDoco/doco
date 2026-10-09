@@ -136,8 +136,8 @@ export interface ParsedIssuesEvent {
 /**
  * Parse an `issues` webhook — GitHub sends it when an issue is opened, edited,
  * closed, reopened, labeled, typed, deleted, …. Pure; defensive about the
- * untrusted shape: labels keep only their names, and the `pull_request` marker
- * survives so a pull request is never taken for a bug.
+ * untrusted shape: the `pull_request` marker survives so a pull request is
+ * never taken for an issue.
  */
 export function parseIssuesEvent(payload: unknown): ParsedIssuesEvent | null {
   if (!payload || typeof payload !== "object") return null;
@@ -151,14 +151,6 @@ export function parseIssuesEvent(payload: unknown): ParsedIssuesEvent | null {
   const raw = p.issue;
   if (typeof repoFullName !== "string" || !raw) return null;
   if (typeof raw.number !== "number" || typeof raw.html_url !== "string") return null;
-  const labels = (Array.isArray(raw.labels) ? raw.labels : [])
-    .map((l) =>
-      l && typeof l === "object" && typeof (l as { name?: unknown }).name === "string"
-        ? { name: (l as { name: string }).name }
-        : null,
-    )
-    .filter((l): l is { name: string } => l !== null);
-  const type = raw.type as { name?: unknown } | null | undefined;
   const user = raw.user as { login?: unknown } | null | undefined;
   return {
     action: typeof p.action === "string" ? p.action : "",
@@ -170,8 +162,6 @@ export function parseIssuesEvent(payload: unknown): ParsedIssuesEvent | null {
       html_url: raw.html_url,
       state: raw.state === "closed" ? "closed" : "open",
       state_reason: typeof raw.state_reason === "string" ? raw.state_reason : null,
-      labels,
-      ...(type && typeof type.name === "string" ? { type: { name: type.name } } : {}),
       ...(user && typeof user.login === "string" ? { user: { login: user.login } } : {}),
       ...(raw.pull_request ? { pull_request: raw.pull_request } : {}),
     },

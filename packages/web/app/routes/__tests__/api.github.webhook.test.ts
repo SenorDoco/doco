@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  syncBugIssue,
+  syncIssue,
   upsertPullRequestReference,
   hasBusinessProcessCodeReferences,
   mintInstallationToken,
@@ -32,18 +32,18 @@ const {
   detachReposEverywhere: vi.fn(async () => {}),
   unsubscribeInstallationEverywhere: vi.fn(async () => {}),
   findDocoByInstallation: vi.fn(async () => [
-    { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: "github-bugs" },
+    { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: "github-issues" },
   ]),
   findDocoTargetsForGitHubRepo: vi.fn(async () => [
     { docoId: "doco_1", handle: "store", workspaceHandle: "acme", template: null },
   ]),
-  syncBugIssue: vi.fn(async () => ({ status: "created", id: "eval_x" })),
+  syncIssue: vi.fn(async () => ({ status: "created", id: "eval_x" })),
   syncRepoCodebase: vi.fn(async () => ({ done: true })),
   waitUntil: vi.fn(),
 }));
 
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
-vi.mock("~/lib/github-issue-import.server", () => ({ syncBugIssue }));
+vi.mock("~/lib/github-issue-import.server", () => ({ syncIssue }));
 vi.mock("~/lib/codebase-sync.server", () => ({ syncRepoCodebase }));
 vi.mock("@vercel/functions", () => ({ waitUntil }));
 vi.mock("~/lib/db.server", () => ({ docoPath: (h: string) => `/repos/${h}` }));
@@ -246,16 +246,15 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
     expect(upsertPullRequestReference).not.toHaveBeenCalled();
   });
 
-  it("issues → files the issue in the GitHub bugs Docos that bring bugs from the repo", async () => {
+  it("issues → files the issue in the GitHub issues Docos that bring issues from the repo", async () => {
     const issue = {
       number: 7,
       title: "Login fails",
       html_url: "https://github.com/acme/store/issues/7",
       state: "open",
-      labels: [{ name: "bug" }],
     };
     const res = await send("issues", {
-      action: "labeled",
+      action: "opened",
       repository: { full_name: "acme/store" },
       installation: { id: 99 },
       issue,
@@ -265,21 +264,21 @@ describe("api.github.webhook action — uninstall / repo-removed / review", () =
       repo: "acme/store",
       results: [{ doco: "store", status: "created" }],
     });
-    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store", "github-bugs");
-    expect(syncBugIssue).toHaveBeenCalledWith(
+    expect(findDocoTargetsForGitHubRepo).toHaveBeenCalledWith(99, "acme/store", "github-issues");
+    expect(syncIssue).toHaveBeenCalledWith(
       expect.objectContaining({ number: 7 }),
       expect.objectContaining({ docoId: "doco_1", docoSlug: "store", deleted: false }),
     );
   });
 
-  it("issues deleted → retires the bug the issue filed", async () => {
+  it("issues deleted → retires the Eval the issue filed", async () => {
     await send("issues", {
       action: "deleted",
       repository: { full_name: "acme/store" },
       installation: { id: 99 },
       issue: { number: 7, title: "x", html_url: "https://github.com/acme/store/issues/7" },
     });
-    expect(syncBugIssue).toHaveBeenCalledWith(
+    expect(syncIssue).toHaveBeenCalledWith(
       expect.objectContaining({ number: 7 }),
       expect.objectContaining({ deleted: true }),
     );

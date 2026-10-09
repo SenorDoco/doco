@@ -33,7 +33,7 @@ export const DOCO_TYPE_ICONS: Record<string, IconComponent> = {
   process: Workflow,
   "github-pull-requests": GitHubIcon,
   // GitHub's own mark for an issue.
-  "github-bugs": CircleDot,
+  "github-issues": CircleDot,
   codebase: FolderCode,
   slack: SlackIcon,
   notion: NotionIcon,

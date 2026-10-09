@@ -75,18 +75,18 @@ export const DOCO_TEMPLATES: DocoTemplateMeta[] = [
     item: { one: "question", many: "questions", counts: "reference" },
   },
   {
-    handle: "github-bugs",
-    label: "GitHub bugs",
-    description:
-      "Track a GitHub repository's bugs — issues labeled bug, or of the Bug issue type, sync automatically, and closed issues retire.",
-    item: { one: "bug", many: "bugs", counts: "eval" },
-  },
-  {
     handle: "codebase",
     label: "GitHub codebase",
     description:
       "A copy of your GitHub repositories' code, kept in sync on every push, so it can be browsed and searched alongside your Doco knowledge.",
     item: { one: "file", many: "files", counts: "import" },
+  },
+  {
+    handle: "github-issues",
+    label: "GitHub issues",
+    description:
+      "Track a GitHub repository's issues — every issue syncs automatically, and closed issues retire.",
+    item: { one: "issue", many: "issues", counts: "eval" },
   },
   {
     handle: "github-pull-requests",

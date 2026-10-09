@@ -14,7 +14,7 @@ const SURVIVING_HANDLES = [
   "generic",
   "process",
   "github-pull-requests",
-  "github-bugs",
+  "github-issues",
   "codebase",
   "slack",
   "notion",
@@ -69,7 +69,7 @@ describe("doco template metadata", () => {
   // Each kind of Doco holds one main thing, and lists count the Doco by it.
   it("counts each kind of Doco by the one thing it holds", () => {
     expect(countDocoItems(52500, "github-pull-requests")).toBe("52,500 pull requests");
-    expect(countDocoItems(1, "github-bugs")).toBe("1 bug");
+    expect(countDocoItems(1, "github-issues")).toBe("1 issue");
     expect(countDocoItems(45971, "codebase")).toBe("45,971 files");
     expect(countDocoItems(80271, "slack")).toBe("80,271 messages");
     expect(countDocoItems(62673, "notion")).toBe("62,673 pages");

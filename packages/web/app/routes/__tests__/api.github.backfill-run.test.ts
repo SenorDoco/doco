@@ -116,7 +116,7 @@ describe("api.github.backfill-run action", () => {
     getDocoConnectionsContext.mockResolvedValue({
       handle: "d",
       workspaceHandle: "o",
-      template: "github-bugs",
+      template: "github-issues",
       connections: [{ repo: "acme/a", installation_id: 42 }],
       backfill: { status: "running", queue: ["acme/a"], page: 1 },
     });
@@ -134,8 +134,8 @@ describe("api.github.backfill-run action", () => {
         docoDir: "/repos/d",
         ownerSlug: "o",
         docoSlug: "d",
-        // The slice walks what the Doco brings: bugs, for a GitHub bugs Doco.
-        template: "github-bugs",
+        // The slice walks what the Doco brings: issues, for a GitHub issues Doco.
+        template: "github-issues",
         // Each queued repository imports through the installation its connection names.
         installationByRepo: { "acme/a": 42 },
       }),

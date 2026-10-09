@@ -1,6 +1,6 @@
 // What a Doco brings from GitHub. The GitHub setup asks which of these to
 // bring, and each fills a standalone Doco of its own template: pull requests
-// into a GitHub pull requests Doco, bugs into a GitHub bugs Doco (never the
+// into a GitHub pull requests Doco, issues into a GitHub issues Doco (never the
 // Bug tracker people file bugs in), the codebase into a codebase Doco. A Doco's
 // template decides what it brings; any other Doco connected to GitHub keeps
 // bringing pull requests, which is what every GitHub connection brought before
@@ -22,6 +22,10 @@ export interface GitHubImport {
   items: string;
   /** The GitHub App's repository permission that reads them. */
   permission: string;
+  /** Only repositories that use GitHub issues have any: the GitHub setup
+   *  brings this choice only when one of the picked repositories does
+   *  (github-setup). */
+  onlyFromReposUsingIssues?: true;
 }
 
 export const GITHUB_IMPORTS: readonly GitHubImport[] = [
@@ -35,14 +39,15 @@ export const GITHUB_IMPORTS: readonly GitHubImport[] = [
     permission: "Pull requests",
   },
   {
-    id: "github-bugs",
-    template: "github-bugs",
-    label: "Bugs",
+    id: "github-issues",
+    template: "github-issues",
+    label: "Issues",
     description:
-      "Issues labeled bug (or of the Bug issue type), tracked as bugs that close when the issue closes.",
-    item: "bug",
-    items: "bugs",
+      "Every issue, from the repositories that use GitHub issues, tracked until it closes.",
+    item: "issue",
+    items: "issues",
     permission: "Issues",
+    onlyFromReposUsingIssues: true,
   },
   {
     id: "codebase",

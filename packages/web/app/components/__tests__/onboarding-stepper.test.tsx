@@ -112,7 +112,7 @@ describe("OnboardingStepper", () => {
     expect(step).toContain('action="/integrations/github"');
     expect(step).toContain('name="intent" value="choose"');
     expect(step).toContain('name="workspace" value="acme"');
-    for (const id of ["pull-requests", "github-bugs", "codebase"]) {
+    for (const id of ["pull-requests", "github-issues", "codebase"]) {
       expect(step).toContain(`name="bring" value="${id}"`);
     }
     expect(step).toContain("Nothing comes over until you pick");

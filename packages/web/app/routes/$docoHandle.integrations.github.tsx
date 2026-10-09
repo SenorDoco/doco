@@ -6,7 +6,7 @@
 // page is the step that connects one (New Doco lands here for a GitHub Doco):
 // pick repositories, or skip to the Doco. Connecting returns to the Doco,
 // whose home shows the import filling it. What the Doco brings from its repos
-// (pull requests, bugs for a GitHub bugs Doco, or code for a codebase Doco)
+// (pull requests, issues for a GitHub issues Doco, or code for a codebase Doco)
 // follows its template (github-imports); the GitHub setup page picks it for a
 // workspace.
 //

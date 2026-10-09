@@ -1,5 +1,5 @@
 // What an integrated Doco reports about each source it copies from — GitHub
-// pull requests, bugs or code, a Slack workspace, a Notion workspace: how live the copy is
+// pull requests, issues or code, a Slack workspace, a Notion workspace: how live the copy is
 // (when the newest item copied was created or last changed) and how far the
 // import of older items has got, or, for a Doco made to fill from a source,
 // that nobody has connected it yet. The Doco home shows it atop the activity
@@ -124,7 +124,7 @@ async function loadGitHubStatus(
   ).rows[0];
   const imported = githubImportState(doco?.gh ?? null, now.getTime());
   if (!imported) return null;
-  // A pull request's Reference, a bug issue's Eval or a code file: whatever
+  // A pull request's Reference, an issue's Eval or a code file: whatever
   // came from GitHub.
   const latest = (await loadLatestActivity(c, [docoId], { integration: "github" })).get(docoId);
   const { item, items, permission } = githubImportFor(doco?.template);
