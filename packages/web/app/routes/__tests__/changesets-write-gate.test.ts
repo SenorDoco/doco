@@ -38,10 +38,15 @@ vi.mock("~/lib/node-capture-registry.server", () => ({
       nodeType: "decision",
       captureFn: mocks.captureFn,
     },
+    log: {
+      nodeType: "log",
+      captureFn: mocks.captureFn,
+    },
   },
 }));
 
 vi.mock("~/lib/capture.server", () => ({
+  NO_FIELDS_CHANGED: "No fields changed.",
   updateEntity: mocks.updateEntity,
 }));
 
@@ -247,6 +252,71 @@ describe("changesets write gate", () => {
       }),
     );
     expect(body.results[0].id).toBe("decision_01NEW");
+  });
+
+  // A Log is born retired, since it records what already happened, so the
+  // supersede that keeps one Log per chat retires a node that is already
+  // retired. On 2026-10-09 an agent's seven supersedes of its chat's Log all
+  // failed with "No fields changed." (each leaving a stray copy behind).
+  it("supersedes a node that is already retired, like a Log, and links the replacement", async () => {
+    mocks.captureFn.mockResolvedValue({ ok: true, id: "log_01NEW", footer_lines: [] });
+    mocks.updateEntity.mockResolvedValue({ error: "No fields changed." });
+    const response = await action({
+      request: changesetRequest({
+        operations: [
+          {
+            op: "supersede",
+            target: "log_0123456789ABCDEFGHJKMNPQRS",
+            node_type: "logs",
+            body: {
+              prose: "The chat so far.",
+              extra: { verb: "discussed", happened_at: "2026-10-09T22:33:00Z", outputs: {} },
+            },
+          },
+        ],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    const body = (await response.json()) as { ok: boolean; results: Array<{ id?: string }> };
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.results[0].id).toBe("log_01NEW");
+    expect(mocks.captureEdge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        edgeType: "replaces",
+        fromId: "log_01NEW",
+        toId: "log_0123456789ABCDEFGHJKMNPQRS",
+      }),
+    );
+  });
+
+  it("retiring a node that is already retired succeeds and changes nothing", async () => {
+    mocks.updateEntity.mockResolvedValue({ error: "No fields changed." });
+    const response = await action({
+      request: changesetRequest({
+        operations: [{ op: "retire", target: "log_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    const body = (await response.json()) as {
+      ok: boolean;
+      results: Array<{ ok: boolean; skipped?: boolean }>;
+    };
+    expect(response.status).toBe(200);
+    expect(body.results[0]).toMatchObject({ ok: true, skipped: true });
+  });
+
+  it("still fails a lifecycle change that updateEntity refuses for another reason", async () => {
+    mocks.updateEntity.mockResolvedValue({ error: "Authoring policy violation: no" });
+    const response = await action({
+      request: changesetRequest({
+        operations: [{ op: "retire", target: "log_0123456789ABCDEFGHJKMNPQRS" }],
+      }),
+      params: { docoHandle: "acme" },
+    });
+    const body = (await response.json()) as { error: string };
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Authoring policy violation: no");
   });
 
   it("preflights the node type for assert/retire/supersede targets", async () => {

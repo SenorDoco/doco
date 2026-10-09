@@ -17,6 +17,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { withClient } from "@doco/db";
+import { hookInstallSnippets } from "~/lib/doco-hook-install";
 
 const HOOK_TOKEN_PREFIX = "doco_ht_";
 
@@ -203,9 +204,12 @@ export async function validateHookToken(token: string): Promise<HookToken | null
 
 /**
  * What the agent does with a token, handed over with it (doco_hook_token, the
- * hook tokens page, the API): save it where the Doco hook reads it, keep
- * it out of git since it reads as its maker, and install the hook if it isn't
- * yet.
+ * hook tokens page, the API): save it where the Doco hook reads it, keep it
+ * out of git since it reads as its maker, and install the hook if it isn't
+ * yet, with the script and every supported client's hooks right here, so the
+ * agent needs no other page. The hook runs by itself from the next prompt:
+ * piping a prompt to it by hand is what Claude Code's auto mode refused as
+ * sending data out (2026-10-09), and it proves nothing the next prompt won't.
  */
 export function hookTokenInstallHint(
   baseUrl: string,
@@ -213,10 +217,11 @@ export function hookTokenInstallHint(
   fullToken: string,
 ): string {
   const host = baseUrl.replace(/\/+$/, "");
+  const [script, ...clients] = hookInstallSnippets(host);
   return [
-    `Turn on the Doco hook in this project for the workspace ${workspaceHandle} with this token. It reads what the user can read in ${workspaceHandle}, as them, so it stays out of git.`,
+    `Turn on the Doco hook in this project for the workspace ${workspaceHandle} with this token. It reads what the user can read in ${workspaceHandle}, as them, so it stays out of git, and never print the token.`,
     "",
-    "Save it in `.doco/hook-tokens.json` at the root of the repository, keeping any entries already there, and add `.doco/hook-tokens.json` to `.gitignore`:",
+    "1. Save it in `.doco/hook-tokens.json` at the root of the repository, keeping any entries already there, and add `.doco/hook-tokens.json` to `.gitignore`:",
     "",
     "```json",
     "{",
@@ -224,6 +229,17 @@ export function hookTokenInstallHint(
     "}",
     "```",
     "",
-    `If the Doco hook isn't installed yet, install it as ${host}/agents#hook shows. Then tell the user the hook is on: it briefs you from ${workspaceHandle} before each prompt and each file edit.`,
+    "If the project already runs the Doco hook, that's all. Otherwise:",
+    "",
+    "2. Save the script:",
+    "",
+    "```sh",
+    script.text,
+    "```",
+    "",
+    "3. Name it in your client's hooks, merged with any already there:",
+    ...clients.flatMap((client) => ["", `${client.title}:`, "", "```json", client.text, "```"]),
+    "",
+    `The hook runs by itself from the next prompt, so don't run it by hand. Tell the user the hook is on: it briefs you from ${workspaceHandle} before each prompt and each file edit.`,
   ].join("\n");
 }

@@ -187,10 +187,35 @@ describe("hookTokenInstallHint", () => {
     expect(hint).toContain('{\n  "acme": "doco_ht_secret"\n}');
   });
 
-  it("keeps the token out of git, since it reads as the user, and installs the hook if missing", () => {
+  it("keeps the token out of git, since it reads as the user", () => {
     expect(hint).toContain("reads what the user can read in acme");
     expect(hint).toContain("add `.doco/hook-tokens.json` to `.gitignore`");
     expect(hint).not.toMatch(/commit the file/i);
-    expect(hint).toContain("install it as https://doco.test/agents#hook shows");
+  });
+
+  // 2026-10-09: an agent's first connection spent minutes inspecting the
+  // machine and reading /agents to learn how to install the hook. The hint
+  // carries the whole install, for every client Doco supports, so the agent
+  // does it from this one message.
+  it("carries the whole hook install, script and every client's hooks, with no page to read", () => {
+    expect(hint).toContain(
+      "mkdir -p .doco && curl -fsSL https://doco.test/agents/doco-hook.mjs -o .doco/hook.mjs",
+    );
+    expect(hint).toContain("Claude Code: .claude/settings.json");
+    expect(hint).toContain("Codex: .codex/hooks.json");
+    expect(hint).toContain("Gemini CLI: .gemini/settings.json");
+    expect(hint).toContain('"UserPromptSubmit"');
+    expect(hint).toContain('"BeforeAgent"');
+    expect(hint).not.toContain("/agents#hook");
+  });
+
+  // The same run's hand test of the hook (a prompt piped to it) was refused
+  // twice by Claude Code's auto mode as sending data out, and printing the
+  // saved token once more as exposing a credential. The hook runs by itself
+  // from the next prompt, so the hint says to leave it be.
+  it("says the hook runs by itself from the next prompt, so the agent neither runs it nor prints the token", () => {
+    expect(hint).toContain("runs by itself from the next prompt");
+    expect(hint).toContain("don't run it by hand");
+    expect(hint).toContain("never print the token");
   });
 });

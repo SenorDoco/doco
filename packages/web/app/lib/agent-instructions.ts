@@ -51,11 +51,11 @@ This project keeps its shared memory in Doco (${host}): the intents, decisions, 
 Four duties hold in every session. Each Doco's policies refine how, never whether.
 
 1. **Load context first.** Before the first substantive reply and each new task, call \`doco_brief\` with what you are about to do and what you touch (paths, URLs, ids, PRs); obey its first tier and cite its ids.
-2. **Record the conversation.** Keep one Log per chat in the workspace's Agents chats Doco, captured with \`doco_capture\` and superseded as the chat goes on: who took part, what was asked, what came of it, what was left open, and the ids of the nodes it produced.
+2. **Record the conversation.** Keep one Log per chat in the workspace's Agents chats Doco, captured with \`doco_capture\`, superseded with \`doco_changeset\` as the chat goes on: who took part, what was asked, what came of it, what was left open, and the ids of the nodes it produced.
 3. **Document every decision.** When a choice is made, \`doco_capture\` it as a Decision (the question, the choice, the alternatives and why they lost) in Product decisions (what to build and why), Design decisions (UX, interaction, visuals) or Architectural decisions (structure, technology, data). Setting up Doco is not a decision; the Log covers it.
 4. **Update the process.** When a decision changes a business process, also change that process's steps, gateways or rules in the Processes Doco, citing the decision's id.
 
-Write in Docos what was decided, by whom and why, in the third person or the imperative. If a Doco call fails, retry it once, go on with what doesn't need it, and tell the user what is pending.
+Write in Docos what was decided, by whom and why, in the third person or the imperative. Name people, not emails; never print a token. If a Doco call fails, retry it once, go on with what doesn't need it, and tell the user what is pending.
 
 ### Setup
 
@@ -63,9 +63,9 @@ Check these first at the start of each session, before the duties, and fix what 
 
 1. **Connection.** If Doco's tools (\`doco_brief\`, \`doco_capture\`) are missing, ask the user to connect Doco to you as ${host}${CONNECT_AGENT_PATH} shows and restart you, then stop; never add it or dig through your client's internals yourself. If they ask for approval on every call, ask the user to allow them as that page shows.
 2. **Workspace.** One project = one workspace: the one whose URL is in the project's \`.doco/workspace\` file. Without that file, use the workspace the user named, or call \`list_workspaces\` and ask the user which to use; save \`${host}/workspaces/<handle>\` there. If they have none, send them to ${host}/new-workspace or to the invite a teammate sent; agents never create workspaces. Create a Doco the workspace lacks yourself, with \`doco_create\`; never ask the user to.
-3. **Hook.** If the project doesn't run the Doco hook, install it as ${host}${AGENT_INSTRUCTIONS_PATH}#hook shows, with its token from \`doco_hook_token\`.
+3. **Hook.** If the project doesn't run the Doco hook, install it as \`doco_hook_token\` shows; it runs by itself, so don't run it by hand.
 
-Setup is done when Doco's tools answer, \`.doco/workspace\` is saved, the hook has run once with its token, and the chat's Log is in Agents chats; give the user its link.
+Setup is done when Doco's tools answer, \`.doco/workspace\` is saved, the hook is installed with its token, and the chat's Log is in Agents chats; give the user its link.
 `;
 }
 
@@ -74,7 +74,10 @@ Setup is done when Doco's tools answer, \`.doco/workspace\` is saved, the hook h
  * Doco is connected to it: one short paragraph naming the workspace, the
  * setup left (the instructions' Workspace and Hook steps) and the chat's Log
  * to start in its Agents chats Doco, saying it got the message (which
- * finishes the workspace's setup). It carries no copy of the instructions
+ * finishes the workspace's setup). It names the hook settings files because
+ * Claude Code's auto mode lets an agent change its own settings only when the
+ * user's own message asks for that change (2026-10-09: it refused two edits
+ * of .claude/settings.json asked for by the instructions alone). It carries no copy of the instructions
  * (Alexander, 2026-10-09: as simple as possible, with no old baggage): the
  * agent holds them from the MCP server, and the hook loads them from /agents
  * at every session. A workspace's setup, its Invite agent dialog and the
@@ -82,5 +85,5 @@ Setup is done when Doco's tools answer, \`.doco/workspace\` is saved, the hook h
  */
 export function agentInstructionsForWorkspace(baseUrl: string, workspaceHandle: string): string {
   const host = baseUrl.replace(/\/+$/, "");
-  return `Start using Doco in this project, in the workspace ${workspaceHandle} (${host}/workspaces/${workspaceHandle}). Follow Doco's instructions for agents, at ${host}${AGENT_INSTRUCTIONS_PATH}: save the workspace's URL in \`.doco/workspace\`, install the Doco hook with its token from \`doco_hook_token\`, and \`doco_capture\` this chat's Log in ${workspaceHandle}'s Agents chats Doco, saying you received this message.`;
+  return `Start using Doco in this project, in the workspace ${workspaceHandle} (${host}/workspaces/${workspaceHandle}). Follow Doco's instructions for agents, at ${host}${AGENT_INSTRUCTIONS_PATH}: save the workspace's URL in \`.doco/workspace\`, install the Doco hook with its token from \`doco_hook_token\` in your hook settings (\`.claude/settings.json\`, \`.codex/hooks.json\` or \`.gemini/settings.json\`), and \`doco_capture\` this chat's Log in ${workspaceHandle}'s Agents chats Doco, saying you received this message.`;
 }

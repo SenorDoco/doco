@@ -70,6 +70,11 @@ function call(body: unknown, headers: Record<string, string> = {}): Promise<Resp
 // biome-ignore lint/suspicious/noExplicitAny: test reads loosely-typed JSON-RPC bodies.
 type Json = any;
 
+/** A tool result's text, parsed: the routes' JSON, as the agent reads it. */
+function resultJson(result: Json): Json {
+  return JSON.parse(result.content[0].text);
+}
+
 describe("POST /mcp (hosted remote MCP)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -145,7 +150,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     );
     const body: Json = await res.json();
     expect(body.result.isError).toBeUndefined();
-    expect(body.result.structuredContent.handle).toBe("acme-bugs");
+    expect(resultJson(body.result).handle).toBe("acme-bugs");
     const req: Request = mocks.createDocoAction.mock.calls[0][0].request;
     expect(req.url).toBe("https://doco.to/api/v1/docos.json");
     expect(req.headers.get("authorization")).toBe("Bearer doco_at_test");
@@ -271,13 +276,19 @@ describe("POST /mcp (hosted remote MCP)", () => {
       expect(result.isError).toBeUndefined();
       expect(result.content[0].text).toContain('"acme": "doco_ht_alice"');
       expect(result.content[0].text).toContain("`.gitignore`");
-      expect(result.content[0].text).toContain("https://doco.to/agents#hook");
-      expect(result.structuredContent).toEqual({ workspace: "acme", token: "doco_ht_alice" });
+      // The whole install rides along, so the agent reads no other page;
+      // and the text is the whole result, since Claude Code shows the model a
+      // result's structuredContent in place of its text.
+      expect(result.content[0].text).toContain(
+        "curl -fsSL https://doco.to/agents/doco-hook.mjs -o .doco/hook.mjs",
+      );
+      expect(result.content[0].text).toContain("Claude Code: .claude/settings.json");
+      expect(result.structuredContent).toBeUndefined();
     });
 
     it("takes the one workspace the connection reaches, and asks for a handle among several", async () => {
       mocks.loadAgentIdentity.mockResolvedValue(identity([acme]));
-      expect((await hookToken()).structuredContent.workspace).toBe("acme");
+      expect((await hookToken()).content[0].text).toContain('"acme": "doco_ht_alice"');
 
       mocks.loadAgentIdentity.mockResolvedValue(identity([acme, beta]));
       const several = await hookToken();
@@ -352,7 +363,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(mocks.gatherAgentDebug).toHaveBeenCalledWith(
       expect.objectContaining({ search: "wiring", limit: 5 }),
     );
-    expect(body.result.structuredContent).toEqual(report);
+    expect(resultJson(body.result)).toEqual(report);
   });
 
   it("doco_whoami lists every workspace and Doco the token grants, across workspaces", async () => {
@@ -380,7 +391,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(text).toContain("acme/proj1: owner");
     expect(text).toContain("gamma/proj3: reader");
     expect(text).not.toContain("bound to workspace");
-    expect(body.result.structuredContent.grants).toHaveLength(4);
+    expect(body.result.structuredContent).toBeUndefined();
   });
 
   it("doco_whoami surfaces the constitution of every reachable workspace", async () => {
@@ -413,13 +424,6 @@ describe("POST /mcp (hosted remote MCP)", () => {
     ]);
     expect(body.result.content[0].text).toContain("Workspace constitution for acme");
     expect(body.result.content[0].text).toContain("Ship behind flags. Write the decision down.");
-    expect(body.result.structuredContent.workspace_constitutions).toEqual([
-      {
-        workspace_id: WORKSPACE,
-        workspace_handle: "acme",
-        constitution: "Ship behind flags. Write the decision down.",
-      },
-    ]);
   });
 
   // Since the Doco Brief (decision_01M3YYQ1JRBS04Z99KEP869F26): the standing
@@ -468,7 +472,6 @@ describe("POST /mcp (hosted remote MCP)", () => {
     // The orders carry acme's constitution; beta keeps its line.
     expect(mocks.getWorkspaceConstitutionsByIds).toHaveBeenCalledWith(["workspace_beta"]);
     expect(text).toContain("Workspace constitution for beta");
-    expect(body.result.structuredContent.standing_orders.rules).toEqual([{ id: "rule_1" }]);
   });
 
   it("doco_whoami takes the one reachable workspace as the project's, and asks for a handle among several", async () => {
@@ -541,7 +544,6 @@ describe("POST /mcp (hosted remote MCP)", () => {
     );
     const body: Json = await res.json();
     expect(body.result.content[0].text).not.toContain("Workspace constitution");
-    expect(body.result.structuredContent.workspace_constitutions).toEqual([]);
   });
 
   it("doco_search delegates to the search loader, replaying the bearer", async () => {
@@ -560,7 +562,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     const callArg: Json = mocks.searchLoader.mock.calls[0][0];
     expect(callArg.params).toEqual({ docoHandle: "proj1" });
     expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
-    expect(body.result.structuredContent.count).toBe(1);
+    expect(resultJson(body.result).count).toBe(1);
   });
 
   it("doco_search passes the server-built `display` lines through to the agent", async () => {
@@ -587,10 +589,10 @@ describe("POST /mcp (hosted remote MCP)", () => {
       BEARER,
     );
     const body: Json = await res.json();
-    expect(body.result.structuredContent.display.found).toBe(
+    expect(resultJson(body.result).display.found).toBe(
       "[🔮 Doco @alice] 1 relevant nodes found (0.4s)",
     );
-    expect(body.result.structuredContent.display.tally).toContain("**0** nodes added/updated");
+    expect(resultJson(body.result).display.tally).toContain("**0** nodes added/updated");
   });
 
   it("the doco_search tool description tells agents to paste the display lines verbatim", async () => {
@@ -617,14 +619,18 @@ describe("POST /mcp (hosted remote MCP)", () => {
 
   // The brief spans every Doco the bearer can read, so the tool takes no
   // `doco`; the route narrows the reach to the grant. The agent reads the
-  // text rendering; the JSON rides along as structured content.
+  // text rendering, then the protocol lines; the JSON (three times the size,
+  // which Claude Code would show in place of the text) stays home.
   it("doco_brief delegates to the brief route with the bearer and hands back the text", async () => {
     mocks.briefLoader.mockResolvedValue(
       Response.json({
         brief_id: "brief_1",
         items: [{ id: "rule_1", tier: "must_obey" }],
         text: "Doco brief brief_1\n\n## Must obey\n- rule_1",
-        display: { found: "[🔮 Doco @alice] briefed: 1 items (0.5s)" },
+        display: {
+          found: "[🔮 Doco @alice] briefed: 1 items (0.5s)",
+          tally: "[🔮 Doco @alice] brief: **0** nodes added/updated",
+        },
       }),
     );
     const res = await call(
@@ -656,9 +662,15 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(url.searchParams.get("rerank")).toBe("0");
     expect(url.searchParams.get("synthesize")).toBeNull();
     expect(callArg.request.headers.get("authorization")).toBe("Bearer doco_at_test");
-    expect(body.result.content[0].text).toBe("Doco brief brief_1\n\n## Must obey\n- rule_1");
-    expect(body.result.structuredContent.brief_id).toBe("brief_1");
-    expect(body.result.structuredContent.display.found).toContain("briefed: 1 items");
+    expect(body.result.content[0].text).toBe(
+      [
+        "Doco brief brief_1\n\n## Must obey\n- rule_1",
+        "",
+        "display.found: [🔮 Doco @alice] briefed: 1 items (0.5s)",
+        "display.tally: [🔮 Doco @alice] brief: **0** nodes added/updated",
+      ].join("\n"),
+    );
+    expect(body.result.structuredContent).toBeUndefined();
   });
 
   it("doco_brief refuses a call that does not say what the agent is about to do", async () => {
@@ -713,6 +725,45 @@ describe("POST /mcp (hosted remote MCP)", () => {
     const callArg: Json = mocks.captureAction.mock.calls[0][0];
     expect(callArg.params).toEqual({ docoHandle: "proj1", type: "decisions" });
     expect(callArg.request.url).toContain("/proj1/api/decisions.json");
+  });
+
+  // 2026-10-09: doco_capture's description sent an agent to read
+  // api/logs.txt before its first Log, and doco_get answered {}, since it
+  // parsed every body as JSON. The agent then read the authoring contract to
+  // learn the shape: two calls, minutes, for a body the description can name.
+  it("doco_get hands back a .txt resource's text", async () => {
+    mocks.fetchMock.mockResolvedValue(
+      new Response("# Doco — Capture a Log (single call)", {
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      }),
+    );
+    const res = await call(
+      {
+        jsonrpc: "2.0",
+        id: 22,
+        method: "tools/call",
+        params: { name: "doco_get", arguments: { doco: "proj1", resource: "api/logs.txt" } },
+      },
+      BEARER,
+    );
+    const body: Json = await res.json();
+    expect(mocks.fetchMock).toHaveBeenCalledWith(
+      "https://doco.to/proj1/api/logs.txt",
+      expect.anything(),
+    );
+    expect(body.result.content[0].text).toBe("# Doco — Capture a Log (single call)");
+  });
+
+  it("doco_capture's description names the body's fields and how to replace a node, with nothing to read first", async () => {
+    const res = await call({ jsonrpc: "2.0", id: 23, method: "tools/list" }, BEARER);
+    const body: Json = await res.json();
+    const capture = body.result.tools.find((t: Json) => t.name === "doco_capture");
+    expect(capture.description).toContain("a Log { prose, verb,\nhappened_at, outputs }");
+    expect(capture.description).toContain("doco_changeset's supersede op");
+    expect(capture.description).not.toContain("first");
+    const changeset = body.result.tools.find((t: Json) => t.name === "doco_changeset");
+    expect(changeset.description).not.toMatch(/atomic/i);
+    expect(changeset.description).toContain("stop at the first that fails");
   });
 
   it("doco_changeset requires a non-empty operations array", async () => {
@@ -779,7 +830,7 @@ describe("POST /mcp (hosted remote MCP)", () => {
     expect(callArg.request.method).toBe("PATCH");
     expect(callArg.request.url).toContain("/proj1/api/policies/policy_1.json");
     const body: Json = await res.json();
-    expect(body.result.structuredContent.superseded).toBe("policy_1");
+    expect(resultJson(body.result).superseded).toBe("policy_1");
   });
 
   it("doco_request_access resolves the Doco and files the request", async () => {

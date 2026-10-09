@@ -51,9 +51,9 @@ const BRIEF_TOOL = {
     "is already decided, what is in motion, and background, each item with why",
     "it is there and an id to cite. Obey the first tier; cite the ids in what",
     "you capture. Call it before the first substantive reply and again before",
-    "each new task. Read the result's `text`; emit `display.found` verbatim",
-    "after it, and end your turn with `display.tally` verbatim (bump its count",
-    "if you also captured).",
+    "each new task. Read the brief; emit its `display.found` line verbatim",
+    "after it, and end your turn with its `display.tally` line verbatim (bump",
+    "its count if you also captured).",
   ].join("\n"),
   inputSchema: {
     type: "object",
@@ -139,8 +139,11 @@ const CAPTURE_TOOL = {
   description: [
     "Capture a node in a Doco — a decision, intent, action, rule, log, eval,",
     "reference, state, or idea. Records the institutional 'why' as it forms.",
-    "Needs write access (writer role, or a per-type write grant). Read the",
-    "type's body shape at /<doco>/api/<type>.txt first.",
+    "Needs write access (writer role, or a per-type write grant). The body is",
+    "the node's `prose` plus its type's fields, e.g. a Log { prose, verb,",
+    "happened_at, outputs } and a Decision { prose, question, alternatives? };",
+    "doco_get api/<type>.txt lists any type's fields. To replace a node, such",
+    "as the chat's Log as the chat goes on, use doco_changeset's supersede op.",
     "The result's `footer_lines` are ready-to-paste protocol lines — emit each",
     "verbatim after the write, and count them toward your closing tally.",
   ].join("\n"),
@@ -159,7 +162,7 @@ const CAPTURE_TOOL = {
       body: {
         type: "object",
         description:
-          "Type-specific capture body (e.g. a decision: { decision, question }). See /<doco>/api/<type>.txt.",
+          "The node's `prose` plus its type's fields (e.g. a Log: { prose, verb, happened_at, outputs }). doco_get api/<type>.txt lists them.",
         additionalProperties: true,
       },
     },
@@ -249,6 +252,7 @@ const GET_TOOL = {
     "  api/policies.json             — capture policies",
     "  api/decisions.json            — list a type (any plural type)",
     "  api/decisions/<id>.json       — one node by id",
+    "  api/logs.txt                  — how to capture a type (any plural type)",
     "  api/audit.json | api/settings.json",
   ].join("\n"),
   inputSchema: {
@@ -271,8 +275,10 @@ const GET_TOOL = {
 const CHANGESET_TOOL = {
   name: "doco_changeset",
   description: [
-    "Apply a batch of graph-authoring operations to a Doco in ONE atomic",
-    "request — create nodes, relate them with typed edges, append steps.",
+    "Apply a batch of graph-authoring operations to a Doco in one request —",
+    "create nodes, relate them with typed edges, append steps, supersede a",
+    "node. The ops run in order and stop at the first that fails; the ones",
+    "before it stay applied, so read `results` before you retry.",
     "The efficient way to author many nodes/edges at once (e.g. importing a",
     "process or backfilling history): one call instead of dozens of",
     "doco_capture/doco_relate calls. Up to 50 operations. Reference an",
@@ -519,11 +525,18 @@ type Rpc = {
   params?: Record<string, unknown>;
 };
 
+// A tool's result is its text alone. Claude Code hands the model a result's
+// structuredContent in place of its text when both are set, so a result that
+// carried both lost the text written for the agent (the brief's rendering, the
+// hook token's install steps) and gave it the raw JSON instead.
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  structuredContent?: unknown;
   isError?: boolean;
 };
+
+function textResult(text: string): ToolResult {
+  return { content: [{ type: "text", text }] };
+}
 
 function rpcResult(id: Rpc["id"], result: unknown): Response {
   return Response.json({ jsonrpc: "2.0", id: id ?? null, result });
@@ -558,6 +571,14 @@ async function safeJson(r: Response): Promise<unknown> {
   }
 }
 
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 // A route denial becomes a clean JSON-RPC tool error — never a raw transport
 // status a connector might misread as an auth failure. A missing write grant
 // is an authorization problem: ask an owner to grant it (a matrix change), not
@@ -585,23 +606,33 @@ function bearerHeaders(request: Request, extra?: Record<string, string>): Header
 
 // Delegate a tool to the matching per-doco route handler, replaying the
 // caller's bearer so the route's own auth + per-type grant checks gate access.
+// The route's body is the tool's text as it comes, JSON or plain text (the
+// api/<type>.txt specs), with its JSON parsed for the tools that render it.
+async function delegated(
+  verb: string,
+  doco: string,
+  call: () => Promise<unknown>,
+): Promise<{ text: string; data: unknown } | { error: ToolResult }> {
+  let res: Response;
+  try {
+    res = (await call()) as Response;
+  } catch (thrown) {
+    if (!(thrown instanceof Response)) throw thrown;
+    res = thrown;
+  }
+  const text = await res.text();
+  const data = parseJson(text);
+  if (!res.ok) return { error: delegateError(verb, doco, res.status, data) };
+  return { text, data };
+}
+
 async function delegate(
   verb: string,
   doco: string,
   call: () => Promise<unknown>,
 ): Promise<ToolResult> {
-  let res: Response;
-  try {
-    res = (await call()) as Response;
-  } catch (thrown) {
-    if (thrown instanceof Response) {
-      return delegateError(verb, doco, thrown.status, await safeJson(thrown));
-    }
-    throw thrown;
-  }
-  const data = await safeJson(res);
-  if (!res.ok) return delegateError(verb, doco, res.status, data);
-  return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+  const result = await delegated(verb, doco, call);
+  return "error" in result ? result.error : textResult(result.text);
 }
 
 // Resolve a tool's `doco` argument (handle or id) to its canonical handle.
@@ -636,12 +667,17 @@ async function runDocoBrief(request: Request, args: Record<string, unknown>): Pr
     if (args[key] === false) url.searchParams.set(key, "0");
   }
   const req = new Request(url, { headers: bearerHeaders(request) });
-  const result = await delegate("brief from", "your Docos", () => briefLoader({ request: req }));
-  if (result.isError) return result;
-  const data = result.structuredContent as { text?: unknown };
-  // The text rendering is what the agent reads; the JSON stays structured.
-  if (typeof data?.text === "string") result.content = [{ type: "text", text: data.text }];
-  return result;
+  const result = await delegated("brief from", "your Docos", () => briefLoader({ request: req }));
+  if ("error" in result) return result.error;
+  // The agent reads the text rendering, a third the size of the JSON, then
+  // the protocol lines it pastes.
+  const data = result.data as { text?: unknown; display?: { found?: unknown; tally?: unknown } };
+  if (typeof data?.text !== "string") return textResult(result.text);
+  const display = [
+    typeof data.display?.found === "string" ? `display.found: ${data.display.found}` : null,
+    typeof data.display?.tally === "string" ? `display.tally: ${data.display.tally}` : null,
+  ].filter((line): line is string => line !== null);
+  return textResult(display.length ? `${data.text}\n\n${display.join("\n")}` : data.text);
 }
 
 async function runDocoSearch(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
@@ -675,7 +711,7 @@ async function runDocoCapture(
   if (!type) return toolError("doco_capture requires `doco` and `type`.");
   if (!body || typeof body !== "object") {
     return toolError(
-      "doco_capture requires a `body` object — see /<doco>/api/<type>.txt for the shape.",
+      "doco_capture requires a `body` object: the node's `prose` plus its type's fields (doco_get api/<type>.txt lists them).",
     );
   }
   const origin = new URL(request.url).origin;
@@ -811,7 +847,7 @@ async function runDocoCreate(request: Request, args: Record<string, unknown>): P
   if (!res.ok) {
     return toolError(`doco_create failed (status ${res.status}). ${String(data.error ?? "")}`);
   }
-  return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+  return textResult(JSON.stringify(data));
 }
 
 // doco_get is the generic read surface: it GETs any document under the Doco's
@@ -850,26 +886,15 @@ async function runListWorkspaces(request: Request): Promise<ToolResult> {
   if (!identity) return toolError("Not authenticated.");
   const workspaces = (identity.grants ?? []).filter((g) => g.scope === "workspace");
   if (workspaces.length === 0) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: "This connection reaches no whole workspace. Call doco_whoami to see the Docos it reaches.",
-        },
-      ],
-      structuredContent: { workspaces: [] },
-    };
+    return textResult(
+      "This connection reaches no whole workspace. Call doco_whoami to see the Docos it reaches.",
+    );
   }
   const lines = [
     "Workspaces this connection reaches (a Doco's <handle> works with the tools regardless of which one it's in):",
   ];
   for (const w of workspaces) lines.push(`  • ${w.label} (${w.id}): ${w.role}`);
-  return {
-    content: [{ type: "text", text: lines.join("\n") }],
-    structuredContent: {
-      workspaces: workspaces.map((w) => ({ id: w.id, handle: w.label, role: w.role })),
-    },
-  };
+  return textResult(lines.join("\n"));
 }
 
 async function runDocoWhoami(request: Request, args: Record<string, unknown>): Promise<ToolResult> {
@@ -896,7 +921,6 @@ async function runDocoWhoami(request: Request, args: Record<string, unknown>): P
   // agent-bootstrap manifest surface.
   const named = String(args.workspace ?? "").trim();
   const project = projectWorkspace(workspaces, named);
-  let standingOrders: unknown = null;
   if (named && !project) {
     lines.push("", `This connection reaches no workspace named ${named}.`);
   } else if (project) {
@@ -905,13 +929,12 @@ async function runDocoWhoami(request: Request, args: Record<string, unknown>): P
     const since = String(args.since ?? "").trim();
     if (since) url.searchParams.set("since", since);
     const req = new Request(url, { headers: bearerHeaders(request) });
-    const result = await delegate("read the standing orders of", project.label, () =>
+    const result = await delegated("read the standing orders of", project.label, () =>
       standingOrdersLoader({ request: req }),
     );
-    if (result.isError) lines.push("", ...result.content.map((c) => c.text));
+    if ("error" in result) lines.push("", ...result.error.content.map((c) => c.text));
     else {
-      standingOrders = result.structuredContent;
-      const text = (standingOrders as { text?: unknown })?.text;
+      const text = (result.data as { text?: unknown })?.text;
       if (typeof text === "string") lines.push("", text);
     }
   } else if (workspaces.length > 1) {
@@ -929,15 +952,7 @@ async function runDocoWhoami(request: Request, args: Record<string, unknown>): P
       c.constitution,
     );
   }
-  return {
-    content: [{ type: "text", text: lines.join("\n") }],
-    structuredContent: {
-      ...identity,
-      grants,
-      workspace_constitutions: constitutions,
-      standing_orders: standingOrders,
-    },
-  };
+  return textResult(lines.join("\n"));
 }
 
 // doco_hook_token: the person's token for the Doco hook in the project's
@@ -963,15 +978,7 @@ async function runDocoHookToken(
     );
   }
   const token = await hookTokenFor({ workspace_id: workspace.id, user_id: identity.user_id });
-  return {
-    content: [
-      {
-        type: "text",
-        text: hookTokenInstallHint(getPublicBaseUrl(request), workspace.label, token),
-      },
-    ],
-    structuredContent: { workspace: workspace.label, token },
-  };
+  return textResult(hookTokenInstallHint(getPublicBaseUrl(request), workspace.label, token));
 }
 
 /** The project's workspace among those a connection reaches whole: the one
@@ -1020,7 +1027,6 @@ async function runDocoRequestAccess(
         text: `Requested ${result.request.requested_role} on "${result.docoHandle}". An owner will see it in their access-requests inbox; once approved, your existing token works on the next call — no reconnect. (Request ${result.request.id}.)`,
       },
     ],
-    structuredContent: result.request,
   };
 }
 
@@ -1041,7 +1047,7 @@ async function runAgentDebug(request: Request, args: Record<string, unknown>): P
     messages: typeof args.messages === "number" ? args.messages : undefined,
     search: typeof args.search === "string" ? args.search : null,
   });
-  return { content: [{ type: "text", text: JSON.stringify(report) }], structuredContent: report };
+  return textResult(JSON.stringify(report));
 }
 
 async function dispatch(message: Rpc, request: Request, ctx: McpContext): Promise<Response> {

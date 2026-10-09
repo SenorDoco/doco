@@ -92,6 +92,17 @@ describe("agentConnectGuides", () => {
       expect(JSON.stringify(w)).toContain("Allow and don't ask me again");
     }
   });
+
+  // 2026-10-09: in auto mode Claude Code doesn't ask, it checks each call
+  // first, and an agent's first connection spent up to a minute on a call
+  // that way. An Allow rule skips the check, so the step says it does.
+  it("says the Allow rule also spares Claude Code's auto mode its check of each call", () => {
+    for (const w of guide("claude-code").ways) {
+      expect(JSON.stringify(w)).toContain(
+        "without asking you or, in auto mode, checking each call",
+      );
+    }
+  });
 });
 
 describe("ConnectAgentGuide", () => {
