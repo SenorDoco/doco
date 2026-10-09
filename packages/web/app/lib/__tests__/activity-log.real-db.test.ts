@@ -8,12 +8,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
-import {
-  countByDay,
-  loadLatestActivity,
-  rollUpActivity,
-  summarizeActivity,
-} from "../activity-log.server";
+import { countByDay, rollUpActivity, summarizeActivity } from "../activity-log.server";
 
 let db: InstanceType<typeof PGlite>;
 
@@ -253,31 +248,6 @@ describe("summarizeActivity imports", () => {
     const bugs = await summarizeActivity(db, { docoIds: ["doco_bugs"] }, SEPTEMBER, 10);
     expect(bugs.imports).toBe(0);
     expect(bugs.topIntegrations).toEqual([]);
-  });
-});
-
-describe("loadLatestActivity", () => {
-  it("gives each Doco the newest change to its content or item its source brought", async () => {
-    await imports();
-    await db.exec(`
-      -- Newer than everything that counts: a message in the channel left out
-      -- of the copy, and a Notion page not fetched yet.
-      INSERT INTO group_chat_messages (doco_id, channel_id, ts, text, posted_at)
-        VALUES ('doco_notes', 'C_HID', '1.3', 'still left out', '2026-09-05T09:00:00Z');
-      INSERT INTO notion_pages (doco_id, page_id, object, url, last_edited_time, synced_at)
-        VALUES ('doco_notes', 'p3', 'page', 'https://www.notion.so/p3', '2026-09-06T09:00:00Z', NULL);
-      INSERT INTO audit_events (event_id, at, doco_id, entity_type, entity_id, op) VALUES
-        ('ev_bugs', '2026-09-10T00:00:00Z', 'doco_bugs', 'eval', 'eval_1', 'entity.create'),
-        ('ev_policy', '2026-09-20T00:00:00Z', 'doco_bugs', 'policy', 'policy_1', 'entity.update');
-      INSERT INTO docos (id, handle, owner_id, workspace_id, data)
-        VALUES ('doco_quiet', 'quiet', 'workspace_acme', 'workspace_acme', '{}'::jsonb);
-    `);
-    const latest = await loadLatestActivity(db, ["doco_notes", "doco_bugs", "doco_quiet"]);
-    expect(Object.fromEntries(latest)).toEqual({
-      doco_notes: "2026-09-04T09:00:00.000Z",
-      // A policy edit is a setting, not the Doco's activity.
-      doco_bugs: "2026-09-10T00:00:00.000Z",
-    });
   });
 });
 

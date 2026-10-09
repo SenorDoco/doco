@@ -4,7 +4,6 @@
 // import of older items has got, or, for a Doco made to fill from a source,
 // that nobody has connected it yet. The Doco home shows it atop the activity
 // column; the Doco's integrations page summarizes it.
-import { loadLatestActivity } from "./activity-log.server";
 import {
   IMPORT_STALL_MINUTES,
   type ImportState,
@@ -126,9 +125,21 @@ async function loadGitHubStatus(
   if (!imported) return null;
   // A pull request's Reference, an issue's Eval or a code file: whatever
   // came from GitHub.
-  const latest = (await loadLatestActivity(c, [docoId], { integration: "github" })).get(docoId);
+  const latest = (
+    await c.query<{ at: Date | string | null }>(
+      `SELECT max(at) AS at FROM imported_items WHERE doco_id = $1 AND integration = 'github'`,
+      [docoId],
+    )
+  ).rows[0]?.at;
   const { item, items, permission } = githubImportFor(doco?.template);
-  return { integration: "github", item, items, permission, latestAt: latest ?? null, ...imported };
+  return {
+    integration: "github",
+    item,
+    items,
+    permission,
+    latestAt: latest ? new Date(latest).toISOString() : null,
+    ...imported,
+  };
 }
 
 async function loadSlackStatus(

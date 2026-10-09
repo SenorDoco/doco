@@ -6,7 +6,6 @@
 // A person reaches a workspace by membership (every live Doco in it) or by a
 // Doco invite (just the Docos they were invited to; role is null).
 
-import { loadLatestActivity } from "./activity-log.server";
 import { type SilenceAlert, loadSilenceAlerts } from "./silence-alerts.server";
 
 type QueryClient = {
@@ -46,8 +45,10 @@ export async function loadWorkspaceSummaries(
     handle: string;
     template: string | null;
     workspace_id: string;
+    latest_activity_at: Date | string | null;
   }>(
-    `SELECT d.id, d.handle, d.data->>'template_handle' AS template, d.workspace_id
+    `SELECT d.id, d.handle, d.data->>'template_handle' AS template, d.workspace_id,
+            d.latest_activity_at
        FROM docos d
       WHERE d.deleted_at IS NULL
         AND ($2::text IS NULL OR d.workspace_id = $2)
@@ -71,13 +72,9 @@ export async function loadWorkspaceSummaries(
         AND (wu.user_id IS NOT NULL OR w.id = ANY($2::text[]))`,
     [userId, docoRows.rows.map((d) => d.workspace_id), workspaceFilter],
   );
-  const latest = await loadLatestActivity(
-    c,
-    docoRows.rows.map((d) => d.id),
-  );
   const lastActivityAt = new Map<string, string>();
   for (const d of docoRows.rows) {
-    const at = latest.get(d.id);
+    const at = d.latest_activity_at ? new Date(d.latest_activity_at).toISOString() : null;
     const seen = lastActivityAt.get(d.workspace_id);
     if (at && (!seen || at > seen)) lastActivityAt.set(d.workspace_id, at);
   }

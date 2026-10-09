@@ -7,7 +7,8 @@
 //   changesets an import records: what an integration brought counts once, as
 //   imports.
 // - queries: `query_events`.
-// - imports: every item an integration brought (IMPORTED_ITEMS_SQL).
+// - imports: every item an integration brought (the imported_items view in
+//   schema.sql).
 //
 // Two readers: `countByDay` (the Activity calendars) and `summarizeActivity`
 // (each log's total over a period, and its top lists: Top contributors and Top
@@ -25,78 +26,6 @@
 import { TOP_DAYS } from "~/components/top-list";
 import { IMPORT, agentName, mechanismMetadataSql } from "./authoring-provenance";
 import { findIntegration } from "./integrations-catalog";
-
-/** Every table an integration fills, as `i`: from GitHub the files of a
- *  codebase and the pull requests and issues it keeps (a pull request's
- *  Reference, an issue's Eval), from Slack the messages of the channels it copies,
- *  from Notion the pages fetched so far. `at` is when an item happened in the
- *  source where the source says (a message posted, a page last edited; null
- *  when Notion gave no time), else when Doco last wrote it (a code file, a pull
- *  request or issue). Each has an index on (doco_id, at) in schema.sql, with
- *  `where` as the predicate of a partial one. */
-const IMPORT_SOURCES = [
-  { integration: "github", table: "code_files", at: "synced_at", where: "true" },
-  {
-    integration: "github",
-    table: "nodes",
-    at: "updated_at",
-    where: `i.node_type IN ('reference', 'eval')
-            AND i.locator ~ '^https://github\\.com/[^/]+/[^/]+/(pull|issues)/[0-9]+$'`,
-  },
-  {
-    integration: "slack",
-    table: "group_chat_messages",
-    at: "posted_at",
-    where: `NOT EXISTS (SELECT 1 FROM group_chat_channels ch
-                         WHERE ch.doco_id = i.doco_id AND ch.channel_id = i.channel_id
-                           AND ch.excluded)`,
-  },
-  {
-    integration: "notion",
-    table: "notion_pages",
-    at: "last_edited_time",
-    where: "i.synced_at IS NOT NULL",
-  },
-] as const;
-
-/** Every item an integration brought into a Doco, as (doco_id, integration,
- *  at) rows. */
-export const IMPORTED_ITEMS_SQL = IMPORT_SOURCES.map(
-  (s) =>
-    `SELECT i.doco_id, '${s.integration}' AS integration, i.${s.at} AS at FROM ${s.table} i WHERE ${s.where}`,
-).join("\n  UNION ALL\n  ");
-
-/**
- * When each Doco last saw activity: the latest change to its content (an audit
- * event; policies are settings, not activity) or item an integration brought
- * (`integration` keeps to one). One newest-row probe per source and Doco, on
- * its (doco_id, at) index, so it costs the same however much a Doco holds.
- * Docos with none are left out.
- */
-export async function loadLatestActivity(
-  c: QueryClient,
-  docoIds: readonly string[],
-  opts: { integration?: string } = {},
-): Promise<Map<string, string>> {
-  const newest = (table: string, at: string, where: string) =>
-    `(SELECT i.${at} FROM ${table} i
-       WHERE i.doco_id = d.id AND i.${at} IS NOT NULL AND ${where}
-       ORDER BY i.${at} DESC LIMIT 1)`;
-  const probes = [
-    ...(opts.integration ? [] : [newest("audit_events", "at", "i.entity_type <> 'policy'")]),
-    ...IMPORT_SOURCES.filter((s) => !opts.integration || s.integration === opts.integration).map(
-      (s) => newest(s.table, s.at, s.where),
-    ),
-  ];
-  const { rows } = await c.query<{ doco_id: string; at: Date | string }>(
-    `SELECT d.id AS doco_id, GREATEST(${probes.join(",\n")}) AS at
-       FROM unnest($1::text[]) AS d(id)`,
-    [[...docoIds]],
-  );
-  return new Map(
-    rows.filter((r) => r.at !== null).map((r) => [r.doco_id, new Date(r.at).toISOString()]),
-  );
-}
 
 export interface TopActor {
   userId: string;
@@ -156,7 +85,7 @@ const LOGS: Record<Log, string> = {
   queries: "SELECT doco_id, workspace_id, actor, source, metadata, at FROM query_events",
   imports: `SELECT doco_id, NULL::text AS workspace_id, NULL::text AS actor,
                    integration AS source, NULL::jsonb AS metadata, at
-              FROM (${IMPORTED_ITEMS_SQL}) i`,
+              FROM imported_items i`,
 };
 
 /** A log's count for one UTC day, Doco (or workspace), person, and the agent

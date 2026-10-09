@@ -19,7 +19,6 @@
 // later is a new alert with its own email.
 
 import { generateUlid } from "@doco/shared";
-import { IMPORTED_ITEMS_SQL } from "./activity-log.server";
 import { agentName } from "./authoring-provenance";
 import { emailHtml } from "./email-html";
 import { type Email, type EmailResult, emailConfigured, sendEmail } from "./email.server";
@@ -111,7 +110,7 @@ async function quietIntegrations(c: QueryClient, now: Date): Promise<Silence[]> 
   const quiet = await quietKeys(
     c,
     `SELECT ARRAY[r.doco_id] AS key, r.at, 1 AS n
-       FROM (${IMPORTED_ITEMS_SQL}) r
+       FROM imported_items r
       WHERE r.at IS NOT NULL AND r.doco_id IN (${CONNECTED_DOCOS_SQL})`,
     now,
   );
