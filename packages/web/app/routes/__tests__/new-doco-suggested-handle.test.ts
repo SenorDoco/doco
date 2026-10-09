@@ -32,7 +32,6 @@ describe("suggestedDocoHandle", () => {
 describe("/new-doco form", () => {
   function render(prefill: { workspaceId: string; templateHandle: string; name?: string }) {
     const loaderData = {
-      me: { id: "user_alex", username: "alex" },
       workspaces: [{ id: "workspace_torre", handle: "torre" }],
       prefill: {
         newWorkspaceHandle: "",

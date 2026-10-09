@@ -113,13 +113,36 @@ describe("onboarding steps", () => {
 
   it("never walks anyone through their personal workspace", async () => {
     await db.exec(`
-      INSERT INTO workspaces (id, handle, name) VALUES ('workspace_ana', 'ana', 'ana');
-      INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ('workspace_ana', 'user_ana', 'owner');
+      INSERT INTO workspaces (id, handle, name, personal_user_id)
+        VALUES ('workspace_ana', 'ana', 'ana', 'user_ana');
+      INSERT INTO workspace_users (workspace_id, user_id, role) VALUES
+        ('workspace_ana', 'user_ana', 'owner'), ('workspace_ana', 'user_bo', 'writer');
     `);
     expect(
       await loadOnboardingProgress(c, { workspaceId: "workspace_ana", userId: "user_ana" }),
     ).toBeNull();
     expect([...(await loadUnfinishedOnboarding(c, "user_ana")).keys()]).toEqual(["workspace_acme"]);
+    // Someone else in it walks its steps: it isn't their personal workspace.
+    expect(await steps({ workspaceId: "workspace_ana", userId: "user_bo" })).toEqual([
+      ["agent", false],
+    ]);
+  });
+
+  it("walks someone through a workspace they named after themselves", async () => {
+    await db.exec(`
+      INSERT INTO workspaces (id, handle, name) VALUES ('workspace_ana', 'ana', 'ana');
+      INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ('workspace_ana', 'user_ana', 'owner');
+    `);
+    await startOnboarding(c, {
+      workspaceId: "workspace_ana",
+      userId: "user_ana",
+      joinedAs: "creator",
+    });
+    expect(await steps({ workspaceId: "workspace_ana", userId: "user_ana" })).toEqual([
+      ["github", false],
+      ["sources", false],
+      ["agent", false],
+    ]);
   });
 
   it("walks the creator through GitHub, other sources and asking their agent, in that order", async () => {

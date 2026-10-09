@@ -19,11 +19,7 @@ vi.mock("@doco/db", async () => {
   return { ...actual, withClient: (fn: (c: unknown) => unknown) => fn(client) };
 });
 
-import {
-  DEFAULT_WORKSPACE_DOCO_TEMPLATES,
-  addWorkspaceByHandle,
-  ensurePersonalWorkspace,
-} from "@doco/host";
+import { DEFAULT_WORKSPACE_DOCO_TEMPLATES, addWorkspaceByHandle } from "@doco/host";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 
 const USER_ID = "user_01NEWWSDEFAULTDOCOS0000001";
@@ -91,10 +87,5 @@ describe("addWorkspaceByHandle seeds the default Docos", () => {
     const handles = (await docosOf(ws.id)).map((d) => d.handle);
     expect(handles).toHaveLength(DEFAULT_WORKSPACE_DOCO_TEMPLATES.length);
     expect(handles).toContain("beta-glossary-2");
-  });
-
-  it("does not seed a personal workspace", async () => {
-    const id = await ensurePersonalWorkspace(USER_ID, "newws");
-    expect(await docosOf(id)).toEqual([]);
   });
 });

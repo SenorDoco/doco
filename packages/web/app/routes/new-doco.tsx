@@ -15,11 +15,7 @@ import {
 } from "~/lib/handle-format";
 import { sourceIntegrationFor } from "~/lib/integrations-catalog";
 import { withCreatedDocoId } from "~/lib/post-create-doco-route";
-import {
-  createDocoInWorkspace,
-  ensurePersonalWorkspace,
-  findAvailableDocoHandle,
-} from "~/lib/redeem.server";
+import { createDocoInWorkspace, findAvailableDocoHandle } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { createWorkspace } from "~/lib/workspace-create.server";
 import {
@@ -147,7 +143,6 @@ function parseFormState(form: FormData): CreationState {
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in?next=%2Fnew-doco");
-  await ensurePersonalWorkspace(me.id, me.username);
   const workspaces = await listMyWorkspaces(me.id);
   const url = new URL(request.url);
   const prefillTemplate = normalizeTemplateHandle(url.searchParams.get("template_handle") ?? "");
@@ -159,11 +154,7 @@ export async function loader({ request }: { request: Request }) {
     visibility: parseVisibility(url.searchParams.get("visibility")),
     goal: url.searchParams.get("goal") ?? defaultGoalForTemplate(prefillTemplate),
   };
-  return {
-    me,
-    workspaces,
-    prefill,
-  };
+  return { workspaces, prefill };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -263,7 +254,7 @@ export default function NewDocoStep1({
   loaderData: Awaited<ReturnType<typeof loader>>;
   actionData?: ActionData;
 }) {
-  const { me, workspaces, prefill } = loaderData;
+  const { workspaces, prefill } = loaderData;
   const formState = actionData?.state ?? prefill;
   const initialWorkspaceId = initialWorkspaceSelection(formState);
   const initialTemplate = normalizeTemplateHandle(formState.templateHandle);
@@ -426,7 +417,6 @@ export default function NewDocoStep1({
                 {workspaces.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.handle}
-                    {o.handle === me.username ? " (personal)" : ""}
                   </option>
                 ))}
                 <option value={CREATE_NEW_WORKSPACE_VALUE}>+ Create a new workspace</option>

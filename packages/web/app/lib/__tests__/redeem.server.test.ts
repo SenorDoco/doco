@@ -10,7 +10,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@doco/host", () => ({
   addWorkspaceByHandle: vi.fn(),
   createDocoInWorkspace: mocks.createHostDocoInWorkspace,
-  ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),
   findAvailableWorkspaceHandle: vi.fn(),
   findDocoTemplate: vi.fn(),

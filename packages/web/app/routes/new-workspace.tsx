@@ -10,7 +10,7 @@ import {
   handleValidityMessage,
 } from "~/lib/handle-format";
 import { loadHostConfig } from "~/lib/host.server";
-import { ensurePersonalWorkspace, findAvailableWorkspaceHandle } from "~/lib/redeem.server";
+import { findAvailableWorkspaceHandle } from "~/lib/redeem.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { createWorkspace } from "~/lib/workspace-create.server";
 
@@ -27,8 +27,6 @@ import { createWorkspace } from "~/lib/workspace-create.server";
 export async function loader({ request }: { request: Request }) {
   const me = await getCurrentPrincipal(request);
   if (!me) throw redirect("/sign-in");
-  // Backfill personal workspace for sign-ins that pre-date v15.
-  await ensurePersonalWorkspace(me.id, me.username);
   return { host: await loadHostConfig() };
 }
 

@@ -57,10 +57,10 @@ describe("agentInstructions", () => {
       "Without that file, use the workspace the user named, or call `list_workspaces` and ask the user which to use",
     );
     expect(step2).toContain("save `https://doco.test/workspaces/<handle>` there");
-    // A personal workspace exists for everyone and never stands in for a project.
-    expect(step2).toContain("none besides their personal one");
-    // No workspace: a link to create one, or the invite a teammate sent.
-    expect(step2).toContain("send them to https://doco.test/new-workspace");
+    // No workspace (sign-up creates none, decision_01M4GF757E9T2X902JZKYG0DKG):
+    // a link to create one, or the invite a teammate sent.
+    expect(step2).toContain("If they have none, send them to https://doco.test/new-workspace");
+    expect(step2).not.toContain("personal");
     expect(step2).toContain("the invite a teammate sent");
     expect(step2).toContain("agents never create workspaces");
   });

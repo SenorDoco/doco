@@ -18,7 +18,8 @@
 //             workspace, not revoked, has been used (the agent gets it with
 //             doco_hook_token). Every agent Doco supports runs hooks.
 // Every member of a workspace walks them, except in their personal workspace
-// (named after them), which isn't a project's. workspace_onboarding holds what
+// (workspaces.personal_user_id: the one people who signed up before
+// 2026-10-09 got), which isn't a project's. workspace_onboarding holds what
 // nothing else records: who created the workspace or joined it from an
 // invite, when (the reminder's clock), and when they ended the other-sources
 // step. A member without a row (in a workspace made before the steps, or
@@ -134,10 +135,9 @@ const PROGRESS_SQL = `
          ) AS hook
     FROM workspace_users wu
     JOIN workspaces w ON w.id = wu.workspace_id
-    JOIN users u ON u.id = wu.user_id
     LEFT JOIN workspace_onboarding o
       ON o.workspace_id = wu.workspace_id AND o.user_id = wu.user_id
-   WHERE lower(w.handle) <> lower(COALESCE(u.github_login, ''))`;
+   WHERE w.personal_user_id IS DISTINCT FROM wu.user_id`;
 
 interface ProgressRow {
   workspace_id: string;

@@ -4,7 +4,6 @@ const createWorkspace = vi.fn();
 vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 vi.mock("~/lib/host.server", () => ({ loadHostConfig: vi.fn() }));
 vi.mock("~/lib/redeem.server", () => ({
-  ensurePersonalWorkspace: vi.fn(),
   findAvailableWorkspaceHandle: vi.fn(),
 }));
 vi.mock("~/lib/workspace-create.server", () => ({
