@@ -8,8 +8,12 @@
 // public Docos, plus Docos the caller holds a grant on. The constitution goes
 // with them: whoever can read a Doco of the workspace reads its charter.
 //
-// PGlite backs every query; only the session, host config and embedding
-// provider are stubbed.
+// Until a person's setup steps in a workspace are done, its page is only those
+// steps (decision_01M4GFFG59ZACNB1J5PEAKM9TC); the callers here have walked
+// them unless a test says otherwise.
+//
+// PGlite backs every query; only the session, host config, embedding provider
+// and whether the caller's setup is done are stubbed.
 
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +22,7 @@ import { freshDb } from "../../../../db/src/__tests__/fresh-db";
 const dbm = vi.hoisted(() => ({
   db: null as unknown as InstanceType<typeof PGlite>,
   me: null as null | { id: string },
+  setUp: true,
   pending: [] as Promise<unknown>[],
 }));
 
@@ -53,6 +58,15 @@ vi.mock("~/lib/session.server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/session.server")>()),
   getCurrentPrincipal: async () => dbm.me,
 }));
+
+vi.mock("~/lib/onboarding-view.server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("~/lib/onboarding-view.server")>();
+  return {
+    ...original,
+    loadOnboardingView: async (opts: Parameters<typeof original.loadOnboardingView>[0]) =>
+      dbm.setUp ? null : original.loadOnboardingView(opts),
+  };
+});
 
 vi.mock("~/lib/host.server", () => ({
   loadHostConfig: async () => ({ name: "Doco", visibility: "public" }),
@@ -132,15 +146,23 @@ async function briefItems(handle: string): Promise<string[]> {
   return (data.brief?.items ?? []).filter((i) => i.doco).map((i) => i.id);
 }
 
-async function homeData(handle: string) {
+function homeLoad(handle: string) {
   return home.loader({
     request: new Request(`https://doco.test/workspaces/${handle}`),
     params: { workspaceHandle: handle },
   });
 }
 
+/** The workspace page of someone past their setup steps there. */
+async function homeData(handle: string) {
+  const data = await homeLoad(handle);
+  if (data.onboarding) throw new Error("expected the workspace page, got its setup steps");
+  return data;
+}
+
 beforeEach(async () => {
   await seed();
+  dbm.setUp = true;
 });
 
 describe("the workspace brief only draws from Docos the caller can read", () => {
@@ -191,6 +213,17 @@ describe("workspace home only lists Docos the caller can read", () => {
       "ev_public",
     ]);
     expect(data.workspace.constitution).toBe("Acme internal charter");
+  });
+
+  it("shows a member whose setup step is open only that step, and loads nothing else", async () => {
+    // A reader with no onboarding row walks the invitee's one step: asking
+    // their agent, which hasn't written yet.
+    dbm.setUp = false;
+    as("user_member");
+    const data = await homeLoad("acme");
+    expect(data.onboarding?.pending).toBe("agent");
+    expect(Object.keys(data).sort()).toEqual(["canInviteUsers", "onboarding", "workspace"]);
+    expect(JSON.stringify(data)).not.toContain("secret-plans");
   });
 
   it("404s a workspace where the caller can read nothing", async () => {
