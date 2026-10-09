@@ -85,8 +85,6 @@ const torrenegra = {
   connected_repositories: [],
   source_doco_handles: ["torre-prs"],
 };
-const torreLabs = { ...torrenegra, installation_id: 8, account: "torre-labs" };
-torreLabs.repositories = ["torre-labs/heda", "torre-labs/vader"];
 
 /** The repositories offered as checkboxes, in order. */
 function repoCheckboxes(html: string): string[] {
@@ -122,14 +120,18 @@ describe("GitHub integration · neumorphic roles", () => {
     expect(tokens).not.toContain("border");
   });
 
-  it("makes each repository to pick a key, since the whole row is clickable", () => {
+  it("makes each option to pick a key, since the whole row is clickable", () => {
     fixture.loaderData = { ...baseLoaderData, installationChoices: [torrenegra] };
 
     const html = renderToStaticMarkup(<DocoGitHubIntegration />);
-    const tokens = html.match(/<label class="([^"]*)"/)?.[1]?.split(/\s+/);
-    expect(tokens, "repository checkbox should render").toBeDefined();
+    const labels = [...html.matchAll(/<label class="([^"]*)"/g)].map((m) => m[1]?.split(/\s+/));
+    expect(labels, "For all repositories and Select repositories").toHaveLength(2);
 
-    expect(tokens).toContain("neu-button");
-    expect(tokens).not.toContain("border");
+    for (const tokens of labels) {
+      expect(tokens).toContain("neu-button");
+      expect(tokens).not.toContain("border");
+    }
+    // No repository is listed until Select repositories is chosen.
+    expect(repoCheckboxes(html)).toEqual([]);
   });
 });
