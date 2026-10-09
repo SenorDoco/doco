@@ -1,6 +1,7 @@
 // What a project does to run the Doco hook (app/hook/doco-hook.mjs): save the
 // script, then name it in the client's hooks. The /agents page shows these
-// with Copy buttons; step 3 of the agent instructions points here.
+// with Copy buttons, and doco_hook_token hands them to the agent with its
+// token (lib/hook-tokens.server hookTokenInstallHint), the script first.
 
 export const DOCO_HOOK_PATH = "/agents/doco-hook.mjs";
 
