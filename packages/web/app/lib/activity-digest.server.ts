@@ -1,9 +1,9 @@
 // Sends the activity digest (lib/activity-digest.ts) to every member of each
 // workspace that has one due, unless they unsubscribed from that workspace's
-// or it is their personal workspace. Each member's numbers cover only the
-// Docos they may read, as the workspace page shows them. A workspace's
-// `digest_sent_at` is claimed before sending, so two runs at the same hour
-// never both send it.
+// or it is their personal workspace (workspaces.personal_user_id). Each
+// member's numbers cover only the Docos they may read, as the workspace page
+// shows them. A workspace's `digest_sent_at` is claimed before sending, so two
+// runs at the same hour never both send it.
 //
 // The unsubscribe link carries the workspace and member encrypted (lib/
 // secret-box.server.ts), so it works with one click and without signing in.
@@ -79,9 +79,12 @@ export async function sendActivityDigests(
 ): Promise<{ workspaces: number; sent: number }> {
   const at = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000);
   const workspaces = (
-    await c.query<{ id: string; handle: string; created_at: Date | string }>(
-      "SELECT id, handle, created_at FROM workspaces",
-    )
+    await c.query<{
+      id: string;
+      handle: string;
+      created_at: Date | string;
+      personal_user_id: string | null;
+    }>("SELECT id, handle, created_at, personal_user_id FROM workspaces")
   ).rows;
   let claimed = 0;
   let sent = 0;
@@ -104,8 +107,8 @@ export async function sendActivityDigests(
             AND wu.digest_unsubscribed_at IS NULL
             AND u.deactivated_at IS NULL
             AND COALESCE(u.email, '') <> ''
-            AND lower(u.github_login) IS DISTINCT FROM lower($2)`,
-        [w.id, w.handle],
+            AND u.id IS DISTINCT FROM $2`,
+        [w.id, w.personal_user_id],
       )
     ).rows;
     for (const m of members) {

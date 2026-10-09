@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createWorkspace: vi.fn(),
   createDocoInWorkspace: vi.fn(),
-  ensurePersonalWorkspace: vi.fn(),
   findAvailableDocoHandle: vi.fn(),
   getCurrentPrincipal: vi.fn(),
   isWorkspaceMember: vi.fn(),
@@ -19,7 +18,6 @@ vi.mock("~/lib/workspace-helpers.server", () => ({
 
 vi.mock("~/lib/redeem.server", () => ({
   createDocoInWorkspace: mocks.createDocoInWorkspace,
-  ensurePersonalWorkspace: mocks.ensurePersonalWorkspace,
   findAvailableDocoHandle: mocks.findAvailableDocoHandle,
 }));
 

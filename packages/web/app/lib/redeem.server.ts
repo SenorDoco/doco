@@ -4,7 +4,6 @@ import { createDocoInWorkspace as createHostDocoInWorkspace } from "@doco/host";
 
 export {
   addWorkspaceByHandle,
-  ensurePersonalWorkspace,
   findAvailableDocoHandle,
   findAvailableWorkspaceHandle,
   renameDocoHandle,

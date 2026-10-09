@@ -19,16 +19,16 @@ const TORRE = {
 };
 const PERSONAL = { ...TORRE, id: "workspace_alice", handle: "alice", name: "alice", docos: [] };
 
-function render(workspaces = [TORRE], setup = {}): string {
+function render(workspaces = [TORRE], setup = {}, inAProject = true): string {
   return renderToStaticMarkup(
     createElement(
       MemoryRouter,
       null,
       createElement(WorkspacesPage, {
         loaderData: {
-          me: { id: "user_alice", username: "alice", type: "person", isHuman: true },
           setup,
           workspaces,
+          inAProject,
         } as never,
       }),
     ),
@@ -62,13 +62,17 @@ describe("/workspaces", () => {
   });
 
   it("shows someone in no project's workspace how to start one", () => {
-    const html = render([PERSONAL]);
+    const html = render([PERSONAL], {}, false);
     expect(html).toContain("Start with a workspace");
     expect(html).toContain("Create a workspace");
     expect(render()).not.toContain("Start with a workspace");
   });
 
-  it("says so when the person reaches no workspace", () => {
-    expect(render([])).toContain("No workspaces yet.");
+  // Signing up creates no workspace (decision_01M4GF757E9T2X902JZKYG0DKG).
+  it("shows someone who just signed up, in no workspace, how to start one or open an invite", () => {
+    const html = render([], {}, false);
+    expect(html).toContain("Start with a workspace");
+    expect(html).toContain('href="/new-workspace"');
+    expect(html).toContain("Invited to one? Open the invite to join it.");
   });
 });

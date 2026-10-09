@@ -2,8 +2,8 @@
 // reaches: the icons of its Docos, New Doco or source / Invite person /
 // Invite agent, the latest thing that happened in it, and, while its steps
 // aren't done, the way back to the step the person is on. Most recently
-// active first. Someone in no project's workspace yet (only the personal one
-// every person gets) is shown how to start one.
+// active first. Someone in no project's workspace yet, like everyone who just
+// signed up (signing up creates no workspace), is shown how to start one.
 
 import { withClient } from "@doco/db";
 import { getPublicBaseUrl } from "@doco/shared";
@@ -23,10 +23,17 @@ export async function loader({ request }: { request: Request }) {
   if (!me) {
     throw redirect(`/sign-in?next=${encodeURIComponent("/workspaces")}`);
   }
-  const { unfinished, workspaces } = await withClient(async (c) => ({
+  const { unfinished, workspaces, personal } = await withClient(async (c) => ({
     unfinished: await loadUnfinishedOnboarding(c, me.id),
     workspaces: await loadWorkspaceSummaries(c, me.id),
+    // The personal workspace people who signed up before 2026-10-09 got is no project's.
+    personal: await c.query<{ id: string }>(
+      "SELECT id FROM workspaces WHERE personal_user_id = $1",
+      [me.id],
+    ),
   }));
+  const personalIds = new Set(personal.rows.map((w) => w.id));
+  const inAProject = workspaces.some((w) => !personalIds.has(w.id));
   const setup: Record<string, WorkspaceSetup> = {};
   for (const [workspaceId, progress] of unfinished) {
     const step = pendingStep(progress);
@@ -37,7 +44,7 @@ export async function loader({ request }: { request: Request }) {
       total: progress.steps.length,
     };
   }
-  return { me, setup, workspaces, baseUrl: getPublicBaseUrl(request) };
+  return { setup, workspaces, inAProject, baseUrl: getPublicBaseUrl(request) };
 }
 
 export function meta() {
@@ -49,9 +56,7 @@ export default function WorkspacesPage({
 }: {
   loaderData: Awaited<ReturnType<typeof loader>>;
 }) {
-  const { me, setup, workspaces, baseUrl } = loaderData;
-  // Every person gets a personal workspace named after them; it isn't a project's.
-  const inAProject = workspaces.some((w) => w.handle.toLowerCase() !== me.username.toLowerCase());
+  const { setup, workspaces, inAProject, baseUrl } = loaderData;
   return (
     <PageMain className="space-y-6 py-6">
       <PageHeader
@@ -97,9 +102,6 @@ export default function WorkspacesPage({
             setup={setup[workspace.id]}
           />
         ))}
-        {workspaces.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No workspaces yet.</p>
-        ) : null}
       </section>
     </PageMain>
   );

@@ -58,10 +58,10 @@ beforeEach(async () => {
       ('user_bo', 'bo', 'bo@example.com', '{}', NULL),
       ('user_cy', 'cy', NULL, '{}', NULL),
       ('user_di', 'di', 'di@example.com', '{}', now());
-    INSERT INTO workspaces (id, handle, name, created_at) VALUES
-      ('workspace_acme', 'acme', 'Acme', '2026-09-08T15:00:00Z'),
-      ('workspace_ana', 'ana', 'ana', '2026-09-08T15:00:00Z'),
-      ('workspace_old', 'old', 'Old', '2026-08-01T15:00:00Z');
+    INSERT INTO workspaces (id, handle, name, created_at, personal_user_id) VALUES
+      ('workspace_acme', 'acme', 'Acme', '2026-09-08T15:00:00Z', NULL),
+      ('workspace_ana', 'ana', 'ana', '2026-09-08T15:00:00Z', 'user_ana'),
+      ('workspace_old', 'old', 'Old', '2026-08-01T15:00:00Z', NULL);
     INSERT INTO workspace_users (workspace_id, user_id, role) VALUES
       ('workspace_acme', 'user_ana', 'owner'),
       ('workspace_acme', 'user_bo', 'writer'),
@@ -115,6 +115,16 @@ describe("sendActivityDigests", () => {
       sent: 0,
     });
     expect(dbm.sent).toHaveLength(2);
+  });
+
+  it("sends the digest of a workspace someone named after themselves", async () => {
+    // Only the personal workspaces people got at sign-up are marked as theirs.
+    await dbm.db.exec("UPDATE workspaces SET personal_user_id = NULL WHERE id = 'workspace_ana'");
+    await sendActivityDigests(dbm.db, AT, BASE);
+    expect(dbm.sent.map((e) => [e.to, e.subject])).toContainEqual([
+      "ana@example.com",
+      "Your daily digest for ana on Doco",
+    ]);
   });
 
   it("sends the weekly digest once the first week is over", async () => {
