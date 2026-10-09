@@ -43,12 +43,15 @@ export default function AgentsPage({ loaderData }: { loaderData: ReturnType<type
         <p className="text-sm text-muted-foreground">
           One script loads these instructions and the workspace's standing orders at session start
           (its charter, rules, Docos and what changed since the last session), then briefs the agent
-          before each prompt and each file edit, with the reminder line first. So the project keeps
-          no copy of the instructions, only its workspace&apos;s URL in <code>.doco/workspace</code>
-          . It reads the token from <code>.doco/hook-tokens.json</code>, where the agent saves the
-          token Doco&apos;s <code>doco_hook_token</code> tool gives it, kept out of git: the token
-          reads what you can read in the workspace, as you. Without a token, the hook tells the
-          agent to get it; when it cannot reach Doco, the agent gets the reminder alone.
+          before each prompt and each file edit, with the reminder line first. What leaves the
+          machine is what the brief needs: the workspace and when the last session started, at
+          session start; the first 2,000 characters of a prompt, before it; the path of a file,
+          before it changes; each with the token, and nothing else. So the project keeps no copy of
+          the instructions, only its workspace&apos;s URL in <code>.doco/workspace</code>. It reads
+          the token from <code>.doco/hook-tokens.json</code>, where the agent saves the token
+          Doco&apos;s <code>doco_hook_token</code> tool gives it, kept out of git: the token reads
+          what you can read in the workspace, as you. Without a token, the hook tells the agent to
+          get it; when it cannot reach Doco, the agent gets the reminder alone.
         </p>
         {loaderData.hook.map((snippet) => (
           <div key={snippet.title} className="flex min-w-0 flex-col gap-2">

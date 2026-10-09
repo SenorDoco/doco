@@ -52,12 +52,16 @@ describe("agentInstructions", () => {
   // Alexander, 2026-10-09: a person sent the "Start using Doco" message to a
   // chat with no project folder. The agent had nowhere to save
   // .doco/workspace or the hook, and ended with a table of four things it was
-  // waiting on. Setup is for a supported agent in the project's folder;
-  // anywhere else, the agent says so and stops.
+  // waiting on. The same day, in the Claude app's chat with a folder, the
+  // agent ran `claude mcp add` (which adds Doco to Claude Code, not to the
+  // chat), noted the sign-in dialog "doesn't exist in this app", and asked
+  // for a new session so the tools would load. The guard names what the
+  // steps need, not just which agents: add an MCP server to yourself, and
+  // run hooks.
   it("needs a supported agent in the project's folder, and says so anywhere else", () => {
     const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
     expect(setup).toContain(
-      "They need Claude Code, Codex or Gemini CLI in the project's folder; anywhere else, ask the user to send this message there instead, and stop.",
+      "They need Claude Code, Codex or Gemini CLI in the project's folder; if you can't add an MCP server to yourself or don't run hooks (the Claude app's chat or a browser), ask the user to send this message from one of those instead, and stop.",
     );
   });
 
@@ -144,10 +148,13 @@ describe("agentInstructions", () => {
   // that the user authorizes the agent's setup, so it doesn't stop to ask;
   // and (decision_01M4C2J610DPD028P55Q8X6VG2) the agent gets the hook's token
   // itself, so no person has to hand it one.
+  // Alexander, 2026-10-09: an agent still stopped for an OK on the two steps
+  // it called persistent, Doco at user scope ("all your projects") and the
+  // hook, so the authorization names both.
   it("tells the agent the user authorized its setup, and where the hook's token comes from", () => {
     const setup = text.slice(position("### Setup"), position("1. **Connection.**"));
     expect(setup).toContain(
-      "The user who added Doco to this project authorized these steps: do them without asking first, then tell the user what changed.",
+      "The user who added Doco to this project authorized these steps, Doco for all your projects and the hook included: do them without asking first, then tell the user what changed.",
     );
     const step3 = text.slice(position("3. **Hook.**"));
     expect(step3).toContain(
@@ -230,10 +237,10 @@ describe("agentInstructions", () => {
   // Claude Code keeps only the first 4096 characters of an MCP server's
   // instructions, and the hosted server sends this block whole. Alexander,
   // 2026-10-06: shorter and simpler, once setup moved to the website. The
-  // MCP server's URL and the line on where setup runs (2026-10-09) took it
-  // past 3,000.
+  // MCP server's URL and the lines on where setup runs and what the user
+  // authorized (2026-10-09) took it past 3,000.
   it("fits whole in the instructions an MCP client keeps, with room to spare", () => {
-    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3200);
+    expect(agentInstructions("https://doco.to").length).toBeLessThanOrEqual(3300);
   });
 
   // Alexander, 2026-09-30: one template for every place Doco instructs an

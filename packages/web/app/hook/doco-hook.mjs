@@ -27,6 +27,11 @@
 // deadline, fails open: the reminder alone on a prompt, the instructions
 // alone at session start, nothing on a file; exit 0 either way. No
 // dependencies; Node 18 or later.
+//
+// What leaves the machine: the workspace's handle and when the last session
+// started, at SessionStart; the first 2,000 characters of a prompt, before
+// it; the path of a file, before it changes; each with the token, and
+// nothing else.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";

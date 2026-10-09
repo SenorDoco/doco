@@ -9,6 +9,7 @@ import {
 } from "~/lib/agent-instructions";
 import routes from "../../routes";
 import AgentsPage, { loader } from "../agents";
+import { loader as hookScript } from "../agents.doco-hook[.]mjs";
 import { loader as instructionsText } from "../agents.instructions[.]md";
 
 // Alexander, 2026-10-01: the home page no longer shows the agent
@@ -46,6 +47,30 @@ describe("/agents", () => {
     expect(html).toContain("<code>.doco/workspace</code>");
     expect(html).not.toContain("Doco workspace:");
     expect(html).not.toContain("ChatGPT");
+  });
+
+  // Alexander, 2026-10-09: an agent asked to install the hook stopped to ask,
+  // since "the page doesn't say what data the script sends". It does now.
+  it("says what the hook sends Doco, so an agent can install it without asking", () => {
+    const loaderData = loader({ request: new Request("https://doco.test/agents") });
+    const html = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(AgentsPage, { loaderData })),
+    );
+    expect(html).toContain("What leaves the machine is what the brief needs");
+    expect(html).toContain("the first 2,000 characters of a prompt");
+    expect(html).toContain("each with the token, and nothing else");
+  });
+});
+
+// A project saves the script with one curl. The same agent noted "the server
+// doesn't report the size", so the response names it.
+describe("/agents/doco-hook.mjs", () => {
+  it("serves the hook script whole, with its length", async () => {
+    const res = hookScript();
+    const body = await res.text();
+    expect(res.headers.get("Content-Type")).toBe("text/javascript; charset=utf-8");
+    expect(res.headers.get("Content-Length")).toBe(String(new TextEncoder().encode(body).length));
+    expect(body).toContain("What leaves the machine:");
   });
 });
 
