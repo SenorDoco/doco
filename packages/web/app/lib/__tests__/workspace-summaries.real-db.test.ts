@@ -66,6 +66,14 @@ describe("loadWorkspaceSummaries", () => {
     expect(first).toMatchObject({ handle: "acme", lastActivityAt: "2026-09-25T00:00:00.000Z" });
   });
 
+  it("reads when each Doco last saw activity from its row, not from its sources", async () => {
+    await db.exec(
+      `UPDATE docos SET latest_activity_at = '2026-09-30T00:00:00Z' WHERE id = 'doco_shared'`,
+    );
+    const [other] = await loadWorkspaceSummaries(c, "user_ana");
+    expect(other).toMatchObject({ handle: "other", lastActivityAt: "2026-09-30T00:00:00.000Z" });
+  });
+
   it("says when each workspace last saw activity", async () => {
     const [torre, acme, other] = await loadWorkspaceSummaries(c, "user_ana");
     expect(torre.lastActivityAt).toBe("2026-09-20T00:00:00.000Z");

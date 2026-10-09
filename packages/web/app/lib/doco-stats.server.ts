@@ -7,10 +7,9 @@
 // /<handle>/api/policies.json), what it imported from its source (code files,
 // Slack messages, Notion pages, which are not nodes), or its processes.
 // `lastUpdatedAt` is the newest of its nodes' `updated_at` (imported/pre-audit
-// Docos) and its latest activity (loadLatestActivity).
+// Docos) and its latest activity (docos.latest_activity_at).
 
 import { withClient } from "@doco/db";
-import { IMPORTED_ITEMS_SQL, loadLatestActivity } from "./activity-log.server";
 import { docoItemFor } from "./doco-templates-meta";
 
 export interface DocoStats {
@@ -50,8 +49,13 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
   const ids = [...docoIds];
 
   return withClient(async (c) => {
-    const docoRows = await c.query<{ id: string; template: string | null }>(
-      "SELECT id, data->>'template_handle' AS template FROM docos WHERE id = ANY($1)",
+    const docoRows = await c.query<{
+      id: string;
+      template: string | null;
+      latest_activity_at: Date | string | null;
+    }>(
+      `SELECT id, data->>'template_handle' AS template, latest_activity_at
+         FROM docos WHERE id = ANY($1)`,
       [ids],
     );
     const counted = (what: string) =>
@@ -83,12 +87,11 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     );
     const importedRows = await c.query<{ doco_id: string; n: string }>(
       `SELECT doco_id, COUNT(*)::text AS n
-         FROM (${IMPORTED_ITEMS_SQL}) t
+         FROM imported_items t
         WHERE doco_id = ANY($1)
         GROUP BY doco_id`,
       [counted("import")],
     );
-    const latest = await loadLatestActivity(c, ids);
 
     const counts = (rows: { doco_id: string; n: string }[]) =>
       new Map(rows.map((r) => [r.doco_id, Number(r.n)]));
@@ -106,17 +109,15 @@ export async function listDocoStats(docoIds: readonly string[]): Promise<Map<str
     for (const id of ids) out.set(id, { ...EMPTY_DOCO_STATS });
     for (const r of docoRows.rows) {
       const s = out.get(r.id);
-      if (s) s.items = items(r.id, r.template);
+      if (!s) continue;
+      s.items = items(r.id, r.template);
+      if (r.latest_activity_at) s.lastUpdatedAt = new Date(r.latest_activity_at).toISOString();
     }
     for (const r of nodeRows.rows) {
       const s = out.get(r.doco_id);
       if (s && r.last_at) {
         s.lastUpdatedAt = newestIso(s.lastUpdatedAt, new Date(r.last_at).toISOString());
       }
-    }
-    for (const [docoId, at] of latest) {
-      const s = out.get(docoId);
-      if (s) s.lastUpdatedAt = newestIso(s.lastUpdatedAt, at);
     }
     return out;
   });

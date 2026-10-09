@@ -97,4 +97,12 @@ describe("listDocoStats", () => {
     // With no known template, every node counts.
     expect(seen("doco_misc")).toEqual({ items: 2, lastUpdatedAt: "2026-09-20T00:00:00.000Z" });
   });
+
+  it("reads when a Doco last saw activity from its row, not from its sources", async () => {
+    await state.db.exec(
+      `UPDATE docos SET latest_activity_at = '2026-09-30T00:00:00Z' WHERE id = 'doco_plain'`,
+    );
+    const stats = await listDocoStats(["doco_plain"]);
+    expect(iso(stats.get("doco_plain")?.lastUpdatedAt)).toBe("2026-09-30T00:00:00.000Z");
+  });
 });
