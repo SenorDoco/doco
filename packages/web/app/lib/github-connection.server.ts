@@ -744,7 +744,7 @@ export function groupKnownGitHubInstallations(
 
   return [...byInstallation.entries()]
     .map(([installation_id, entry]) => {
-      const connected = [...entry.repos].sort();
+      const connected = [...entry.repos].sort((a, b) => a.localeCompare(b));
       const [firstAccount] = [...entry.accounts].sort();
       const [repository_selection] = [...entry.selections].sort();
       return {
@@ -814,7 +814,7 @@ export async function listGitHubInstallationChoicesForDocos(
         ...(repositorySelection ? { repository_selection: repositorySelection } : {}),
         repositories: [
           ...new Set(repositories.length > 0 ? repositories : choice.connected_repositories),
-        ].sort(),
+        ].sort((a, b) => a.localeCompare(b)),
       });
     } catch {
       choices.push({

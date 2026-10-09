@@ -260,7 +260,7 @@ export function connectedOrgRepositories(
         .filter((choice) => connectedInstallationIds.has(choice.installation_id))
         .flatMap((choice) => choice.repositories),
     ),
-  ].sort();
+  ].sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -324,6 +324,7 @@ export default function DocoGitHubIntegration() {
   const resync = resyncButton(backfill, brings);
   const skipped = skippedReposNote(backfill, brings);
   const connectedRepoSet = new Set(connections.map((connection) => connection.repo));
+  const connectedRepos = [...connections].sort((a, b) => a.repo.localeCompare(b.repo));
   const connectedInstallationIds = new Set(
     installations.map((installation) => installation.installation_id),
   );
@@ -409,7 +410,7 @@ export default function DocoGitHubIntegration() {
             ) : null}
             {connections.length > 0 ? (
               <ul className="neu-surface divide-y divide-border rounded">
-                {connections.map((c) => (
+                {connectedRepos.map((c) => (
                   <li key={c.repo} className="flex items-center justify-between gap-2 px-3 py-2">
                     <span className="font-mono text-sm">{c.repo}</span>
                     {canManage ? (
