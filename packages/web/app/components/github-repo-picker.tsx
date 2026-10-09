@@ -131,7 +131,7 @@ export function RepositoryPicker({
                 GitHub didn&apos;t answer, so only the repositories Doco already knows are listed.
               </p>
             ) : null}
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
               <ScopeOption
                 name={`scope:${id}`}
                 value="all"
@@ -152,7 +152,7 @@ export function RepositoryPicker({
             {scope === "all" ? <input type="hidden" name="installation" value={id} /> : null}
             {scope === "select" ? (
               choice.selectableRepositories.length > 0 ? (
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2">
                   {choice.selectableRepositories.map((repo) => (
                     <RepositoryCheckbox
                       key={repo}
