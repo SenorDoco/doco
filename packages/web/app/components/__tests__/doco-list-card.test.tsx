@@ -79,9 +79,9 @@ describe("DocoListCard", () => {
               lastUpdatedAt: "2026-10-01T01:34:00.000Z",
             },
             {
-              id: "doco_bugs",
-              handle: "torre-github-bugs",
-              template: "github-bugs",
+              id: "doco_issues",
+              handle: "torre-github-issues",
+              template: "github-issues",
               items: 1,
               lastUpdatedAt: null,
             },
@@ -92,7 +92,7 @@ describe("DocoListCard", () => {
     );
     expect(html).toContain("(52,500 pull requests)");
     expect(html).toContain("(45,971 files)");
-    expect(html).toContain("(1 bug)");
+    expect(html).toContain("(1 issue)");
     expect(html).not.toContain("color:");
   });
 

@@ -34,7 +34,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
- *   /integrations/github           GitHub setup: workspace + what to bring (pull requests, bugs) + repos
+ *   /integrations/github           GitHub setup: workspace + what to bring (pull requests, issues, code) + repos
  *   /workspaces/<workspace-handle>             a workspace's home: its onboarding steps until they're done, then its Docos and activity
  *   /workspaces/<workspace-handle>/onboarding  the steps' one-click actions (POST) and where they stand (GET, polled)
  *   /workspaces/<workspace-handle>/agent       the agent instructions, connected to this workspace

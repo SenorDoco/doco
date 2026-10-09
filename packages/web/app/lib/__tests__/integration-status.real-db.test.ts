@@ -73,7 +73,7 @@ describe("loadIntegrationStatuses", () => {
       await db.exec(`
         INSERT INTO docos (id, handle, owner_id, workspace_id, data) VALUES
           ('doco_code', 'torre-codebase', 'workspace_1', 'workspace_1', '{"template_handle": "codebase"}'),
-          ('doco_bugs', 'torre-github-bugs', 'workspace_1', 'workspace_1', '{"template_handle": "github-bugs"}'),
+          ('doco_issues', 'torre-github-issues', 'workspace_1', 'workspace_1', '{"template_handle": "github-issues"}'),
           ('doco_chat', 'torre-chat', 'workspace_1', 'workspace_1', '{"template_handle": "slack"}'),
           ('doco_wiki', 'torre-wiki', 'workspace_1', 'workspace_1', '{"template_handle": "notion"}');
       `);
@@ -82,7 +82,7 @@ describe("loadIntegrationStatuses", () => {
     it("reports the source its template fills from as not connected", async () => {
       for (const [id, integration] of [
         ["doco_code", "github"],
-        ["doco_bugs", "github"],
+        ["doco_issues", "github"],
         ["doco_chat", "slack"],
         ["doco_wiki", "notion"],
       ]) {
@@ -249,16 +249,16 @@ describe("loadIntegrationStatuses", () => {
       ]);
     });
 
-    it("speaks of the bugs a GitHub bugs Doco brings, dated by the latest issue change", async () => {
+    it("speaks of the issues a GitHub issues Doco brings, dated by the latest issue change", async () => {
       await setGitHub({ connections: [{ repo: "acme/store", installation_id: 7 }] });
       await db.exec(`
-        UPDATE docos SET data = data || '{"template_handle": "github-bugs"}' WHERE id = 'doco_gh';
+        UPDATE docos SET data = data || '{"template_handle": "github-issues"}' WHERE id = 'doco_gh';
         INSERT INTO nodes (id, doco_id, node_type, locator, updated_at) VALUES
           ('eval_2', 'doco_gh', 'eval', 'https://github.com/acme/store/issues/9', '${minutesAgo(2)}');
       `);
       expect((await loadIntegrationStatuses(c, "doco_gh", NOW))[0]).toMatchObject({
-        item: "bug",
-        items: "bugs",
+        item: "issue",
+        items: "issues",
         latestAt: minutesAgo(2),
       });
     });

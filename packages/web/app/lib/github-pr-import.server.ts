@@ -126,7 +126,7 @@ export function pullRequestToReferenceDraft(
 
 /**
  * Find an existing node of `nodeType` in this Doco whose `locator` equals the
- * GitHub URL it was imported from (a PR's Reference, a bug's Eval) — the dedupe
+ * GitHub URL it was imported from (a PR's Reference, an issue's Eval) — the dedupe
  * key for idempotent import. Returns the oldest match's id (or null). Keyed on
  * the promoted `locator` column, kept an indexed lookup by `nodes_locator_idx`.
  */
@@ -177,7 +177,7 @@ export async function resolveAuthorUserIdByLogin(login: string): Promise<string 
 }
 
 /**
- * Outcome of syncing one GitHub item (a PR, a bug issue) into its node.
+ * Outcome of syncing one GitHub item (a PR, an issue) into its node.
  *   created   — a new node was captured.
  *   updated   — an existing node changed (lifecycle/prose moved).
  *   unchanged — the node already matched; nothing to do (NOT a failure —

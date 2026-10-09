@@ -1,9 +1,11 @@
 // /integrations/github — setting up GitHub for a workspace. It asks which
 // workspace and what to bring from GitHub (github-imports: pull requests,
-// bugs, codebase; all picked to start), brings each choice into the
+// issues, codebase; all picked to start), brings each choice into the
 // workspace's Doco for it (creating the ones it lacks, github-setup), then
-// has the person pick the repositories to bring them from. Every chosen Doco gets the same repositories, and each
-// imports what it brings.
+// has the person pick the repositories to bring them from. Every chosen Doco
+// gets the same repositories, and each imports what it brings, except issues:
+// they come only from the repositories that use GitHub issues, so their Doco
+// is created, if at all, once the repositories are picked (prepareImport).
 //
 // Steps, all on this URL:
 //   1. choose  → workspace + what to bring (POST intent=choose)
@@ -38,7 +40,12 @@ import {
   pickConnections,
 } from "~/lib/github-connection.server";
 import { GITHUB_IMPORTS, type GitHubImport } from "~/lib/github-imports";
-import { type ImportTarget, ensureImportDocos, listImportDocos } from "~/lib/github-setup.server";
+import {
+  type ImportTarget,
+  ensureImportDocos,
+  listImportDocos,
+  prepareImport,
+} from "~/lib/github-setup.server";
 import { getCurrentPrincipal } from "~/lib/session.server";
 import { listMyWorkspaces } from "~/lib/workspace-helpers.server";
 import { kickBackfillRun } from "./api.github.backfill-run";
@@ -86,8 +93,10 @@ export async function loader({ request }: { request: Request }) {
   const targets: ImportTarget[] = bring.flatMap((i) =>
     existing[i.id] ? [{ import: i, doco: existing[i.id] }] : [],
   );
+  // Every chosen Doco exists by now except, maybe, the issues one.
+  const missing = bring.some((i) => !existing[i.id] && !i.onlyFromReposUsingIssues);
 
-  if (!workspace || bring.length === 0 || targets.length < bring.length) {
+  if (!workspace || bring.length === 0 || missing) {
     return {
       step: "choose" as const,
       workspaceHandle: workspace?.handle ?? (workspaces.length === 1 ? workspaces[0].handle : null),
@@ -98,8 +107,13 @@ export async function loader({ request }: { request: Request }) {
   }
 
   // A repository (or an all-repositories org) counts as connected only when
-  // every chosen Doco already has it.
-  const contexts = await Promise.all(targets.map((t) => getDocoConnectionsContext(t.doco.id)));
+  // every chosen Doco already has it. An issues Doco holds only the
+  // repositories that use GitHub issues, so it counts only when it is all
+  // that's chosen.
+  const counted = targets.filter((t) => !t.import.onlyFromReposUsingIssues);
+  const contexts = await Promise.all(
+    (counted.length > 0 ? counted : targets).map((t) => getDocoConnectionsContext(t.doco.id)),
+  );
   const connectedRepos = inEvery(contexts.map((c) => (c?.connections ?? []).map((x) => x.repo)));
   const connectedInstallations = inEvery(
     contexts.map((c) => (c?.installations ?? []).map((x) => x.installation_id)),
@@ -151,8 +165,17 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   }
 
   if (intent === "choose") {
-    const targets = await ensureImportDocos({ workspace, imports: bring, userId: me.id });
-    if ((await installationChoicesFor(me.id)).length === 0) {
+    // The issues Doco waits for the repositories (connect, below). A GitHub
+    // App install lands on Docos, though: going through GitHub with only
+    // issues chosen creates it now, to carry the install.
+    const noInstall = (await installationChoicesFor(me.id)).length === 0;
+    const upFront = bring.filter((i) => !i.onlyFromReposUsingIssues);
+    const targets = await ensureImportDocos({
+      workspace,
+      imports: upFront.length === 0 && noInstall ? bring : upFront,
+      userId: me.id,
+    });
+    if (noInstall) {
       const installUrl = buildInstallUrl({
         userId: me.id,
         docoIds: targets.map((t) => t.doco.id),
@@ -164,22 +187,26 @@ export async function action({ request }: { request: Request }): Promise<ActionR
   }
 
   if (intent !== "connect") return { error: `Unknown action: ${intent}` };
-  const docos = bring.map((choice) => existing[choice.id]);
-  if (docos.some((doco) => !doco)) return { error: "Choose what to bring from GitHub again." };
   const picked = pickConnections(await installationChoicesFor(me.id), {
     repos: form.getAll("repo").map(String),
     installations: form.getAll("installation").map(String),
   });
   if ("error" in picked) return picked;
+  const targets = await prepareImport({ workspace, imports: bring, picked, userId: me.id });
   const origin = new URL(request.url).origin;
-  for (const doco of docos) {
-    if (await connectPicked(doco.id, picked)) waitUntil(kickBackfillRun(origin, doco.id));
+  for (const t of targets) {
+    if (await connectPicked(t.doco.id, t.picked)) waitUntil(kickBackfillRun(origin, t.doco.id));
   }
   const started = new URLSearchParams({
     github: "importing",
     count: String(picked.connections.length),
   });
   for (const org of picked.installations) started.append("org", org.account);
+  for (const t of targets) started.append("into", t.import.id);
+  if (bring.some((i) => i.onlyFromReposUsingIssues)) {
+    const issues = targets.find((t) => t.import.onlyFromReposUsingIssues);
+    started.set("issue_repos", String(issues?.picked.connections.length ?? 0));
+  }
   throw redirect(`${next}&${started}`);
 }
 
@@ -194,12 +221,17 @@ export default function GitHubSetup() {
   const outcome = searchParams.get("github");
 
   if (data.step === "repos" && outcome === "importing") {
+    const into = searchParams.getAll("into");
+    const issueRepos = searchParams.get("issue_repos");
     return (
       <GitHubImportStarted
         workspaceHandle={data.workspaceHandle}
         count={Number(searchParams.get("count") ?? 0)}
         orgs={searchParams.getAll("org")}
-        docos={data.targets.map((t) => ({ handle: t.doco.handle, items: t.import.items }))}
+        docos={data.targets
+          .filter((t) => into.includes(t.import.id))
+          .map((t) => ({ handle: t.doco.handle, items: t.import.items }))}
+        issueRepos={issueRepos === null ? null : Number(issueRepos)}
       />
     );
   }
@@ -357,16 +389,33 @@ function ReposStep({
         </CardHeader>
         <CardContent>
           <ul className="space-y-1.5">
-            {targets.map((t) => (
-              <li key={t.import.id} className="flex items-center gap-2 text-sm">
-                <DocoTypeIcon template={t.import.template} className="text-muted-foreground" />
-                <span className="font-semibold text-foreground">{t.import.label}</span>
-                <span className="text-muted-foreground">into</span>
-                <Link to={`/${t.doco.handle}`} className="font-mono">
-                  {t.doco.handle}
-                </Link>
-              </li>
-            ))}
+            {GITHUB_IMPORTS.filter((choice) => bring.includes(choice.id)).map((choice) => {
+              const doco = targets.find((t) => t.import.id === choice.id)?.doco;
+              return (
+                <li key={choice.id} className="flex flex-wrap items-center gap-x-2 text-sm">
+                  <DocoTypeIcon template={choice.template} className="text-muted-foreground" />
+                  <span className="font-semibold text-foreground">{choice.label}</span>
+                  <span className="text-muted-foreground">into</span>
+                  {doco ? (
+                    <Link to={`/${doco.handle}`} className="font-mono">
+                      {doco.handle}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      a new doco,{" "}
+                      <span className="font-mono text-foreground">
+                        {workspaceHandle}-{choice.id}
+                      </span>
+                    </span>
+                  )}
+                  {choice.onlyFromReposUsingIssues ? (
+                    <span className="text-muted-foreground">
+                      from the repositories that use GitHub issues
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </CardContent>
       </Card>

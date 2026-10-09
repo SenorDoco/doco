@@ -161,20 +161,20 @@ describe("/:docoHandle/integrations/github", () => {
       { installation_id: 42, account: "acme", repositories: [], connected_repositories: [] },
     ]);
     mocks.getDocoConnectionsContext.mockResolvedValue({
-      handle: "meta-github-bugs",
+      handle: "meta-github-issues",
       workspaceHandle: "meta",
-      template: "github-bugs",
+      template: "github-issues",
       connections: [],
       installations: [],
       backfill: null,
     });
 
     const data = await loader({
-      request: new Request("https://doco.test/meta-github-bugs/integrations/github"),
+      request: new Request("https://doco.test/meta-github-issues/integrations/github"),
       ...routeArgs,
     });
 
-    expect(data.brings).toMatchObject({ id: "github-bugs", items: "bugs" });
+    expect(data.brings).toMatchObject({ id: "github-issues", items: "issues" });
     expect(mocks.buildInstallUrl).toHaveBeenCalledWith({
       userId: "user_1",
       docoIds: ["doco_1"],
@@ -506,8 +506,8 @@ describe("resyncButton", () => {
       label: "Re-import all pull requests",
       disabled: false,
     });
-    expect(resyncButton({ status: "done" }, { items: "bugs" })).toEqual({
-      label: "Re-import all bugs",
+    expect(resyncButton({ status: "done" }, { items: "issues" })).toEqual({
+      label: "Re-import all issues",
       disabled: false,
     });
   });

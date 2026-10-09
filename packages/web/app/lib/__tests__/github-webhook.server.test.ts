@@ -101,13 +101,11 @@ describe("parseIssuesEvent", () => {
         html_url: "https://github.com/acme/store/issues/7",
         state: "closed",
         state_reason: "completed",
-        labels: [{ name: "bug" }],
-        type: { name: "Bug" },
         user: { login: "octocat" },
       },
     });
   });
-  it("keeps the pull-request marker so a PR is never taken for a bug", () => {
+  it("keeps the pull-request marker so a PR is never taken for an issue", () => {
     const pr = { ...payload, issue: { ...payload.issue, pull_request: { url: "x" } } };
     expect(parseIssuesEvent(pr)?.issue.pull_request).toBeTruthy();
   });

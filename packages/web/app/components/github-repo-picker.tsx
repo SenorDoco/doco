@@ -310,28 +310,55 @@ export function ActionNotice({ data }: { data: { error: string } | { message: st
  * redirect from the connect action): one clear message naming (and linking)
  * each Doco the import fills, and one Continue to the workspace, where its
  * setup takes the next step. Only an organization picked whole brings its
- * later repositories.
+ * later repositories. Issues come only from the repositories that use GitHub
+ * issues (`issueRepos` of them, when issues were chosen), so it says when
+ * that is fewer than were picked.
  */
 export function GitHubImportStarted({
   workspaceHandle,
   count,
   orgs,
   docos,
+  issueRepos,
 }: {
   workspaceHandle: string;
   count: number;
   orgs: string[];
   docos: Array<{ handle: string; items: string }>;
+  issueRepos: number | null;
 }) {
   const list = new Intl.ListFormat("en", { type: "conjunction" });
+  const repositories = `${count} ${count === 1 ? "repository" : "repositories"}`;
+  const continueLink = (
+    <Link to={`/workspaces/${workspaceHandle}`} className={`${PRIMARY_BTN} mt-2`}>
+      Continue
+    </Link>
+  );
+  if (docos.length === 0) {
+    return (
+      <NarrowPageMain className="py-16">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <h1 className="text-2xl font-semibold">Nothing to import</h1>
+          <p className="text-sm text-muted-foreground">
+            None of the {repositories} you picked use GitHub issues.
+          </p>
+          {continueLink}
+        </div>
+      </NarrowPageMain>
+    );
+  }
+  const issuesNote =
+    issueRepos === null || count === 0 || issueRepos >= count
+      ? null
+      : issueRepos === 0
+        ? " None of them use GitHub issues, so no issues come over."
+        : issueRepos === 1
+          ? " Only 1 of them uses GitHub issues, so issues come from that one."
+          : ` Only ${issueRepos} of them use GitHub issues, so issues come from those.`;
   return (
     <NarrowPageMain className="py-16">
       <div className="flex flex-col items-center gap-4 text-center">
-        <span
-          aria-hidden
-          className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
-        />
-        <h1 className="text-2xl font-semibold">Import started</h1>
+        <h1 className="text-2xl font-semibold">Import started in the background</h1>
         <p className="text-sm text-muted-foreground">
           Importing{" "}
           {docos.map((d, i) => (
@@ -349,15 +376,13 @@ export function GitHubImportStarted({
               from <span className="font-mono font-semibold tabular-nums">{count}</span>{" "}
               {count === 1 ? "repository" : "repositories"}
             </>
-          ) : null}{" "}
-          in the background. You can keep working; they&apos;ll appear as they sync.
+          ) : null}
+          .{issuesNote} You can keep working; they&apos;ll appear as they sync.
           {orgs.length > 0
             ? ` Repositories added to ${list.format(orgs)} later come in too.`
             : null}
         </p>
-        <Link to={`/workspaces/${workspaceHandle}`} className={`${PRIMARY_BTN} mt-2`}>
-          Continue
-        </Link>
+        {continueLink}
       </div>
     </NarrowPageMain>
   );

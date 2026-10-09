@@ -33,7 +33,7 @@ describe("ListPerspective when nothing shows", () => {
     expect(render([])).toContain("This Doco has no nodes yet.");
   });
 
-  // A GitHub bugs Doco whose bugs are all closed holds only retired nodes,
+  // A GitHub issues Doco whose issues are all closed holds only retired nodes,
   // which the Life cycle filter hides by default.
   it("says which Life cycle stages hide the nodes it has", () => {
     const html = render([closedBug("eval_1"), closedBug("eval_2")]);

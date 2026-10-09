@@ -4,7 +4,7 @@
 // the repo or subscribed to the whole installation. Events handled:
 //   - pull_request           → upsert the PR as a Reference in the pull requests Docos.
 //   - pull_request_review     → an approving review lifts an open PR to active.
-//   - issues                 → file, update or retire the bug in the GitHub bugs Docos.
+//   - issues                 → file, update or retire the issue in the GitHub issues Docos.
 //   - push (default branch)  → bring the changed files into the codebase Docos.
 //   - installation_repositories (added)   → connect the new repos and queue their import.
 //   - installation_repositories (removed) → detach those repos' connections.
@@ -22,7 +22,7 @@ import {
   restartSkippedImports,
   unsubscribeInstallationEverywhere,
 } from "~/lib/github-connection.server";
-import { syncBugIssue } from "~/lib/github-issue-import.server";
+import { syncIssue } from "~/lib/github-issue-import.server";
 import {
   type GitHubPullRequestFile,
   type GitHubSyncStatus,
@@ -228,8 +228,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   // An issue opened, edited, closed, reopened, (un)labeled, typed or deleted →
-  // re-sync it into every GitHub bugs Doco bringing bugs from the repo. Whether it
-  // is a bug is decided there, so a label added or removed files or retires it.
+  // re-sync it into every GitHub issues Doco bringing issues from the repo.
   if (event === "issues") {
     const evt = parseIssuesEvent(payload);
     if (!evt || evt.installationId == null) {
@@ -238,14 +237,14 @@ export async function action({ request }: { request: Request }) {
     const docos = await findDocoTargetsForGitHubRepo(
       evt.installationId,
       evt.repoFullName,
-      "github-bugs",
+      "github-issues",
     );
     console.info(
-      `[github webhook] issue ${evt.action} ${evt.repoFullName}#${evt.issue.number} (installation ${evt.installationId}) → ${docos.length} GitHub bugs Doco(s)`,
+      `[github webhook] issue ${evt.action} ${evt.repoFullName}#${evt.issue.number} (installation ${evt.installationId}) → ${docos.length} GitHub issues Doco(s)`,
     );
     const results: Array<{ doco: string; status: GitHubSyncStatus }> = [];
     for (const conn of docos) {
-      const res = await syncBugIssue(evt.issue, {
+      const res = await syncIssue(evt.issue, {
         docoDir: docoPath(conn.handle),
         docoId: conn.docoId,
         ownerSlug: conn.workspaceHandle,
@@ -254,7 +253,7 @@ export async function action({ request }: { request: Request }) {
       });
       if (res.status === "error") {
         console.error(
-          `[github webhook] bug sync failed for ${evt.issue.html_url} in ${conn.handle}: ${res.error}`,
+          `[github webhook] issue sync failed for ${evt.issue.html_url} in ${conn.handle}: ${res.error}`,
         );
       }
       results.push({ doco: conn.handle, status: res.status });

@@ -133,10 +133,10 @@ describe("IntegrationStatusCard", () => {
     );
   });
 
-  it("speaks of bugs for a GitHub bugs Doco", () => {
-    const bugs = { ...github, item: "bug", items: "bugs" };
-    expect(render(bugs)).toContain("Latest bug update 5m ago");
-    expect(render({ ...bugs, latestAt: null })).toContain("No bugs copied yet");
+  it("speaks of issues for a GitHub issues Doco", () => {
+    const issues = { ...github, item: "issue", items: "issues" };
+    expect(render(issues)).toContain("Latest issue update 5m ago");
+    expect(render({ ...issues, latestAt: null })).toContain("No issues copied yet");
   });
 
   it("shows Slack's newest message and how far back the history copy has got", () => {

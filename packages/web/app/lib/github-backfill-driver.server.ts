@@ -1,5 +1,5 @@
 // Resumable backfill driver. The setup callback can't import an org's whole
-// history (its pull requests, or its bug issues for a GitHub bugs Doco) in one shot — tens of thousands of PRs blow past Vercel's function
+// history (its pull requests, or its issues for a GitHub issues Doco) in one shot — tens of thousands of PRs blow past Vercel's function
 // timeout (this is the ~5000-PR wall hit in practice). So the import is driven
 // as a chain of time-budgeted SLICES: each slice walks the saved cursor
 // (queue of repos × GitHub page) for up to `budgetMs`, persists progress, and

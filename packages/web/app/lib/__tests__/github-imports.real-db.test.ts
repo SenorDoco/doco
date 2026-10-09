@@ -41,8 +41,8 @@ beforeEach(async () => {
       ('doco_prs2', 'acme-prs-2', 'workspace_acme', 'workspace_acme',
         '{"template_handle": "github-pull-requests"}'),
       ('doco_legacy', 'acme-legacy', 'workspace_acme', 'workspace_acme', '{}'),
-      ('doco_bugs', 'acme-github-bugs', 'workspace_acme', 'workspace_acme',
-        '{"template_handle": "github-bugs"}'),
+      ('doco_issues', 'acme-github-issues', 'workspace_acme', 'workspace_acme',
+        '{"template_handle": "github-issues"}'),
       ('doco_code', 'acme-codebase', 'workspace_acme', 'workspace_acme',
         '{"template_handle": "codebase"}'),
       ('doco_code2', 'acme-codebase-2', 'workspace_acme', 'workspace_acme',
@@ -53,20 +53,20 @@ beforeEach(async () => {
 const handles = (docos: Array<{ handle: string }>) => docos.map((d) => d.handle).sort();
 
 describe("one repo per thing brought", () => {
-  it("lets a repo feed a pull requests Doco and a GitHub bugs Doco at once", async () => {
+  it("lets a repo feed a pull requests Doco and a GitHub issues Doco at once", async () => {
     await addConnection("doco_prs", conn);
-    await addConnection("doco_bugs", conn);
+    await addConnection("doco_issues", conn);
     expect(await listConnections("doco_prs")).toEqual([conn]);
-    expect(await listConnections("doco_bugs")).toEqual([conn]);
+    expect(await listConnections("doco_issues")).toEqual([conn]);
   });
 
   it("still moves a repo between two Docos that bring the same thing", async () => {
     await addConnection("doco_prs", conn);
-    await addConnection("doco_bugs", conn);
+    await addConnection("doco_issues", conn);
     await addConnection("doco_prs2", conn);
     expect(await listConnections("doco_prs")).toEqual([]);
     expect(await listConnections("doco_prs2")).toEqual([conn]);
-    expect(await listConnections("doco_bugs")).toEqual([conn]);
+    expect(await listConnections("doco_issues")).toEqual([conn]);
   });
 
   it("counts a Doco of any other template as bringing pull requests", async () => {
@@ -78,11 +78,11 @@ describe("one repo per thing brought", () => {
   it("keeps an org subscription per thing brought too", async () => {
     const sub = { installation_id: 9, account: "acme" };
     await subscribeInstallation("doco_prs", sub);
-    await subscribeInstallation("doco_bugs", sub);
+    await subscribeInstallation("doco_issues", sub);
     await subscribeInstallation("doco_prs2", sub);
     expect(await listInstallations("doco_prs")).toEqual([]);
     expect(await listInstallations("doco_prs2")).toEqual([sub]);
-    expect(await listInstallations("doco_bugs")).toEqual([sub]);
+    expect(await listInstallations("doco_issues")).toEqual([sub]);
   });
 
   // Connecting GitHub in one workspace once emptied other workspaces' Docos of
@@ -127,22 +127,22 @@ describe("one repo per thing brought", () => {
 describe("routing repo events", () => {
   it("sends each event only to the Docos that bring its kind of item", async () => {
     await addConnection("doco_prs", conn);
-    await addConnection("doco_bugs", conn);
+    await addConnection("doco_issues", conn);
     expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "github-pull-requests"))).toEqual([
       "acme-pull-requests",
     ]);
-    expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "github-bugs"))).toEqual([
-      "acme-github-bugs",
+    expect(handles(await findDocoTargetsForGitHubRepo(9, REPO, "github-issues"))).toEqual([
+      "acme-github-issues",
     ]);
   });
 
   it("names what each org-subscribed Doco brings", async () => {
     const sub = { installation_id: 9, account: "acme" };
     await subscribeInstallation("doco_prs", sub);
-    await subscribeInstallation("doco_bugs", sub);
+    await subscribeInstallation("doco_issues", sub);
     const docos = await findDocoByInstallation(9);
     expect(docos.map((d) => [d.handle, d.template]).sort()).toEqual([
-      ["acme-github-bugs", "github-bugs"],
+      ["acme-github-issues", "github-issues"],
       ["acme-pull-requests", "github-pull-requests"],
     ]);
   });
@@ -232,12 +232,12 @@ describe("connecting repositories", () => {
   });
 
   it("connects each repository and queues its import", async () => {
-    await connectRepositories("doco_bugs", [
+    await connectRepositories("doco_issues", [
       { repo: "acme/app", installation_id: 9 },
       { repo: "zeta/web", installation_id: 7 },
     ]);
-    const ctx = await getDocoConnectionsContext("doco_bugs");
-    expect(ctx?.template).toBe("github-bugs");
+    const ctx = await getDocoConnectionsContext("doco_issues");
+    expect(ctx?.template).toBe("github-issues");
     expect(ctx?.connections.map((c) => [c.repo, c.installation_id])).toEqual([
       ["acme/app", 9],
       ["zeta/web", 7],
@@ -303,8 +303,8 @@ describe("once GitHub grants Doco more access", () => {
     await connectRepositories("doco_prs", [{ repo: "acme/app", installation_id: 9 }]);
     await setBackfillState("doco_prs", { status: "done", repos: 1 });
     // Connected through another installation.
-    await connectRepositories("doco_bugs", [{ repo: "zeta/web", installation_id: 7 }]);
-    await setBackfillState("doco_bugs", {
+    await connectRepositories("doco_issues", [{ repo: "zeta/web", installation_id: 7 }]);
+    await setBackfillState("doco_issues", {
       status: "done",
       repos: 1,
       skipped: 1,
@@ -318,7 +318,7 @@ describe("once GitHub grants Doco more access", () => {
       repo_index: 0,
     });
     expect((await getDocoConnectionsContext("doco_code"))?.backfill?.errors).toBeUndefined();
-    expect((await getDocoConnectionsContext("doco_bugs"))?.backfill?.status).toBe("done");
+    expect((await getDocoConnectionsContext("doco_issues"))?.backfill?.status).toBe("done");
   });
 });
 

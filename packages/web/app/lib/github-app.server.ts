@@ -514,6 +514,68 @@ export async function getBlobTexts(
 }
 
 /**
+ * The repositories, of `repos` ("owner/name"), that use GitHub issues: issues
+ * turned on and at least one issue, open or closed (GitHub turns issues on for
+ * every new repository, so that alone says nothing). One GraphQL request for
+ * all of them; a repository GitHub doesn't return (gone, or out of the
+ * installation's reach) doesn't. Each owner and name is a variable, never
+ * interpolated into the query.
+ */
+export async function reposUsingIssues(
+  token: string,
+  repos: string[],
+  fetchImpl?: typeof fetch,
+): Promise<Set<string>> {
+  const using = new Set<string>();
+  if (repos.length === 0) return using;
+  const variables: Record<string, string> = {};
+  repos.forEach((repo, i) => {
+    const [owner, name] = repo.split("/");
+    variables[`o${i}`] = owner;
+    variables[`n${i}`] = name;
+  });
+  const params = repos.map((_, i) => `$o${i}: String!, $n${i}: String!`).join(", ");
+  const fields = repos
+    .map(
+      (_, i) =>
+        `r${i}: repository(owner: $o${i}, name: $n${i}) { hasIssuesEnabled issues { totalCount } }`,
+    )
+    .join(" ");
+  const res = await (fetchImpl ?? fetch)(`${GITHUB_API}/graphql`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query: `query(${params}) { ${fields} }`, variables }),
+  });
+  if (!res.ok) throw await githubErrorFromResponse("GitHub GraphQL issues", res);
+  const body = (await res.json()) as {
+    data?: Record<
+      string,
+      { hasIssuesEnabled?: boolean; issues?: { totalCount?: number } } | null
+    > | null;
+    errors?: Array<{ type?: string; message?: string }>;
+  };
+  const data = body.data;
+  if (!data) {
+    const rateLimited = (body.errors ?? []).some((e) => e.type === "RATE_LIMITED");
+    throw new GitHubApiError({
+      message: `GitHub GraphQL issues failed: ${body.errors?.[0]?.message ?? "no data"}`,
+      status: 200,
+      rateLimited,
+      permanent: false,
+      retryAfterMs: rateLimited ? retryAfterMsFromHeaders(res.headers, Date.now()) : null,
+    });
+  }
+  repos.forEach((repo, i) => {
+    const found = data[`r${i}`];
+    if (found?.hasIssuesEnabled && (found.issues?.totalCount ?? 0) > 0) using.add(repo);
+  });
+  return using;
+}
+
+/**
  * List changed files for one pull request. GitHub includes a unified `patch`
  * for text files; binary/large files may omit it, and those simply don't
  * participate in line-level Doco linking.

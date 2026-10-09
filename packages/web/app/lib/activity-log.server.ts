@@ -27,12 +27,12 @@ import { IMPORT, agentName, mechanismMetadataSql } from "./authoring-provenance"
 import { findIntegration } from "./integrations-catalog";
 
 /** Every table an integration fills, as `i`: from GitHub the files of a
- *  codebase and the pull requests and bug issues it keeps (a pull request's
- *  Reference, a bug's Eval), from Slack the messages of the channels it copies,
+ *  codebase and the pull requests and issues it keeps (a pull request's
+ *  Reference, an issue's Eval), from Slack the messages of the channels it copies,
  *  from Notion the pages fetched so far. `at` is when an item happened in the
  *  source where the source says (a message posted, a page last edited; null
  *  when Notion gave no time), else when Doco last wrote it (a code file, a pull
- *  request or bug). Each has an index on (doco_id, at) in schema.sql, with
+ *  request or issue). Each has an index on (doco_id, at) in schema.sql, with
  *  `where` as the predicate of a partial one. */
 const IMPORT_SOURCES = [
   { integration: "github", table: "code_files", at: "synced_at", where: "true" },

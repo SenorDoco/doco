@@ -1,7 +1,7 @@
 import { backfillRepoCodebase } from "./codebase-sync.server";
 // Backfill: import a connected repo's existing items into the Doco — its pull
-// requests as References, for a GitHub bugs Doco its bug issues as bugs, or for a
-// codebase Doco its files (codebase-sync). Mints
+// requests as References, for a GitHub issues Doco its issues as Evals, or for
+// a codebase Doco its files (codebase-sync). Mints
 // an installation token, pages the repo's listing (github-app), and syncs each
 // item. Idempotent — safe to re-run, and safe to overlap with live webhook
 // deliveries, because every sync is keyed on the item's URL.
@@ -20,7 +20,7 @@ import {
   mintInstallationToken,
 } from "./github-app.server";
 import { githubImportFor } from "./github-imports";
-import { type GitHubIssue, isBugIssue, syncBugIssue } from "./github-issue-import.server";
+import { type GitHubIssue, syncIssue } from "./github-issue-import.server";
 import {
   type GitHubPullRequest,
   hasBusinessProcessCodeReferences,
@@ -126,7 +126,7 @@ export async function backfillRepoPullRequests(
   };
 }
 
-export interface BugBackfillDeps {
+export interface IssueBackfillDeps {
   mintToken: typeof mintInstallationToken;
   listIssues: (
     token: string,
@@ -134,21 +134,22 @@ export interface BugBackfillDeps {
     repo: string,
     opts?: RepoPageOpts,
   ) => Promise<RepoPage<GitHubIssue>>;
-  sync: typeof syncBugIssue;
+  sync: typeof syncIssue;
 }
 
 /**
- * Import one window of a repo's issues into a GitHub bugs Doco: each bug issue is
- * filed as a bug (github-issue-import), every other issue and pull request is
- * passed over. Same cursor contract as `backfillRepoPullRequests`.
+ * Import one window of a repo's issues into a GitHub issues Doco: each issue
+ * is filed as an Eval (github-issue-import); the pull requests GitHub lists
+ * among them are passed over. Same cursor contract as
+ * `backfillRepoPullRequests`.
  */
-export async function backfillRepoBugs(
+export async function backfillRepoIssues(
   opts: BackfillOpts,
-  deps?: Partial<BugBackfillDeps>,
+  deps?: Partial<IssueBackfillDeps>,
 ): Promise<BackfillResult> {
   const mintToken = deps?.mintToken ?? mintInstallationToken;
   const listIssues = deps?.listIssues ?? listRepoIssues;
-  const sync = deps?.sync ?? syncBugIssue;
+  const sync = deps?.sync ?? syncIssue;
 
   const startPage = opts.startPage ?? 1;
   const pagesPerBatch = opts.pagesPerBatch ?? 5;
@@ -158,9 +159,9 @@ export async function backfillRepoBugs(
     startPage,
     maxPages: pagesPerBatch,
   });
-  const bugs = items.filter(isBugIssue);
+  const issues = items.filter((item) => !item.pull_request);
   const tally = { created: 0, updated: 0, unchanged: 0, failed: 0 };
-  for (const issue of bugs) {
+  for (const issue of issues) {
     const res = await sync(issue, {
       docoDir: opts.docoDir,
       docoId: opts.docoId,
@@ -173,7 +174,7 @@ export async function backfillRepoBugs(
     else tally.failed++;
   }
   return {
-    total: bugs.length,
+    total: issues.length,
     ...tally,
     nextPage: hasMore ? startPage + pagesPerBatch : null,
   };
@@ -184,13 +185,13 @@ export type RepoBackfill = (opts: BackfillOpts) => Promise<BackfillResult>;
 
 const REPO_BACKFILLS: Record<string, RepoBackfill> = {
   "github-pull-requests": backfillRepoPullRequests,
-  "github-bugs": backfillRepoBugs,
+  "github-issues": backfillRepoIssues,
   codebase: backfillRepoCodebase,
 };
 
 /** The repo walker for what a Doco created from `template` brings from GitHub
- *  (github-imports): bugs for a GitHub bugs Doco, files for a codebase Doco, pull
- *  requests for any other Doco. */
+ *  (github-imports): issues for a GitHub issues Doco, files for a codebase
+ *  Doco, pull requests for any other Doco. */
 export function repoBackfillFor(template: string | null): RepoBackfill {
   return REPO_BACKFILLS[githubImportFor(template).template] ?? backfillRepoPullRequests;
 }

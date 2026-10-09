@@ -196,7 +196,7 @@ async function writeConnections(docoId: string, conns: GitHubConnection[]): Prom
  * Enforce one repo, one Doco per thing brought in a workspace: remove `repo`
  * from the connections of every OTHER Doco in `keepDocoId`'s workspace that
  * brings what it brings, so a repo's pull requests land in one of the
- * workspace's Docos and its bugs in one GitHub bugs Doco. Another workspace's
+ * workspace's Docos and its issues in one GitHub issues Doco. Another workspace's
  * Docos keep theirs: each workspace brings what it picked. Idempotent; the
  * indexed `@>` predicate touches only the Docos that actually hold the repo.
  */

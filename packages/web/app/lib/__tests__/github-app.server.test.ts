@@ -14,6 +14,7 @@ import {
   listUserInstallationIds,
   mintInstallationToken,
   normalizePem,
+  reposUsingIssues,
   retryAfterMsFromHeaders,
 } from "../github-app.server";
 
@@ -475,5 +476,60 @@ describe("getBlobTexts", () => {
     await expect(
       getBlobTexts("ghs_x", "acme", "app", [SHA_A], fetchImpl as unknown as typeof fetch),
     ).rejects.toMatchObject({ rateLimited: true });
+  });
+});
+
+describe("reposUsingIssues", () => {
+  it("asks GitHub about many repositories in one GraphQL request", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      json({
+        data: {
+          r0: { hasIssuesEnabled: true, issues: { totalCount: 12 } },
+          r1: { hasIssuesEnabled: true, issues: { totalCount: 0 } },
+          r2: { hasIssuesEnabled: false, issues: { totalCount: 3 } },
+          r3: null,
+        },
+        errors: [{ type: "NOT_FOUND", message: "Could not resolve to a Repository" }],
+      }),
+    );
+    const using = await reposUsingIssues(
+      "ghs_x",
+      ["acme/app", "acme/empty", "acme/off", "acme/gone"],
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(using).toEqual(new Set(["acme/app"]));
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0] ?? [];
+    expect(url).toBe("https://api.github.com/graphql");
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body.variables).toEqual({
+      o0: "acme",
+      n0: "app",
+      o1: "acme",
+      n1: "empty",
+      o2: "acme",
+      n2: "off",
+      o3: "acme",
+      n3: "gone",
+    });
+    expect(body.query).toContain("r0: repository(owner: $o0, name: $n0)");
+  });
+
+  it("asks nothing for no repositories", async () => {
+    const fetchImpl = vi.fn();
+    expect(await reposUsingIssues("ghs_x", [], fetchImpl as unknown as typeof fetch)).toEqual(
+      new Set(),
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("raises a failed request, and an answer with no data", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(json({ message: "Bad credentials" }, 401))
+      .mockResolvedValueOnce(json({ errors: [{ type: "RATE_LIMITED", message: "slow down" }] }));
+    const ask = () => reposUsingIssues("ghs_x", ["acme/app"], fetchImpl as unknown as typeof fetch);
+    await expect(ask()).rejects.toMatchObject({ status: 401 });
+    await expect(ask()).rejects.toMatchObject({ rateLimited: true });
   });
 });

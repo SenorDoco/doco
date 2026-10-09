@@ -37,7 +37,7 @@ export const INTEGRATION_CATALOG: readonly IntegrationDefinition[] = [
     id: "github",
     name: "GitHub",
     description:
-      "Bring pull requests, bugs and code from GitHub repositories into a workspace, each into its own doco.",
+      "Bring pull requests, issues and code from GitHub repositories into a workspace, each into its own doco.",
     scope: "doco",
     setupPath: "/integrations/github",
   },

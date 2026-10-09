@@ -6,7 +6,7 @@ vi.mock("@doco/db", () => ({ withClient: vi.fn() }));
 
 import { backfillRepoCodebase } from "../codebase-sync.server";
 import {
-  backfillRepoBugs,
+  backfillRepoIssues,
   backfillRepoPullRequests,
   repoBackfillFor,
 } from "../github-backfill.server";
@@ -160,47 +160,42 @@ describe("backfillRepoPullRequests", () => {
   });
 });
 
-describe("backfillRepoBugs", () => {
-  const issue = (n: number, labels: string[], extra: Record<string, unknown> = {}) => ({
+describe("backfillRepoIssues", () => {
+  const issue = (n: number, extra: Record<string, unknown> = {}) => ({
     number: n,
     title: `Issue ${n}`,
     html_url: `https://github.com/acme/store/issues/${n}`,
     state: "open" as const,
-    labels: labels.map((name) => ({ name })),
     ...extra,
   });
 
-  it("files only the bug issues from a window of the repo's issues", async () => {
+  it("files every issue from a window of the repo's issues, passing over pull requests", async () => {
     const mintToken = vi.fn(async () => ({ token: "t", expires_at: "" }));
     const listIssues = vi.fn(async () => ({
-      items: [
-        issue(1, ["bug"]),
-        issue(2, ["enhancement"]),
-        issue(3, ["bug"], { pull_request: {} }),
-        issue(4, ["type: bug"]),
-      ],
+      items: [issue(1), issue(2), issue(3, { pull_request: {} }), issue(4)],
       hasMore: true,
     }));
     const sync = vi
       .fn()
       .mockResolvedValueOnce({ status: "created", id: "eval_1" })
+      .mockResolvedValueOnce({ status: "updated", id: "eval_2" })
       .mockResolvedValueOnce({ status: "unchanged", id: "eval_4" });
 
-    const res = await backfillRepoBugs(
+    const res = await backfillRepoIssues(
       { ...opts, startPage: 6 },
       { mintToken: mintToken as never, listIssues: listIssues as never, sync: sync as never },
     );
 
     expect(listIssues).toHaveBeenCalledWith("t", "acme", "store", { startPage: 6, maxPages: 5 });
-    expect(sync.mock.calls.map(([i]) => i.number)).toEqual([1, 4]);
+    expect(sync.mock.calls.map(([i]) => i.number)).toEqual([1, 2, 4]);
     expect(sync).toHaveBeenCalledWith(
       expect.objectContaining({ number: 1 }),
       expect.objectContaining({ docoId: "doco_1", docoSlug: "d" }),
     );
     expect(res).toEqual({
-      total: 2,
+      total: 3,
       created: 1,
-      updated: 0,
+      updated: 1,
       unchanged: 1,
       failed: 0,
       nextPage: 11,
@@ -209,8 +204,8 @@ describe("backfillRepoBugs", () => {
 });
 
 describe("repoBackfillFor", () => {
-  it("walks bugs for a GitHub bugs Doco, files for a codebase and pull requests for any other Doco", () => {
-    expect(repoBackfillFor("github-bugs")).toBe(backfillRepoBugs);
+  it("walks issues for a GitHub issues Doco, files for a codebase and pull requests for any other Doco", () => {
+    expect(repoBackfillFor("github-issues")).toBe(backfillRepoIssues);
     expect(repoBackfillFor("codebase")).toBe(backfillRepoCodebase);
     expect(repoBackfillFor("github-pull-requests")).toBe(backfillRepoPullRequests);
     expect(repoBackfillFor(null)).toBe(backfillRepoPullRequests);
