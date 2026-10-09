@@ -40,13 +40,13 @@ export function addableInstallationChoices(
   return choices.filter((choice) => !choice.isInstallationConnected);
 }
 
-/** The checkbox that picks an organization as a whole. A "selected"
+/** What "For all repositories" brings from an organization. A "selected"
  *  installation sees only the repositories chosen for Doco in GitHub. */
-function wholeAccountLabel(choice: GitHubInstallationChoice): string {
-  const count = choice.repositories.length > 0 ? ` (${choice.repositories.length})` : "";
+function allRepositoriesHint(choice: GitHubInstallationChoice): string {
+  const count = choice.repositories.length > 0 ? ` ${choice.repositories.length}` : "";
   return choice.repository_selection === "all"
-    ? `Every repository in ${choice.account}${count}, including ones added later`
-    : `Every repository Doco can see in ${choice.account}${count}, including ones you give it later`;
+    ? `All${count}, including ones added later`
+    : `All${count} Doco can see, including ones you give it later`;
 }
 
 /** What the connect button says for what is picked. Pure. */
@@ -60,12 +60,18 @@ export function connectLabel(repos: number, wholeAccounts: string[]): string {
     : `Connect ${new Intl.ListFormat("en", { type: "conjunction" }).format(parts)}`;
 }
 
+/** How an organization is brought: whole ("all", which also brings the
+ *  repositories added to it later) or by the repositories ticked under it. */
+type Scope = "all" | "select";
+
 /**
- * Every repository the user can connect, grouped by GitHub organization, in
- * one form with one button: it posts `intent=connect` with the picked `repo`s
- * and the `installation` of each organization picked as a whole (one click for
- * an organization of a hundred repositories). `fields` ride along as hidden
- * inputs, and `aside` sits next to the button (a way to skip the step, say).
+ * Every organization the user can connect, each with two options: For all
+ * repositories (one click for an organization of a hundred repositories) or
+ * Select repositories, which lists its repositories to tick. One form, one
+ * button: it posts `intent=connect` with the ticked `repo`s and the
+ * `installation` of each organization brought whole. An organization with
+ * neither option chosen brings nothing. `fields` ride along as hidden inputs,
+ * and `aside` sits next to the button (a way to skip the step, say).
  */
 export function RepositoryPicker({
   choices,
@@ -78,11 +84,17 @@ export function RepositoryPicker({
   fields?: Array<[name: string, value: string]>;
   aside?: ReactNode;
 }) {
-  const [picked, setPicked] = useState({
-    repos: 0,
-    installations: [] as string[],
-    accounts: [] as string[],
-  });
+  const [scopes, setScopes] = useState<Record<number, Scope>>({});
+  // Kept while an organization is switched to For all repositories, so
+  // switching back finds them ticked; only a listed repository is posted.
+  const [ticked, setTicked] = useState<string[]>([]);
+  const pickedRepos = choices
+    .filter((choice) => scopes[choice.installation_id] === "select")
+    .flatMap((choice) => choice.selectableRepositories)
+    .filter((repo) => ticked.includes(repo)).length;
+  const wholeAccounts = choices
+    .filter((choice) => scopes[choice.installation_id] === "all")
+    .map((choice) => choice.account);
   const grantMore = installUrl ? (
     <a href={installUrl} className="inline-flex items-center gap-1 font-semibold text-primary">
       Give Doco access to it in GitHub
@@ -100,61 +112,71 @@ export function RepositoryPicker({
   }
 
   return (
-    <Form
-      method="post"
-      className="space-y-4"
-      onChange={(event) => {
-        const form = event.currentTarget;
-        const whole = [
-          ...form.querySelectorAll<HTMLInputElement>('input[name="installation"]:checked'),
-        ];
-        const installations = whole.map((input) => input.value);
-        setPicked({
-          // An organization picked as a whole hides its repositories.
-          repos: [...form.querySelectorAll<HTMLInputElement>('input[name="repo"]:checked')].filter(
-            (input) => !installations.includes(input.dataset.installation ?? ""),
-          ).length,
-          installations,
-          accounts: whole.map((input) => input.dataset.account ?? ""),
-        });
-      }}
-    >
+    <Form method="post" className="space-y-4">
       <input type="hidden" name="intent" value="connect" />
       {fields.map(([name, value]) => (
         <input key={`${name}=${value}`} type="hidden" name={name} value={value} />
       ))}
-      {choices.map((choice) => (
-        <fieldset key={choice.installation_id} className="space-y-2">
-          <legend className="font-mono text-sm font-semibold text-foreground">
-            {choice.account}
-          </legend>
-          {choice.repositories_unavailable ? (
-            <p className="text-[11px] text-muted-foreground">
-              GitHub didn&apos;t answer, so only the repositories Doco already knows are listed.
-            </p>
-          ) : null}
-          <RepositoryCheckbox
-            name="installation"
-            value={String(choice.installation_id)}
-            account={choice.account}
-            label={wholeAccountLabel(choice)}
-          />
-          {choice.selectableRepositories.length > 0 &&
-          !picked.installations.includes(String(choice.installation_id)) ? (
+      {choices.map((choice) => {
+        const id = choice.installation_id;
+        const scope = scopes[id];
+        const choose = (next: Scope) => setScopes((current) => ({ ...current, [id]: next }));
+        return (
+          <fieldset key={id} className="space-y-2">
+            <legend className="font-mono text-sm font-semibold text-foreground">
+              {choice.account}
+            </legend>
+            {choice.repositories_unavailable ? (
+              <p className="text-[11px] text-muted-foreground">
+                GitHub didn&apos;t answer, so only the repositories Doco already knows are listed.
+              </p>
+            ) : null}
             <div className="grid gap-2 sm:grid-cols-2">
-              {choice.selectableRepositories.map((repo) => (
-                <RepositoryCheckbox
-                  key={repo}
-                  name="repo"
-                  value={repo}
-                  label={repo}
-                  installation={String(choice.installation_id)}
-                />
-              ))}
+              <ScopeOption
+                name={`scope:${id}`}
+                value="all"
+                checked={scope === "all"}
+                onChoose={() => choose("all")}
+                label="For all repositories"
+                hint={allRepositoriesHint(choice)}
+              />
+              <ScopeOption
+                name={`scope:${id}`}
+                value="select"
+                checked={scope === "select"}
+                onChoose={() => choose("select")}
+                label="Select repositories"
+                hint="Only the ones you pick"
+              />
             </div>
-          ) : null}
-        </fieldset>
-      ))}
+            {scope === "all" ? <input type="hidden" name="installation" value={id} /> : null}
+            {scope === "select" ? (
+              choice.selectableRepositories.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {choice.selectableRepositories.map((repo) => (
+                    <RepositoryCheckbox
+                      key={repo}
+                      repo={repo}
+                      checked={ticked.includes(repo)}
+                      onToggle={() =>
+                        setTicked((current) =>
+                          current.includes(repo)
+                            ? current.filter((r) => r !== repo)
+                            : [...current, repo],
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Every repository here is already connected.
+                </p>
+              )
+            ) : null}
+          </fieldset>
+        );
+      })}
       {grantMore ? (
         <p className="text-xs text-muted-foreground">Don&apos;t see a repository? {grantMore}</p>
       ) : null}
@@ -162,9 +184,9 @@ export function RepositoryPicker({
         <button
           type="submit"
           className={PRIMARY_BTN}
-          disabled={picked.repos + picked.accounts.length === 0}
+          disabled={pickedRepos + wholeAccounts.length === 0}
         >
-          {connectLabel(picked.repos, picked.accounts)}
+          {connectLabel(pickedRepos, wholeAccounts)}
         </button>
         {aside}
       </div>
@@ -172,34 +194,63 @@ export function RepositoryPicker({
   );
 }
 
-function RepositoryCheckbox({
+/** One of an organization's two options, a key that sits pressed once chosen. */
+function ScopeOption({
   name,
   value,
+  checked,
+  onChoose,
   label,
-  account,
-  installation,
+  hint,
 }: {
   name: string;
-  value: string;
+  value: Scope;
+  checked: boolean;
+  onChoose: () => void;
   label: string;
-  account?: string;
-  installation?: string;
+  hint: string;
+}) {
+  return (
+    <label
+      className={`neu-button${checked ? " neu-pressed" : ""} flex min-w-0 cursor-pointer items-start gap-2 rounded-md px-3 py-2 text-sm`}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={onChoose}
+        className="mt-1 h-3.5 w-3.5 shrink-0 accent-primary"
+      />
+      <span className="min-w-0">
+        <span className="block font-semibold">{label}</span>
+        <span className="block text-xs text-muted-foreground">{hint}</span>
+      </span>
+    </label>
+  );
+}
+
+function RepositoryCheckbox({
+  repo,
+  checked,
+  onToggle,
+}: {
+  repo: string;
+  checked: boolean;
+  onToggle: () => void;
 }) {
   return (
     <label className="neu-button flex min-w-0 cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs">
       <input
         type="checkbox"
-        name={name}
-        value={value}
-        data-account={account}
-        data-installation={installation}
+        name="repo"
+        value={repo}
+        checked={checked}
+        onChange={onToggle}
         className="h-3.5 w-3.5 shrink-0 accent-primary"
       />
-      <span
-        className={name === "repo" ? "min-w-0 flex-1 truncate font-mono" : "min-w-0 flex-1"}
-        title={label}
-      >
-        {label}
+      <span className="min-w-0 flex-1 truncate font-mono" title={repo}>
+        {repo}
       </span>
     </label>
   );
