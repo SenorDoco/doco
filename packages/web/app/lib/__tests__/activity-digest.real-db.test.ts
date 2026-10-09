@@ -2,8 +2,9 @@
 // email gets it daily, or on Mondays if they switched it to weekly, unless
 // they unsubscribed (the email's links do both in one click, without signing
 // in), it is their personal workspace, or nothing happened; two runs at the
-// same hour send it once. PGlite backs every query; only the email provider is
-// stubbed.
+// same hour send it once. Each opens with the top three records added in its
+// period that the member may read. PGlite backs every query; only the email
+// provider and the model are stubbed.
 import { randomBytes } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ import type { Email } from "../email.server";
 const dbm = vi.hoisted(() => ({
   db: null as unknown as InstanceType<typeof PGlite>,
   sent: [] as Email[],
+  asked: 0,
 }));
 
 vi.mock("@doco/db", async (importOriginal) => ({
@@ -34,6 +36,27 @@ vi.mock("~/lib/email.server", async (importOriginal) => ({
   },
 }));
 
+vi.mock("~/lib/assistant-runtime.server", () => ({
+  getSenorDocoAnthropicApiKey: () => "sk-test",
+  createSenorDocoMessage: async () => {
+    dbm.asked += 1;
+    return {
+      stop_reason: "end_turn",
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            items: [
+              { id: "idea_secret", takeaway: "Price by seat." },
+              { id: "idea_notes", takeaway: "Each Doco could get its own digest." },
+            ],
+          }),
+        },
+      ],
+    };
+  },
+}));
+
 import { action, loader } from "~/routes/digest.$setting";
 import { digestToken, readDigestToken, sendActivityDigests } from "../activity-digest.server";
 
@@ -46,6 +69,7 @@ const BASE = "https://doco.test";
 beforeEach(async () => {
   vi.stubEnv("DOCO_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
   dbm.sent = [];
+  dbm.asked = 0;
   dbm.db = await freshDb();
   await dbm.db.exec(`
     INSERT INTO users (id, github_login, email, data, deactivated_at) VALUES
@@ -101,6 +125,39 @@ describe("sendActivityDigests", () => {
       userId: "user_ana",
     });
     expect(ana.text).toContain(`Switch to weekly: ${BASE}/digest/weekly?t=`);
+  });
+
+  it("opens with the top three added that day that each member may read", async () => {
+    await dbm.db.exec(`
+      -- A private Doco of ana's own in acme, which bo may not read.
+      INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data) VALUES
+        ('doco_secret', 'acme-secret', 'user_ana', 'workspace_acme', 'private', '{}');
+      INSERT INTO nodes (id, doco_id, node_type, prose, created_at) VALUES
+        ('rule_notes', 'doco_notes', 'rule', 'Ship every task to main.', '2026-09-10T08:00:00Z'),
+        ('idea_notes', 'doco_notes', 'idea', 'A digest for each Doco.', '2026-09-10T09:00:00Z'),
+        ('idea_secret', 'doco_secret', 'idea', 'Seat pricing.', '2026-09-10T09:00:00Z'),
+        ('decision_notes', 'doco_notes', 'decision', 'The digest is daily.', '2026-09-10T10:00:00Z');
+    `);
+    await sendActivityDigests(dbm.db, AT, BASE);
+    // One ranking for the workspace's daily digest, whoever gets it.
+    expect(dbm.asked).toBe(1);
+    const [ana, bo] = dbm.sent;
+    expect(ana.text).toContain(
+      [
+        "Top three added in the last 24 hours",
+        `- Price by seat. (acme-secret: ${BASE}/acme-secret/idea/idea_secret)`,
+        `- Each Doco could get its own digest. (acme-notes: ${BASE}/acme-notes/idea/idea_notes)`,
+        `- Ship every task to main. (acme-notes: ${BASE}/acme-notes/rule/rule_notes)\n\n`,
+      ].join("\n"),
+    );
+    expect(bo.text).toContain(
+      [
+        "Top three added in the last 24 hours",
+        `- Each Doco could get its own digest. (acme-notes: ${BASE}/acme-notes/idea/idea_notes)`,
+        `- Ship every task to main. (acme-notes: ${BASE}/acme-notes/rule/rule_notes)`,
+        `- The digest is daily. (acme-notes: ${BASE}/acme-notes/decision/decision_notes)\n\n`,
+      ].join("\n"),
+    );
   });
 
   it("sends each digest once, however many times it runs that hour", async () => {

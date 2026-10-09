@@ -1,6 +1,7 @@
 // The activity digest's schedule and message: every day (the previous 24
 // hours) unless the member switched it to weekly (every Monday, the previous 7
-// days), with queries, writes and imports and who and what made the most of
+// days), opening with the top three records added in it, then queries, writes
+// and imports and who and what made the most of
 // each, a button that switches between daily and weekly, and a one-click
 // unsubscribe.
 import { describe, expect, it } from "vitest";
@@ -50,8 +51,56 @@ describe("digestEmail", () => {
     baseUrl: "https://doco.test",
     workspaceHandle: "acme",
     summary,
+    top: [],
     token: "tok",
   };
+  const top = [
+    {
+      id: "rule_1",
+      docoId: "doco_notes",
+      docoHandle: "acme-notes",
+      takeaway: "Every task ships to main.",
+      url: "https://doco.test/acme-notes/rule/rule_1",
+    },
+    {
+      id: "decision_1",
+      docoId: "doco_notes",
+      docoHandle: "acme-notes",
+      takeaway: "The digest comes <daily>.",
+      url: "https://doco.test/acme-notes/decision/decision_1",
+    },
+  ];
+
+  it("opens with the top three added in the period, each with its Doco and a link", () => {
+    const email = digestEmail({ ...base, setting: "daily", top });
+    expect(
+      email.text.startsWith(
+        [
+          "Top three added in the last 24 hours",
+          "- Every task ships to main. (acme-notes: https://doco.test/acme-notes/rule/rule_1)",
+          "- The digest comes <daily>. (acme-notes: https://doco.test/acme-notes/decision/decision_1)",
+          "",
+          "Here's what happened in acme in the last 24 hours.",
+        ].join("\n"),
+      ),
+    ).toBe(true);
+    const html = email.html ?? "";
+    expect(html.indexOf("Top three added in the last 24 hours")).toBeLessThan(
+      html.indexOf("Here's what happened"),
+    );
+    expect(email.html).toContain(
+      '<li>The digest comes &lt;daily&gt;. (<a href="https://doco.test/acme-notes/decision/decision_1" style="color:#9c44a5">acme-notes</a>)</li>',
+    );
+    expect(digestEmail({ ...base, setting: "weekly", top }).text).toContain(
+      "Top three added in the last 7 days\n",
+    );
+  });
+
+  it("leaves the top three out when nothing was added", () => {
+    const email = digestEmail({ ...base, setting: "daily" });
+    expect(email.text.startsWith("Here's what happened in acme in the last 24 hours.")).toBe(true);
+    expect(email.html).not.toContain("Top three");
+  });
 
   it("gives the last 24 hours' totals and tops, queries first", () => {
     const email = digestEmail({ ...base, setting: "daily" });
