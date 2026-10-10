@@ -1,6 +1,6 @@
-// What the activity digest's links show: how often the person now gets a
-// workspace's digest, and the one click that changes it. No sign-in needed:
-// the link's token names them.
+// What the links in a workspace's newspaper, The <Workspace> Times, show: how
+// often the person now gets it, and the one click that changes it. No sign-in
+// needed: the link's token names them.
 
 import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/card";
@@ -8,7 +8,7 @@ import { NarrowPageMain } from "~/components/page-main";
 import type { DigestSetting } from "~/lib/activity-digest";
 
 export type DigestSubscriptionView =
-  | { state: DigestSetting; workspaceHandle: string; token: string }
+  | { state: DigestSetting; workspaceHandle: string; title: string; token: string }
   /** No longer a member of the workspace. */
   | { state: "gone" }
   /** The link's token was cut short or tampered with. */
@@ -42,10 +42,10 @@ const TITLES: Record<DigestSubscriptionView["state"], string> = {
 
 function Body({ view }: { view: DigestSubscriptionView }) {
   if (view.state === "invalid") {
-    return <p>The link is incomplete. Open it again from the digest email.</p>;
+    return <p>The link is incomplete. Open it again from the email.</p>;
   }
   if (view.state === "gone") {
-    return <p>You left this workspace, so you won't get its activity digest.</p>;
+    return <p>You left this workspace, so you won't get its newspaper.</p>;
   }
   const ws = view.workspaceHandle;
   const t = new URLSearchParams({ t: view.token });
@@ -58,7 +58,7 @@ function Body({ view }: { view: DigestSubscriptionView }) {
   if (view.state === "off") {
     return (
       <>
-        <p>You won't get {ws}'s activity digest anymore.</p>
+        <p>You won't get {view.title} anymore.</p>
         <p className="flex items-center gap-4">
           <Link to={to("daily")} className={BUTTON}>
             Subscribe again
@@ -72,7 +72,10 @@ function Body({ view }: { view: DigestSubscriptionView }) {
   return (
     <>
       <p>
-        Each digest covers the previous {view.state === "daily" ? "24 hours" : "7 days"} of activity
+        {view.title} comes out at midnight Pacific Time
+        {view.state === "daily"
+          ? " and covers the day before"
+          : " on Mondays and covers the week before"}{" "}
         in {ws}.
       </p>
       <p className="flex items-center gap-4">

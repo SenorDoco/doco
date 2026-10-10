@@ -1,7 +1,7 @@
-// The digest's top three: a score shortlists what was added in the period,
-// Claude ranks the shortlist and writes one sentence on each, and without a
-// model (or when its answer can't be used) the score's order stands, each with
-// its first line.
+// The front page's stories: a score shortlists what was added in the period,
+// Claude ranks the shortlist and writes a headline and one sentence for each,
+// and without a model (or when its answer can't be used) the score's order
+// stands, each headlined with its first line.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const model = vi.hoisted(() => ({
@@ -22,12 +22,12 @@ vi.mock("~/lib/assistant-runtime.server", () => ({
 import {
   type Candidate,
   SHORTLIST,
-  TOP_THREE_MODEL,
+  STORIES_MODEL,
   mergeRanking,
   rankWithModel,
   rankingPrompt,
   shortlist,
-} from "../digest-top-three.server";
+} from "../front-page.server";
 
 const candidate = (over: Partial<Candidate> & { id: string }): Candidate => ({
   docoId: "doco_notes",
@@ -83,15 +83,15 @@ describe("shortlist", () => {
 
 describe("rankingPrompt", () => {
   it("gives each record's id, type, Doco and text", () => {
-    const prompt = rankingPrompt("the last 24 hours", [
+    const prompt = rankingPrompt("yesterday", [
       candidate({ id: "rule_1", nodeType: "rule", prose: "Ship to main." }),
     ]);
-    expect(prompt).toContain("the last 24 hours");
+    expect(prompt).toContain("These records were added yesterday.");
     expect(prompt).toContain("[rule_1 · rule · acme-notes]\nShip to main.");
   });
 
   it("cuts a long record short", () => {
-    const prompt = rankingPrompt("the last 24 hours", [
+    const prompt = rankingPrompt("yesterday", [
       candidate({ id: "decision_long", prose: "x".repeat(5000) }),
     ]);
     expect(prompt.length).toBeLessThan(2000);
@@ -106,13 +106,13 @@ describe("mergeRanking", () => {
     candidate({ id: "idea_1", nodeType: "idea", docoHandle: "acme-ideas", docoId: "doco_ideas" }),
   ];
 
-  it("follows the model's order and takeaways, linking each record", () => {
+  it("follows the model's order, headlines and takeaways, linking each record", () => {
     const ranked = mergeRanking(
       items,
       [
-        { id: "idea_1", takeaway: "Ideas now go to the ideas Doco." },
-        { id: "rule_1", takeaway: "Everything ships to main." },
-        { id: "decision_1", takeaway: "The digest is daily." },
+        { id: "idea_1", headline: "Ideas Get a Home", takeaway: "Ideas now go to the ideas Doco." },
+        { id: "rule_1", headline: "All to Main", takeaway: "Everything ships to main." },
+        { id: "decision_1", headline: "Daily Digest", takeaway: "The digest is daily." },
       ],
       base,
     );
@@ -121,6 +121,8 @@ describe("mergeRanking", () => {
         id: "idea_1",
         docoId: "doco_ideas",
         docoHandle: "acme-ideas",
+        nodeType: "idea",
+        headline: "Ideas Get a Home",
         takeaway: "Ideas now go to the ideas Doco.",
         url: "https://doco.test/acme-ideas/idea/idea_1",
       },
@@ -129,28 +131,28 @@ describe("mergeRanking", () => {
     ]);
   });
 
-  it("drops ids it wasn't given and repeats, and adds what the model left out with its first line", () => {
+  it("drops ids it wasn't given and repeats, and adds what the model left out headlined with its first line", () => {
     const ranked = mergeRanking(
       items,
       [
-        { id: "decision_1", takeaway: "  " },
-        { id: "decision_made_up", takeaway: "Nope." },
-        { id: "decision_1", takeaway: "Again." },
+        { id: "decision_1", headline: "  ", takeaway: " Daily. " },
+        { id: "decision_made_up", headline: "Nope", takeaway: "Nope." },
+        { id: "decision_1", headline: "Again", takeaway: "Again." },
       ],
       base,
     );
-    expect(ranked.map((r) => [r.id, r.takeaway])).toEqual([
-      ["decision_1", "decision_1 first line"],
-      ["rule_1", "rule_1 first line"],
-      ["idea_1", "idea_1 first line"],
+    expect(ranked.map((r) => [r.id, r.headline, r.takeaway])).toEqual([
+      ["decision_1", "decision_1 first line", "Daily."],
+      ["rule_1", "rule_1 first line", ""],
+      ["idea_1", "idea_1 first line", ""],
     ]);
   });
 
-  it("keeps the score's order and first lines without a model", () => {
-    expect(mergeRanking(items, null, base).map((r) => [r.id, r.takeaway])).toEqual([
-      ["rule_1", "rule_1 first line"],
-      ["decision_1", "decision_1 first line"],
-      ["idea_1", "idea_1 first line"],
+  it("keeps the score's order, headlined with first lines, without a model", () => {
+    expect(mergeRanking(items, null, base).map((r) => [r.id, r.headline, r.takeaway])).toEqual([
+      ["rule_1", "rule_1 first line", ""],
+      ["decision_1", "decision_1 first line", ""],
+      ["idea_1", "idea_1 first line", ""],
     ]);
   });
 });
@@ -170,14 +172,11 @@ describe("rankWithModel", () => {
   });
 
   it("asks Claude for a ranking as JSON and returns it", async () => {
-    model.reply = answer(
-      JSON.stringify({ items: [{ id: "rule_1", takeaway: "Everything ships to main." }] }),
-    );
-    expect(await rankWithModel("the prompt")).toEqual([
-      { id: "rule_1", takeaway: "Everything ships to main." },
-    ]);
+    const pick = { id: "rule_1", headline: "All to Main", takeaway: "Everything ships to main." };
+    model.reply = answer(JSON.stringify({ items: [pick] }));
+    expect(await rankWithModel("the prompt")).toEqual([pick]);
     expect(model.requests[0]).toMatchObject({
-      model: TOP_THREE_MODEL,
+      model: STORIES_MODEL,
       output_config: { format: { type: "json_schema" } },
       messages: [{ role: "user", content: "the prompt" }],
     });
@@ -192,6 +191,8 @@ describe("rankWithModel", () => {
     model.reply = answer("not json");
     expect(await rankWithModel("p")).toBeNull();
     model.reply = answer(JSON.stringify({ items: [{ id: 7 }] }));
+    expect(await rankWithModel("p")).toBeNull();
+    model.reply = answer(JSON.stringify({ items: [{ id: "rule_1", takeaway: "No headline." }] }));
     expect(await rankWithModel("p")).toBeNull();
     model.reply = new Error("overloaded");
     expect(await rankWithModel("p")).toBeNull();

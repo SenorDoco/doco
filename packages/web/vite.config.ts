@@ -128,6 +128,10 @@ export default defineConfig({
   // `SyntaxError: Unexpected token 'export'`. Inlining sidesteps the
   // runtime resolution entirely. (Used server-side by entity-graph's
   // SSR layout pass.)
+  //
+  // opentype.js is bundled for a like reason: its "main" is a browser script
+  // that exports nothing to Node, and only its "module" build, which the
+  // bundler reads, has the `parse` the masthead (lib/masthead.server.ts) uses.
   ssr: {
     external: ["pg", "@xyflow/react"],
     noExternal: [
@@ -138,6 +142,7 @@ export default defineConfig({
       "@doco/index",
       "@doco/shared",
       "@dagrejs/dagre",
+      "opentype.js",
       "react-router",
     ],
   },

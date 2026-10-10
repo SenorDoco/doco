@@ -1,4 +1,4 @@
-// What the digest's top three picks from, against a real database: the
+// What the front page's stories are picked from, against a real database: the
 // records people and their agents added to a workspace's Docos in the period,
 // with what the score reads (whether a record replaced an earlier one, how
 // many records link to it, how often briefs served it). Chat Logs, principals,
@@ -7,10 +7,11 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { freshDb } from "../../../../db/src/__tests__/fresh-db";
-import { loadCandidates, rankTopItems } from "../digest-top-three.server";
+import { loadCandidates, rankStories } from "../front-page.server";
 
 let db: PGlite;
-const AT = new Date("2026-09-10T13:00:00Z");
+// Friday Sep 11, 2026, 00:00 PDT: the daily edition covers Thursday.
+const AT = new Date("2026-09-11T07:00:00Z");
 
 beforeEach(async () => {
   db = await freshDb();
@@ -32,7 +33,7 @@ beforeEach(async () => {
       ('log_chat', 'doco_notes', 'log', 'active', 'Ana chatted with Claude.', NULL, '2026-09-10T11:00:00Z'),
       ('reference_pr', 'doco_notes', 'reference', 'active', 'Add login', 'https://github.com/acme/app/pull/7', '2026-09-10T11:00:00Z'),
       ('reference_doc', 'doco_notes', 'reference', 'active', 'The pricing sheet', 'https://example.com/pricing', '2026-09-10T11:30:00Z'),
-      ('decision_late', 'doco_notes', 'decision', 'active', 'After the digest went out.', NULL, '2026-09-10T13:30:00Z'),
+      ('decision_late', 'doco_notes', 'decision', 'active', 'After the digest went out.', NULL, '2026-09-11T07:30:00Z'),
       ('decision_gone', 'doco_gone', 'decision', 'active', 'In a deleted Doco.', NULL, '2026-09-10T09:00:00Z'),
       ('decision_else', 'doco_else', 'decision', 'active', 'Another workspace.', NULL, '2026-09-10T09:00:00Z');
     INSERT INTO edges (id, doco_id, edge_type, from_id, from_node_type, to_id, to_node_type) VALUES
@@ -66,7 +67,7 @@ describe("loadCandidates", () => {
     });
   });
 
-  it("covers the last 7 days for the weekly digest", async () => {
+  it("covers the week before for the weekly digest", async () => {
     const found = await loadCandidates(db, "workspace_acme", "weekly", AT);
     expect(found.map((c) => c.id).sort()).toEqual([
       "decision_new",
@@ -77,10 +78,10 @@ describe("loadCandidates", () => {
   });
 });
 
-describe("rankTopItems", () => {
-  it("ranks the shortlist with the model's order and takeaways", async () => {
+describe("rankStories", () => {
+  it("ranks the shortlist with the model's order, headlines and takeaways", async () => {
     const prompts: string[] = [];
-    const ranked = await rankTopItems(
+    const ranked = await rankStories(
       db,
       "workspace_acme",
       "daily",
@@ -89,28 +90,36 @@ describe("rankTopItems", () => {
       async (prompt) => {
         prompts.push(prompt);
         return [
-          { id: "idea_new", takeaway: "Each Doco could get its own digest." },
-          { id: "decision_new", takeaway: "The digest now comes every day." },
+          {
+            id: "idea_new",
+            headline: "A Digest per Doco",
+            takeaway: "Each Doco could get its own digest.",
+          },
+          {
+            id: "decision_new",
+            headline: "Daily Digest",
+            takeaway: "The digest now comes every day.",
+          },
         ];
       },
     );
     expect(prompts[0]).toContain("[decision_new · decision · acme-notes]\nThe digest is daily.");
-    expect(ranked.map((r) => [r.id, r.takeaway])).toEqual([
-      ["idea_new", "Each Doco could get its own digest."],
-      ["decision_new", "The digest now comes every day."],
-      ["rule_new", "Ship every task to main."],
-      ["reference_doc", "The pricing sheet"],
+    expect(ranked.map((r) => [r.id, r.headline, r.takeaway])).toEqual([
+      ["idea_new", "A Digest per Doco", "Each Doco could get its own digest."],
+      ["decision_new", "Daily Digest", "The digest now comes every day."],
+      ["rule_new", "Ship every task to main.", ""],
+      ["reference_doc", "The pricing sheet", ""],
     ]);
     expect(ranked[0].url).toBe("https://doco.test/acme-notes/idea/idea_new");
   });
 
   it("asks no model when nothing was added", async () => {
     let asked = false;
-    const ranked = await rankTopItems(
+    const ranked = await rankStories(
       db,
       "workspace_other",
       "daily",
-      new Date("2026-09-20T13:00:00Z"),
+      new Date("2026-09-20T07:00:00Z"),
       "https://doco.test",
       async () => {
         asked = true;

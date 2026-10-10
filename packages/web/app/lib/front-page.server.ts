@@ -1,15 +1,16 @@
-// The top three at the head of the activity digest (lib/activity-digest.ts):
-// the most important records people and their agents added to a workspace's
-// Docos in the digest's period. A score shortlists them: a rule counts more
-// than a decision, and a decision more than the rest; replacing an earlier
-// record adds to it, and so do the briefs that served it and the records that
-// link to it. Claude ranks the shortlist once per workspace and digest and
-// writes one sentence on each; each member then gets the first three they may
-// read. Without a model, or when its answer can't be used, the score's order
-// stands, each record with its first line. Chat Logs, principals and what the
-// GitHub import brought are left out: they record the work, not what it taught.
+// The stories on the front page of a workspace's newspaper, The <Workspace>
+// Times (lib/activity-digest.ts): the most important records people and their
+// agents added to its Docos in the edition's period. A score shortlists them:
+// a rule counts more than a decision, and a decision more than the rest;
+// replacing an earlier record adds to it, and so do the briefs that served it
+// and the records that link to it. Claude ranks the shortlist once per
+// workspace and edition and writes a headline and one sentence for each; each
+// member then gets the first ones they may read. Without a model, or when its
+// answer can't be used, the score's order stands, each record headlined with
+// its first line. Chat Logs, principals and what the GitHub import brought are
+// left out: they record the work, not what it taught.
 
-import { type Cadence, type TopItem, digestPeriod, periodLabel } from "./activity-digest";
+import { type Cadence, type Story, digestPeriod, periodLabel } from "./activity-digest";
 import { createSenorDocoMessage, getSenorDocoAnthropicApiKey } from "./assistant-runtime.server";
 import { summaryOf } from "./brief/brief";
 
@@ -17,7 +18,7 @@ type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: 
 
 /** How many records the model ranks. */
 export const SHORTLIST = 15;
-export const TOP_THREE_MODEL = "claude-opus-5-5";
+export const STORIES_MODEL = "claude-opus-5-5";
 /** How long the ranking may take before the score's order stands. */
 const RANK_TIMEOUT_MS = 90_000;
 /** How much of each record the model reads. */
@@ -42,6 +43,7 @@ export interface Candidate {
 /** What the model says of a record. */
 export interface Pick {
   id: string;
+  headline: string;
   takeaway: string;
 }
 
@@ -67,7 +69,7 @@ export function shortlist(candidates: Candidate[]): Candidate[] {
 
 const SYSTEM = `You pick what a team most needs to know from the records added to its shared memory, Doco: the rules it follows, the decisions it made, its ideas, references and the rest.
 
-Rank the records you are given from most to least important to the team as a whole. Lessons, rules and decisions that change how the team works come first; routine or minor records come last. For each one write a takeaway: one plain sentence, under 25 words, that says what was learned or decided, drawn from that record alone and in its language. Use the record's id exactly as given. Rank every record.`;
+Rank the records you are given from most to least important to the team as a whole. Lessons, rules and decisions that change how the team works come first; routine or minor records come last. They make the front page of the team's newspaper, so for each one write a headline, a newspaper's, under 10 words, and a takeaway: one plain sentence, under 25 words, that says what was learned or decided. Draw both from that record alone and write them in its language. Use the record's id exactly as given. Rank every record.`;
 
 /** The records, each under its id, type and Doco, for the model to rank. */
 export function rankingPrompt(label: string, items: Candidate[]): string {
@@ -76,30 +78,33 @@ export function rankingPrompt(label: string, items: Candidate[]): string {
     const text = prose.length > PROSE_CHARS ? `${prose.slice(0, PROSE_CHARS - 1)}…` : prose;
     return `[${c.id} · ${c.nodeType} · ${c.docoHandle}]\n${text}`;
   });
-  return `These records were added in ${label}.\n\n${records.join("\n\n")}`;
+  return `These records were added ${label}.\n\n${records.join("\n\n")}`;
 }
 
-/** The shortlist in the model's order, with its takeaways, then whatever it
- *  left out; in the score's order with each first line when `picks` is null. */
-export function mergeRanking(items: Candidate[], picks: Pick[] | null, baseUrl: string): TopItem[] {
+/** The shortlist in the model's order, with its headlines and takeaways, then
+ *  whatever it left out; in the score's order when `picks` is null. A record
+ *  the model wrote no headline for is headlined with its first line. */
+export function mergeRanking(items: Candidate[], picks: Pick[] | null, baseUrl: string): Story[] {
   const base = baseUrl.replace(/\/+$/, "");
   const byId = new Map(items.map((c) => [c.id, c]));
-  const ranked: TopItem[] = [];
-  const add = (c: Candidate, takeaway: string) => {
+  const ranked: Story[] = [];
+  const add = (c: Candidate, pick?: Pick) => {
     byId.delete(c.id);
     ranked.push({
       id: c.id,
       docoId: c.docoId,
       docoHandle: c.docoHandle,
-      takeaway: takeaway.trim() || summaryOf(c.prose),
+      nodeType: c.nodeType,
+      headline: pick?.headline.trim() || summaryOf(c.prose),
+      takeaway: pick?.takeaway.trim() ?? "",
       url: `${base}/${c.docoHandle}/${c.nodeType}/${c.id}`,
     });
   };
   for (const p of picks ?? []) {
     const c = byId.get(p.id);
-    if (c) add(c, p.takeaway);
+    if (c) add(c, p);
   }
-  for (const c of [...byId.values()]) add(c, "");
+  for (const c of [...byId.values()]) add(c);
   return ranked;
 }
 
@@ -110,8 +115,12 @@ const RANKING_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { id: { type: "string" }, takeaway: { type: "string" } },
-        required: ["id", "takeaway"],
+        properties: {
+          id: { type: "string" },
+          headline: { type: "string" },
+          takeaway: { type: "string" },
+        },
+        required: ["id", "headline", "takeaway"],
         additionalProperties: false,
       },
     },
@@ -127,7 +136,7 @@ export async function rankWithModel(prompt: string): Promise<Pick[] | null> {
   try {
     const message = await createSenorDocoMessage(
       {
-        model: TOP_THREE_MODEL,
+        model: STORIES_MODEL,
         max_tokens: 16000,
         output_config: {
           effort: "medium",
@@ -142,15 +151,20 @@ export async function rankWithModel(prompt: string): Promise<Pick[] | null> {
     const text = message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
     const items = (JSON.parse(text) as { items?: unknown }).items;
     if (!Array.isArray(items)) return null;
-    const valid = items.every((p) => typeof p?.id === "string" && typeof p?.takeaway === "string");
+    const valid = items.every(
+      (p) =>
+        typeof p?.id === "string" &&
+        typeof p?.headline === "string" &&
+        typeof p?.takeaway === "string",
+    );
     return valid ? (items as Pick[]) : null;
   } catch (err) {
-    console.warn("[digest-top-three] ranking failed:", err instanceof Error ? err.message : err);
+    console.warn("[front-page] ranking failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
 
-/** What was added to the workspace's live Docos in the digest's period. */
+/** What was added to the workspace's live Docos in the edition's period. */
 export async function loadCandidates(
   c: QueryClient,
   workspaceId: string,
@@ -209,15 +223,15 @@ export async function loadCandidates(
   }));
 }
 
-/** The workspace's shortlist for the digest sent at `at`, ranked. */
-export async function rankTopItems(
+/** The workspace's shortlist for the edition sent at `at`, ranked. */
+export async function rankStories(
   c: QueryClient,
   workspaceId: string,
   cadence: Cadence,
   at: Date,
   baseUrl: string,
   rank: (prompt: string) => Promise<Pick[] | null> = rankWithModel,
-): Promise<TopItem[]> {
+): Promise<Story[]> {
   const items = shortlist(await loadCandidates(c, workspaceId, cadence, at));
   if (items.length === 0) return [];
   return mergeRanking(items, await rank(rankingPrompt(periodLabel(cadence), items)), baseUrl);

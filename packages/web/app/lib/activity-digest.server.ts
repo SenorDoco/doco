@@ -1,10 +1,11 @@
-// Sends the activity digest (lib/activity-digest.ts) to every member of each
-// workspace, daily or, for who switched it to weekly, on Mondays, unless they
-// unsubscribed, it is their personal workspace (workspaces.personal_user_id),
-// or nothing happened in its period. Each member's numbers, and the top three
-// it opens with, cover only the Docos they may read, as the workspace page
-// shows them. A workspace's `digest_sent_at` is claimed before sending, so two
-// runs at the same hour never both send it.
+// Sends the activity digest, each workspace's newspaper (lib/activity-digest.ts),
+// to every member of each workspace at midnight Pacific Time: daily or, for
+// who switched it to weekly, on Mondays, unless they unsubscribed, it is their
+// personal workspace (workspaces.personal_user_id), or nothing happened in its
+// period. Each member's numbers, and the stories it leads with, cover only the
+// Docos they may read, as the workspace page shows them. A workspace's
+// `digest_sent_at` is claimed before sending, so two runs at the same hour
+// never both send it.
 //
 // The digest's links (/digest/daily, /digest/weekly, /digest/unsubscribe)
 // carry the workspace and member encrypted (lib/secret-box.server.ts), so each
@@ -14,15 +15,18 @@ import {
   type Cadence,
   DIGEST_TOP_LIMIT,
   type DigestSetting,
-  type TopItem,
+  FRONT_PAGE_STORIES,
+  type Story,
   digestEmail,
   digestPeriod,
   settingsDue,
+  timesTitle,
 } from "./activity-digest";
 import { summarizeActivity } from "./activity-log.server";
-import { rankTopItems } from "./digest-top-three.server";
 import { listReadableDocosInWorkspace } from "./doco-access.server";
 import { sendEmail } from "./email.server";
+import { rankStories } from "./front-page.server";
+import { mastheadUrl } from "./masthead.server";
 import { decryptSecret, encryptSecret } from "./secret-box.server";
 
 type QueryClient = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> };
@@ -48,23 +52,26 @@ export function readDigestToken(token: string): Membership | null {
 }
 
 /** Sets how often a member gets a workspace's digest. Returns the
- *  workspace's handle, or null when they are no longer a member. */
+ *  workspace's handle and its newspaper's title, or null when they are no
+ *  longer a member. */
 export async function setDigest(
   c: QueryClient,
   m: Membership,
   setting: DigestSetting,
-): Promise<string | null> {
-  const { rows } = await c.query<{ handle: string }>(
+): Promise<{ workspaceHandle: string; title: string } | null> {
+  const { rows } = await c.query<{ handle: string; name: string }>(
     `UPDATE workspace_users wu SET digest = $3
        FROM workspaces w
       WHERE w.id = wu.workspace_id AND wu.workspace_id = $1 AND wu.user_id = $2
-      RETURNING w.handle`,
+      RETURNING w.handle, w.name`,
     [m.workspaceId, m.userId, setting],
   );
-  return rows[0]?.handle ?? null;
+  const w = rows[0];
+  return w ? { workspaceHandle: w.handle, title: timesTitle(w.name) } : null;
 }
 
-/** Sends every digest due at the hour `now` falls in. */
+/** Sends every edition due at the hour `now` falls in: none but at midnight
+ *  Pacific Time. */
 export async function sendActivityDigests(
   c: QueryClient,
   now: Date,
@@ -72,9 +79,10 @@ export async function sendActivityDigests(
 ): Promise<{ workspaces: number; sent: number }> {
   const at = new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000);
   const due = settingsDue(at);
+  if (due.length === 0) return { workspaces: 0, sent: 0 };
   const workspaces = (
-    await c.query<{ id: string; handle: string; personal_user_id: string | null }>(
-      "SELECT id, handle, personal_user_id FROM workspaces WHERE created_at < $1",
+    await c.query<{ id: string; handle: string; name: string; personal_user_id: string | null }>(
+      "SELECT id, handle, name, personal_user_id FROM workspaces WHERE created_at < $1",
       [at.toISOString()],
     )
   ).rows;
@@ -104,18 +112,21 @@ export async function sendActivityDigests(
     ).rows;
     claimed.push({ w, members });
   }
-  // Each workspace's top three, ranked once for each digest its members get,
+  // Each workspace's stories, ranked once for each edition its members get,
   // and every ranking at once, since each is a model call.
-  const tops = new Map<string, TopItem[]>();
+  const ranked = new Map<string, Story[]>();
   await Promise.all(
     claimed.flatMap(({ w, members }) =>
       [...new Set(members.map((m) => m.digest))].map(async (cadence) => {
-        tops.set(`${w.id} ${cadence}`, await rankTopItems(c, w.id, cadence, at, baseUrl));
+        ranked.set(`${w.id} ${cadence}`, await rankStories(c, w.id, cadence, at, baseUrl));
       }),
     ),
   );
   let sent = 0;
   for (const { w, members } of claimed) {
+    const title = timesTitle(w.name);
+    // One masthead for everyone's copy, so mail clients fetch it once.
+    const masthead = mastheadUrl(baseUrl, title);
     for (const m of members) {
       const docoIds = (await listReadableDocosInWorkspace(w.id, m.user_id)).map((d) => d.id);
       const summary = await summarizeActivity(
@@ -125,15 +136,18 @@ export async function sendActivityDigests(
         DIGEST_TOP_LIMIT,
       );
       if (summary.queries + summary.writes + summary.imports === 0) continue;
-      const top = (tops.get(`${w.id} ${m.digest}`) ?? [])
+      const stories = (ranked.get(`${w.id} ${m.digest}`) ?? [])
         .filter((i) => docoIds.includes(i.docoId))
-        .slice(0, 3);
+        .slice(0, FRONT_PAGE_STORIES);
       const message = digestEmail({
         baseUrl,
         workspaceHandle: w.handle,
+        title,
+        masthead,
         setting: m.digest,
+        at,
         summary,
-        top,
+        stories,
         token: digestToken({ workspaceId: w.id, userId: m.user_id }),
       });
       if ((await sendEmail({ to: m.email, ...message })).sent) sent += 1;
