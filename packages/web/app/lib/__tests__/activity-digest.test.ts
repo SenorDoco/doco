@@ -2,11 +2,12 @@
 // every day at midnight Pacific Time, covering the day before (or, for who
 // switched to weekly, every Monday, covering the week before), laid out as a
 // front page under its masthead. It leads with the most important records
-// added in it, then queries, writes and imports and who and what made the
-// most of each, a button that switches between daily and weekly, and a
-// one-click unsubscribe.
+// added in it, or on a quiet day with a slow-news item, then queries, writes
+// and imports and who and what made the most of each, a button that switches
+// between daily and weekly, and a one-click unsubscribe.
 import { describe, expect, it } from "vitest";
 import {
+  SLOW_NEWS,
   type Story,
   digestEmail,
   digestPeriod,
@@ -188,6 +189,50 @@ describe("digestEmail", () => {
       "Daily edition · Monday, September 7, 2026\n\nYesterday in acme\n",
     );
     expect(email.html).not.toContain("In brief");
+    expect(email.text).not.toContain("Slow news");
+  });
+
+  // Alexander, 2026-10-10: the paper comes out even when nothing happened,
+  // and then leads with something funny instead.
+  const quiet = {
+    ...summary,
+    writes: 0,
+    queries: 0,
+    imports: 0,
+    topContributors: [],
+    topQueryers: [],
+    topIntegrations: [],
+  };
+
+  it("leads a quiet day's paper with a slow-news item", () => {
+    const email = digestEmail({ ...base, setting: "daily", summary: quiet });
+    const headline = SLOW_NEWS[Math.floor(base.at.getTime() / 86_400_000) % SLOW_NEWS.length];
+    expect(email.text).toContain(
+      [
+        "Daily edition · Monday, September 7, 2026",
+        "",
+        headline,
+        "Nobody queried, wrote or imported anything in acme yesterday.",
+        "Slow news day: https://doco.test/workspaces/acme",
+        "",
+        "Yesterday in acme",
+      ].join("\n"),
+    );
+    expect(email.html).toMatch(
+      /font-size:26px[^>]*><a href="https:\/\/doco.test\/workspaces\/acme"[^>]*>[^<]+<\/a>/,
+    );
+    expect(digestEmail({ ...base, setting: "weekly", summary: quiet }).text).toContain(
+      "Nobody queried, wrote or imported anything in acme last week.\nSlow news week: https://doco.test/workspaces/acme",
+    );
+  });
+
+  it("has 30 slow-news items and runs each once a month before repeating one", () => {
+    expect(new Set(SLOW_NEWS).size).toBe(30);
+    const leads = Array.from({ length: 30 }, (_, day) => {
+      const at = new Date(base.at.getTime() + day * 86_400_000);
+      return digestEmail({ ...base, setting: "daily", at, summary: quiet }).text.split("\n")[3];
+    });
+    expect(new Set(leads)).toEqual(new Set(SLOW_NEWS));
   });
 
   it("gives yesterday's totals and tops, queries first", () => {

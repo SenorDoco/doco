@@ -1,9 +1,9 @@
 // Sends the activity digest, each workspace's newspaper (lib/activity-digest.ts),
 // to every member of each workspace at midnight Pacific Time: daily or, for
-// who switched it to weekly, on Mondays, unless they unsubscribed, it is their
-// personal workspace (workspaces.personal_user_id), or nothing happened in its
-// period. Each member's numbers, and the stories it leads with, cover only the
-// Docos they may read, as the workspace page shows them. A workspace's
+// who switched it to weekly, on Mondays, unless they unsubscribed or it is
+// their personal workspace (workspaces.personal_user_id). It comes out on a
+// quiet day too. Each member's numbers, and the stories it leads with, cover
+// only the Docos they may read, as the workspace page shows them. A workspace's
 // `digest_sent_at` is claimed before sending, so two runs at the same hour
 // never both send it.
 //
@@ -135,7 +135,6 @@ export async function sendActivityDigests(
         digestPeriod(m.digest, at),
         DIGEST_TOP_LIMIT,
       );
-      if (summary.queries + summary.writes + summary.imports === 0) continue;
       const stories = (ranked.get(`${w.id} ${m.digest}`) ?? [])
         .filter((i) => docoIds.includes(i.docoId))
         .slice(0, FRONT_PAGE_STORIES);
