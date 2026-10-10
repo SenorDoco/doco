@@ -5,9 +5,11 @@
 // leads with the most important records added in it
 // (lib/front-page.server.ts ranks them): a lead story, two more beside
 // it and the rest in brief; then the totals of queries, writes and imports and
-// who and what made the most of each. The daily edition goes out at midnight
-// Pacific Time, covering the day before, unless the member switched it to
-// weekly: then every Monday, covering the week before. Each one has a button
+// who and what made the most of each. When nothing at all happened, it comes
+// out anyway and leads with one of SLOW_NEWS's headlines instead. The daily
+// edition goes out at midnight Pacific Time, covering the day before, unless
+// the member switched it to weekly: then every Monday, covering the week
+// before. Each one has a button
 // that switches it between the two and a link that unsubscribes. Pure: which
 // editions are due, and their message (lib/activity-digest.server.ts sends
 // them).
@@ -41,6 +43,42 @@ export interface Story {
   takeaway: string;
   url: string;
 }
+
+/** What a paper leads with when nothing was queried, written or imported in
+ *  its period: one a day, each once before any repeats (Alexander,
+ *  2026-10-10). */
+export const SLOW_NEWS = [
+  "Workspace Takes a Breather; Experts Urge Calm",
+  "Agents Report for Duty, Find Nothing to Do, Go Home",
+  'Silence Falls Over Workspace; Neighbors Call It "Peaceful"',
+  "Knowledge Base Remains Exactly as Smart as Before",
+  "Zero Decisions Made, in What Analysts Call a Bold Decision",
+  "Tumbleweed Spotted Rolling Through the Docos",
+  "Breaking: Nothing Breaks",
+  "No Questions Asked, None Answered, No Harm Done",
+  "Crystal Ball Consulted; It Reports Clear Skies Ahead",
+  "Record Set for Fewest Records Set",
+  "Editors Scramble to Fill Front Page, Settle on This Headline",
+  "Agents Seen Refreshing Their Inboxes, Hoping for a Task",
+  "All Quiet on Every Front, Integrations Confirm",
+  "Calm Before the Storm, Say Sources Who Could Not Name a Storm",
+  "Workspace Hits Inbox Zero, and Output Zero Too",
+  "Nobody Wrote Anything Down, and Nobody Forgot Anything Either",
+  "Docos Wait Patiently for Someone to Ask Them Something",
+  "Rumors of a Big Decision Remain, for Now, Rumors",
+  "Forecast: Clear Skies, Light Breeze, Zero Imports",
+  "Knowledge Graph Spends Quiet Time Reflecting on Its Edges",
+  "Archivists Take Long Lunch as Nothing Needs Filing",
+  "Workspace Declares Unofficial Holiday; Nobody Objects, or Says Anything",
+  "Señor Doco Rereads the Last Edition, Enjoys It Just as Much",
+  "Peace Talks Succeed: Not a Single Disagreement Recorded",
+  "Scientists Confirm Workspace Still Exists, Just Very Quietly",
+  "Empty Inbox, Tidy Docos, Rested Agents: A Study in Balance",
+  "This Space Intentionally Left Blank by the Whole Team",
+  "Fortune Teller Foresees Busier Days Ahead",
+  "Team Lets Ideas Marinate; Chefs Applaud the Restraint",
+  "Big Story Expected Any Minute Now, Reporters Insist",
+];
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -144,18 +182,33 @@ export function digestEmail(opts: {
     ["Top contributors", s.topContributors.map(actorLine)],
     ["Top integrations", s.topIntegrations.map((i) => `${i.name}: ${count(i.count)}`)],
   ];
-  const kicker = (i: Story) => `${capitalize(i.nodeType)} · ${i.docoHandle}`;
-  const [lead, ...rest] = stories;
-  const beside = rest.slice(0, 2);
-  const briefs = rest.slice(2);
+  // The lead and the two beside it; on a quiet day, a slow-news item alone.
+  const quiet = stories.length === 0 && s.queries + s.writes + s.imports === 0;
+  const front = quiet
+    ? [
+        {
+          kicker: setting === "daily" ? "Slow news day" : "Slow news week",
+          headline: SLOW_NEWS[Math.floor(opts.at.getTime() / DAY_MS) % SLOW_NEWS.length],
+          takeaway: `Nobody queried, wrote or imported anything in ${ws} ${period}.`,
+          url,
+        },
+      ]
+    : stories.slice(0, 3).map((i) => ({
+        kicker: `${capitalize(i.nodeType)} · ${i.docoHandle}`,
+        headline: i.headline,
+        takeaway: i.takeaway,
+        url: i.url,
+      }));
+  const [lead, ...beside] = front;
+  const briefs = stories.slice(3);
   const switchLabel = `Switch to ${other}`;
   const footer = `You get ${title} ${setting === "daily" ? "every day" : "every Monday"} as a member of ${ws}.`;
 
   const text = [
     `${title}\n${edition} · ${date}`,
-    ...stories
-      .slice(0, 3)
-      .map((i) => [i.headline, i.takeaway, `${kicker(i)}: ${i.url}`].filter(Boolean).join("\n")),
+    ...front.map((i) =>
+      [i.headline, i.takeaway, `${i.kicker}: ${i.url}`].filter(Boolean).join("\n"),
+    ),
     ...(briefs.length > 0
       ? [
           ["In brief", ...briefs.map((i) => `- ${i.headline} (${i.docoHandle}: ${i.url})`)].join(
@@ -172,8 +225,8 @@ export function digestEmail(opts: {
     `${footer} Unsubscribe: ${unsubscribeUrl}`,
   ].join("\n\n");
 
-  const story = (i: Story, lead = false): EmailBlock => ({
-    kicker: kicker(i),
+  const story = (i: (typeof front)[number], lead = false): EmailBlock => ({
+    kicker: i.kicker,
     headline: i.headline,
     text: i.takeaway,
     link: i.url,

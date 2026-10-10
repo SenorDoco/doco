@@ -2,9 +2,10 @@
 // database: at midnight Pacific Time every member with an email gets the
 // daily edition, or on Mondays the weekly one if they switched to it, unless
 // they unsubscribed (the email's links do both in one click, without signing
-// in), it is their personal workspace, or nothing happened; two runs at the
-// same hour send it once. Each leads with the stories added in its period that
-// the member may read, under the workspace's masthead. PGlite backs every
+// in) or it is their personal workspace; two runs at the same hour send it
+// once. Each leads with the stories added in its period that the member may
+// read, under the workspace's masthead, or on a quiet day with a slow-news
+// item. PGlite backs every
 // query; only the email provider and the model are stubbed.
 import { randomBytes } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
@@ -114,12 +115,12 @@ beforeEach(async () => {
 
 describe("sendActivityDigests", () => {
   it("emails each member with an email the day before's activity, every midnight", async () => {
-    expect(await sendActivityDigests(dbm.db, AT, BASE)).toEqual({ workspaces: 3, sent: 2 });
-    // Not cy (no email), not di (deactivated), not ana's personal workspace;
-    // nothing happened in "old".
+    expect(await sendActivityDigests(dbm.db, AT, BASE)).toEqual({ workspaces: 3, sent: 3 });
+    // Not cy (no email), not di (deactivated), not ana's personal workspace.
     expect(dbm.sent.map((e) => [e.to, e.subject])).toEqual([
       ["ana@example.com", "The Acme Times · Thursday, September 10, 2026"],
       ["bo@example.com", "The Acme Times · Thursday, September 10, 2026"],
+      ["ana@example.com", "The Old Times · Thursday, September 10, 2026"],
     ]);
     const [ana] = dbm.sent;
     expect(ana.text).toContain("1 query · 1 write · 0 imports");
@@ -132,6 +133,16 @@ describe("sendActivityDigests", () => {
       userId: "user_ana",
     });
     expect(ana.text).toContain(`Switch to weekly: ${BASE}/digest/weekly?t=`);
+  });
+
+  it("comes out on a quiet day too, leading with a slow-news item", async () => {
+    await sendActivityDigests(dbm.db, AT, BASE);
+    const old = dbm.sent.find((e) => e.subject.startsWith("The Old Times"));
+    expect(old?.text).toContain(
+      `Nobody queried, wrote or imported anything in old yesterday.\nSlow news day: ${BASE}/workspaces/old`,
+    );
+    expect(old?.text).toContain("0 queries · 0 writes · 0 imports");
+    expect(dbm.sent[0].text).not.toContain("Slow news");
   });
 
   it("puts the workspace's masthead at the top, one image for everyone that day", async () => {
@@ -153,7 +164,7 @@ describe("sendActivityDigests", () => {
       sent: 0,
     });
     expect(dbm.sent).toEqual([]);
-    expect(await sendActivityDigests(dbm.db, AT, BASE)).toEqual({ workspaces: 3, sent: 2 });
+    expect(await sendActivityDigests(dbm.db, AT, BASE)).toEqual({ workspaces: 3, sent: 3 });
   });
 
   it("leads with the stories added that day that each member may read", async () => {
@@ -217,7 +228,7 @@ describe("sendActivityDigests", () => {
       workspaces: 0,
       sent: 0,
     });
-    expect(dbm.sent).toHaveLength(2);
+    expect(dbm.sent).toHaveLength(3);
   });
 
   it("sends a weekly digest on Mondays, covering the last 7 days, to who switched to weekly", async () => {
@@ -225,17 +236,21 @@ describe("sendActivityDigests", () => {
       "UPDATE workspace_users SET digest = 'weekly' WHERE workspace_id = 'workspace_acme' AND user_id = 'user_bo'",
     );
     await sendActivityDigests(dbm.db, AT, BASE);
-    expect(dbm.sent.map((e) => e.to)).toEqual(["ana@example.com"]);
+    expect(dbm.sent.map((e) => e.to)).not.toContain("bo@example.com");
 
     dbm.sent = [];
-    // Nothing happened on Sunday, so ana's daily one stays home.
     await sendActivityDigests(dbm.db, MONDAY, BASE);
-    expect(dbm.sent.map((e) => [e.to, e.subject])).toEqual([
-      ["bo@example.com", "The Acme Times · Monday, September 14, 2026"],
-    ]);
-    expect(dbm.sent[0].text).toContain("Weekly edition · Monday, September 14, 2026");
-    expect(dbm.sent[0].text).toContain("1 query · 2 writes · 0 imports");
-    expect(dbm.sent[0].text).toContain(`Switch to daily: ${BASE}/digest/daily?t=`);
+    const bo = dbm.sent.filter((e) => e.to === "bo@example.com");
+    expect(bo.map((e) => e.subject)).toEqual(["The Acme Times · Monday, September 14, 2026"]);
+    expect(bo[0].text).toContain("Weekly edition · Monday, September 14, 2026");
+    expect(bo[0].text).toContain("1 query · 2 writes · 0 imports");
+    expect(bo[0].text).toContain(`Switch to daily: ${BASE}/digest/daily?t=`);
+    // Nothing happened on Sunday: ana's daily one is a slow-news day.
+    const ana = dbm.sent.find(
+      (e) => e.to === "ana@example.com" && e.subject.startsWith("The Acme"),
+    );
+    expect(ana?.text).toContain("Daily edition · Monday, September 14, 2026");
+    expect(ana?.text).toContain("Slow news day");
   });
 
   it("sends the digest of a workspace someone named after themselves", async () => {
@@ -288,7 +303,7 @@ describe("the digest's links", () => {
       workspaceHandle: "acme",
     });
     await sendActivityDigests(dbm.db, AT, BASE);
-    expect(dbm.sent.map((e) => e.to)).toEqual(["ana@example.com"]);
+    expect(dbm.sent.map((e) => e.to)).not.toContain("bo@example.com");
     expect(await open("daily", token())).toMatchObject({ state: "daily" });
   });
 
