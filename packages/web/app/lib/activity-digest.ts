@@ -1,72 +1,128 @@
-// The activity digest: the email every member of a workspace gets about what
-// happened in it. It opens with the top three records added in it
-// (lib/digest-top-three.server.ts picks them), then the totals of queries,
-// writes and imports and who and what made the most of each. It goes out at 13:00 UTC every day, covering the
-// previous 24 hours, unless the member switched it to weekly: then every
-// Monday, covering the previous 7 days. Each one has a button that switches it
-// between the two and a link that unsubscribes. Pure: which digests are due,
-// and their message (lib/activity-digest.server.ts sends them).
+// The activity digest: each workspace's newspaper, The <Workspace> Times, the
+// email every member of a workspace gets about what happened in it. It is
+// laid out as a front page under a masthead of its title in Chomsky, the
+// blackletter Doco's logo is set in (lib/masthead.server.ts draws it). It
+// leads with the most important records added in it
+// (lib/front-page.server.ts ranks them): a lead story, two more beside
+// it and the rest in brief; then the totals of queries, writes and imports and
+// who and what made the most of each. The daily edition goes out at midnight
+// Pacific Time, covering the day before, unless the member switched it to
+// weekly: then every Monday, covering the week before. Each one has a button
+// that switches it between the two and a link that unsubscribes. Pure: which
+// editions are due, and their message (lib/activity-digest.server.ts sends
+// them).
 
 import type { ActivitySummary, TopActor } from "./activity-log.server";
 import { viaLabel } from "./authoring-provenance";
 import { type EmailBlock, emailHtml } from "./email-html";
 import type { Email } from "./email.server";
 
-/** The hour of the day, in UTC, the digests go out. */
-export const DIGEST_HOUR_UTC = 13;
+/** Whose midnight the editions go out at, daylight saving time included. */
+export const DIGEST_TIME_ZONE = "America/Los_Angeles";
 /** How many rows each top list shows. */
 export const DIGEST_TOP_LIMIT = 5;
+/** How many stories a front page carries: the lead, two beside it, the rest in brief. */
+export const FRONT_PAGE_STORIES = 8;
 
 /** How often a member gets a workspace's digest (workspace_users.digest):
  *  every day unless they switched it to weekly, never once they unsubscribed. */
 export type DigestSetting = "daily" | "weekly" | "off";
 export type Cadence = Exclude<DigestSetting, "off">;
 
-/** One of the top three: what a record added in the period says, in a
- *  sentence, and where it lives. */
-export interface TopItem {
+/** A story on the front page: a record added in the period, the headline
+ *  and the sentence Claude gave it, and where it lives. */
+export interface Story {
   id: string;
   docoId: string;
   docoHandle: string;
+  nodeType: string;
+  headline: string;
+  /** What it says, in a sentence; empty when no model wrote one. */
   takeaway: string;
   url: string;
 }
 
-const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
 
-/** The digests that go out at `at`: the daily one, and on Mondays the weekly. */
+const clock = new Intl.DateTimeFormat("en-US", {
+  timeZone: DIGEST_TIME_ZONE,
+  hourCycle: "h23",
+  hour: "numeric",
+  weekday: "long",
+});
+
+/** The hour and weekday it is in Pacific Time at `at`. */
+function pacific(at: Date): { hour: number; weekday: string } {
+  const parts = Object.fromEntries(clock.formatToParts(at).map((p) => [p.type, p.value]));
+  return { hour: Number(parts.hour), weekday: parts.weekday };
+}
+
+/** The editions that go out at `at`: at midnight Pacific Time the daily one,
+ *  and on Mondays the weekly; at any other hour none. */
 export function settingsDue(at: Date): Cadence[] {
-  return at.getUTCDay() === 1 ? ["daily", "weekly"] : ["daily"];
+  const { hour, weekday } = pacific(at);
+  if (hour !== 0) return [];
+  return weekday === "Monday" ? ["daily", "weekly"] : ["daily"];
 }
 
-/** The time a digest sent at `at` covers. */
+/** The time an edition sent at `at`, a midnight, covers: from the midnight a
+ *  day (or a week) before. Across a change of daylight saving time that is 23
+ *  or 25 hours a day, so the day before lands an hour off midnight and is
+ *  moved onto it. */
 export function digestPeriod(cadence: Cadence, at: Date): { since: string; until: string } {
-  const days = cadence === "daily" ? 1 : 7;
-  return {
-    since: new Date(at.getTime() - days * DAY_MS).toISOString(),
-    until: at.toISOString(),
-  };
+  const before = new Date(at.getTime() - (cadence === "daily" ? 1 : 7) * DAY_MS);
+  const { hour } = pacific(before);
+  const since = new Date(before.getTime() + (hour >= 12 ? 24 - hour : -hour) * HOUR_MS);
+  return { since: since.toISOString(), until: at.toISOString() };
 }
 
-/** The time a digest covers, as its email says it. */
+/** The time an edition covers, as its email says it. */
 export function periodLabel(cadence: Cadence): string {
-  return cadence === "daily" ? "the last 24 hours" : "the last 7 days";
+  return cadence === "daily" ? "yesterday" : "last week";
+}
+
+const dateline = new Intl.DateTimeFormat("en-US", {
+  timeZone: DIGEST_TIME_ZONE,
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+
+/** The edition's date: the day it comes out, in Pacific Time. */
+export function editionDate(at: Date): string {
+  return dateline.format(at);
+}
+
+/** The newspaper of a workspace: The Acme Times, and for The Agency, The
+ *  Agency Times. */
+export function timesTitle(workspaceName: string): string {
+  return `The ${workspaceName.trim().replace(/^the\s+/i, "")} Times`;
 }
 
 const count = (n: number) => n.toLocaleString("en-US");
 const actorLine = (a: TopActor) => `${a.username} ${viaLabel(a.via)}: ${count(a.count)}`;
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function digestEmail(opts: {
   baseUrl: string;
   workspaceHandle: string;
+  /** The Acme Times (timesTitle). */
+  title: string;
+  /** Where the masthead of `title` is (lib/masthead.server.ts). */
+  masthead: string;
   setting: Cadence;
+  /** When the edition goes out. */
+  at: Date;
   summary: ActivitySummary;
-  /** The top three the member may read, the most important first. */
-  top: TopItem[];
+  /** The stories the member may read, the most important first. */
+  stories: Story[];
   /** Names the member to /digest/<setting> (lib/activity-digest.server.ts). */
   token: string;
 }): Omit<Email, "to"> {
-  const { workspaceHandle: ws, setting, summary: s, top } = opts;
+  const { workspaceHandle: ws, title, setting, summary: s, stories } = opts;
   const base = opts.baseUrl.replace(/\/+$/, "");
   const url = `${base}/workspaces/${ws}`;
   const t = new URLSearchParams({ t: opts.token });
@@ -74,8 +130,10 @@ export function digestEmail(opts: {
   const switchUrl = `${base}/digest/${other}?${t}`;
   const unsubscribeUrl = `${base}/digest/unsubscribe?${t}`;
   const period = periodLabel(setting);
-  const none = `None in ${period}.`;
-  const intro = `Here's what happened in ${ws} in ${period}.`;
+  const none = `None ${period}.`;
+  const edition = `${capitalize(setting)} edition`;
+  const date = editionDate(opts.at);
+  const numbersTitle = `${capitalize(period)} in ${ws}`;
   const stats = [
     { value: count(s.queries), label: s.queries === 1 ? "query" : "queries" },
     { value: count(s.writes), label: s.writes === 1 ? "write" : "writes" },
@@ -86,44 +144,67 @@ export function digestEmail(opts: {
     ["Top contributors", s.topContributors.map(actorLine)],
     ["Top integrations", s.topIntegrations.map((i) => `${i.name}: ${count(i.count)}`)],
   ];
-  const topTitle = `Top three added in ${period}`;
+  const kicker = (i: Story) => `${capitalize(i.nodeType)} · ${i.docoHandle}`;
+  const [lead, ...rest] = stories;
+  const beside = rest.slice(0, 2);
+  const briefs = rest.slice(2);
   const switchLabel = `Switch to ${other}`;
-  const footer = `You get this digest ${setting === "daily" ? "every day" : "every Monday"} as a member of ${ws}.`;
+  const footer = `You get ${title} ${setting === "daily" ? "every day" : "every Monday"} as a member of ${ws}.`;
 
   const text = [
-    ...(top.length > 0
-      ? [[topTitle, ...top.map((i) => `- ${i.takeaway} (${i.docoHandle}: ${i.url})`)].join("\n")]
+    `${title}\n${edition} · ${date}`,
+    ...stories
+      .slice(0, 3)
+      .map((i) => [i.headline, i.takeaway, `${kicker(i)}: ${i.url}`].filter(Boolean).join("\n")),
+    ...(briefs.length > 0
+      ? [
+          ["In brief", ...briefs.map((i) => `- ${i.headline} (${i.docoHandle}: ${i.url})`)].join(
+            "\n",
+          ),
+        ]
       : []),
-    intro,
-    stats.map((st) => `${st.value} ${st.label}`).join(" · "),
-    ...lists.map(([title, lines]) =>
-      [title, ...(lines.length > 0 ? lines : [none]).map((l) => `- ${l}`)].join("\n"),
+    `${numbersTitle}\n${stats.map((st) => `${st.value} ${st.label}`).join(" · ")}`,
+    ...lists.map(([heading, lines]) =>
+      [heading, ...(lines.length > 0 ? lines : [none]).map((l) => `- ${l}`)].join("\n"),
     ),
     `Open ${ws}: ${url}`,
     `${switchLabel}: ${switchUrl}`,
     `${footer} Unsubscribe: ${unsubscribeUrl}`,
   ].join("\n\n");
 
+  const story = (i: Story, lead = false): EmailBlock => ({
+    kicker: kicker(i),
+    headline: i.headline,
+    text: i.takeaway,
+    link: i.url,
+    lead,
+  });
   const blocks: EmailBlock[] = [
-    ...(top.length > 0
+    { image: opts.masthead, alt: title },
+    { dateline: [edition, date, "Doco"] },
+    ...(lead ? [story(lead, true)] : []),
+    ...(beside.length > 0 ? [{ columns: beside.map((i) => [story(i)]) }] : []),
+    ...(briefs.length > 0
       ? [
-          { heading: topTitle },
-          { list: top.map((i) => ({ text: i.takeaway, link: i.url, label: i.docoHandle })) },
+          { heading: "In brief" },
+          { list: briefs.map((i) => ({ text: i.headline, link: i.url, label: i.docoHandle })) },
         ]
       : []),
-    intro,
+    { heading: numbersTitle },
     { stats },
-    ...lists.flatMap(([title, lines]): EmailBlock[] => [
-      { heading: title },
-      lines.length > 0 ? { list: lines } : none,
-    ]),
+    {
+      columns: lists.map(([heading, lines]): EmailBlock[] => [
+        { heading },
+        lines.length > 0 ? { list: lines } : none,
+      ]),
+    },
     { link: url, label: `Open ${ws}` },
     { link: switchUrl, label: switchLabel, quiet: true },
     { footer, link: unsubscribeUrl, label: "Unsubscribe" },
   ];
 
   return {
-    subject: `Your ${setting} digest for ${ws} on Doco`,
+    subject: `${title} · ${date}`,
     text: `${text}\n`,
     html: emailHtml(blocks),
     headers: {

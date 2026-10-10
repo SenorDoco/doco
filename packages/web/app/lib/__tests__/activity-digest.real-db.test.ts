@@ -1,10 +1,11 @@
-// Sending the activity digest against a real database: every member with an
-// email gets it daily, or on Mondays if they switched it to weekly, unless
+// Sending the activity digest, each workspace's newspaper, against a real
+// database: at midnight Pacific Time every member with an email gets the
+// daily edition, or on Mondays the weekly one if they switched to it, unless
 // they unsubscribed (the email's links do both in one click, without signing
 // in), it is their personal workspace, or nothing happened; two runs at the
-// same hour send it once. Each opens with the top three records added in its
-// period that the member may read. PGlite backs every query; only the email
-// provider and the model are stubbed.
+// same hour send it once. Each leads with the stories added in its period that
+// the member may read, under the workspace's masthead. PGlite backs every
+// query; only the email provider and the model are stubbed.
 import { randomBytes } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,8 +48,12 @@ vi.mock("~/lib/assistant-runtime.server", () => ({
           type: "text",
           text: JSON.stringify({
             items: [
-              { id: "idea_secret", takeaway: "Price by seat." },
-              { id: "idea_notes", takeaway: "Each Doco could get its own digest." },
+              { id: "idea_secret", headline: "Seat Pricing", takeaway: "Price by seat." },
+              {
+                id: "idea_notes",
+                headline: "A Digest per Doco",
+                takeaway: "Each Doco could get its own digest.",
+              },
             ],
           }),
         },
@@ -59,11 +64,13 @@ vi.mock("~/lib/assistant-runtime.server", () => ({
 
 import { action, loader } from "~/routes/digest.$setting";
 import { digestToken, readDigestToken, sendActivityDigests } from "../activity-digest.server";
+import { readMastheadToken } from "../masthead.server";
 
-// A Thursday, two days after acme was created.
-const AT = new Date("2026-09-10T13:00:00Z");
-// The Monday after.
-const MONDAY = new Date("2026-09-14T13:00:00Z");
+// Thursday Sep 10, 2026, 00:00 PDT, two days after acme was created: the
+// daily edition covers Wednesday.
+const AT = new Date("2026-09-10T07:00:00Z");
+// The Monday after, at midnight.
+const MONDAY = new Date("2026-09-14T07:00:00Z");
 const BASE = "https://doco.test";
 
 beforeEach(async () => {
@@ -95,24 +102,24 @@ beforeEach(async () => {
     `INSERT INTO changesets (doco_id, actor, source, metadata, recorded_at) VALUES
        ('doco_notes', 'user_bo', 'api', '{"auth": "oauth", "token_name": "Claude Code"}', $1),
        ('doco_notes', 'user_bo', 'api', '{"auth": "oauth", "token_name": "Claude Code"}', $2)`,
-    // One in the last 24 hours, one the day before.
-    ["2026-09-10T09:00:00Z", "2026-09-09T09:00:00Z"],
+    // One on Wednesday, one the day before.
+    ["2026-09-10T02:00:00Z", "2026-09-09T02:00:00Z"],
   );
   await dbm.db.query(
     `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata, at)
        VALUES ('user_ana', 'workspace_acme', NULL, 'ui', '{"surface": "website"}', $1)`,
-    ["2026-09-10T10:00:00Z"],
+    ["2026-09-10T03:00:00Z"],
   );
 });
 
 describe("sendActivityDigests", () => {
-  it("emails each member with an email the last 24 hours' activity, every day", async () => {
+  it("emails each member with an email the day before's activity, every midnight", async () => {
     expect(await sendActivityDigests(dbm.db, AT, BASE)).toEqual({ workspaces: 3, sent: 2 });
     // Not cy (no email), not di (deactivated), not ana's personal workspace;
     // nothing happened in "old".
     expect(dbm.sent.map((e) => [e.to, e.subject])).toEqual([
-      ["ana@example.com", "Your daily digest for acme on Doco"],
-      ["bo@example.com", "Your daily digest for acme on Doco"],
+      ["ana@example.com", "The Acme Times · Thursday, September 10, 2026"],
+      ["bo@example.com", "The Acme Times · Thursday, September 10, 2026"],
     ]);
     const [ana] = dbm.sent;
     expect(ana.text).toContain("1 query · 1 write · 0 imports");
@@ -127,16 +134,38 @@ describe("sendActivityDigests", () => {
     expect(ana.text).toContain(`Switch to weekly: ${BASE}/digest/weekly?t=`);
   });
 
-  it("opens with the top three added that day that each member may read", async () => {
+  it("puts the workspace's masthead at the top, one image for everyone that day", async () => {
+    await sendActivityDigests(dbm.db, AT, BASE);
+    const [ana, bo] = dbm.sent.map(
+      (e) =>
+        e.html?.match(/<img src="([^"]+)" alt="The Acme Times"/)?.[1].replaceAll("&amp;", "&") ??
+        "",
+    );
+    expect(ana.startsWith(`${BASE}/masthead.png?t=`)).toBe(true);
+    expect(bo).toBe(ana);
+    expect(readMastheadToken(new URL(ana).searchParams.get("t") ?? "")).toBe("The Acme Times");
+  });
+
+  it("sends nothing at any hour but midnight Pacific Time", async () => {
+    // 13:00 UTC, when the digest used to go out.
+    expect(await sendActivityDigests(dbm.db, new Date("2026-09-10T13:00:00Z"), BASE)).toEqual({
+      workspaces: 0,
+      sent: 0,
+    });
+    expect(dbm.sent).toEqual([]);
+    expect(await sendActivityDigests(dbm.db, AT, BASE)).toEqual({ workspaces: 3, sent: 2 });
+  });
+
+  it("leads with the stories added that day that each member may read", async () => {
     await dbm.db.exec(`
       -- A private Doco of ana's own in acme, which bo may not read.
       INSERT INTO docos (id, handle, owner_id, workspace_id, visibility, data) VALUES
         ('doco_secret', 'acme-secret', 'user_ana', 'workspace_acme', 'private', '{}');
       INSERT INTO nodes (id, doco_id, node_type, prose, created_at) VALUES
-        ('rule_notes', 'doco_notes', 'rule', 'Ship every task to main.', '2026-09-10T08:00:00Z'),
-        ('idea_notes', 'doco_notes', 'idea', 'A digest for each Doco.', '2026-09-10T09:00:00Z'),
-        ('idea_secret', 'doco_secret', 'idea', 'Seat pricing.', '2026-09-10T09:00:00Z'),
-        ('decision_notes', 'doco_notes', 'decision', 'The digest is daily.', '2026-09-10T10:00:00Z');
+        ('rule_notes', 'doco_notes', 'rule', 'Ship every task to main.', '2026-09-10T01:00:00Z'),
+        ('idea_notes', 'doco_notes', 'idea', 'A digest for each Doco.', '2026-09-10T02:00:00Z'),
+        ('idea_secret', 'doco_secret', 'idea', 'Seat pricing.', '2026-09-10T02:00:00Z'),
+        ('decision_notes', 'doco_notes', 'decision', 'The digest is daily.', '2026-09-10T03:00:00Z');
     `);
     await sendActivityDigests(dbm.db, AT, BASE);
     // One ranking for the workspace's daily digest, whoever gets it.
@@ -144,18 +173,40 @@ describe("sendActivityDigests", () => {
     const [ana, bo] = dbm.sent;
     expect(ana.text).toContain(
       [
-        "Top three added in the last 24 hours",
-        `- Price by seat. (acme-secret: ${BASE}/acme-secret/idea/idea_secret)`,
-        `- Each Doco could get its own digest. (acme-notes: ${BASE}/acme-notes/idea/idea_notes)`,
-        `- Ship every task to main. (acme-notes: ${BASE}/acme-notes/rule/rule_notes)\n\n`,
+        "Daily edition · Thursday, September 10, 2026",
+        "",
+        "Seat Pricing",
+        "Price by seat.",
+        `Idea · acme-secret: ${BASE}/acme-secret/idea/idea_secret`,
+        "",
+        "A Digest per Doco",
+        "Each Doco could get its own digest.",
+        `Idea · acme-notes: ${BASE}/acme-notes/idea/idea_notes`,
+        "",
+        "Ship every task to main.",
+        `Rule · acme-notes: ${BASE}/acme-notes/rule/rule_notes`,
+        "",
+        "In brief",
+        `- The digest is daily. (acme-notes: ${BASE}/acme-notes/decision/decision_notes)`,
+        "",
+        "Yesterday in acme",
       ].join("\n"),
     );
     expect(bo.text).toContain(
       [
-        "Top three added in the last 24 hours",
-        `- Each Doco could get its own digest. (acme-notes: ${BASE}/acme-notes/idea/idea_notes)`,
-        `- Ship every task to main. (acme-notes: ${BASE}/acme-notes/rule/rule_notes)`,
-        `- The digest is daily. (acme-notes: ${BASE}/acme-notes/decision/decision_notes)\n\n`,
+        "Daily edition · Thursday, September 10, 2026",
+        "",
+        "A Digest per Doco",
+        "Each Doco could get its own digest.",
+        `Idea · acme-notes: ${BASE}/acme-notes/idea/idea_notes`,
+        "",
+        "Ship every task to main.",
+        `Rule · acme-notes: ${BASE}/acme-notes/rule/rule_notes`,
+        "",
+        "The digest is daily.",
+        `Decision · acme-notes: ${BASE}/acme-notes/decision/decision_notes`,
+        "",
+        "Yesterday in acme",
       ].join("\n"),
     );
   });
@@ -177,11 +228,12 @@ describe("sendActivityDigests", () => {
     expect(dbm.sent.map((e) => e.to)).toEqual(["ana@example.com"]);
 
     dbm.sent = [];
-    // Nothing happened in Monday's last 24 hours, so ana's daily one stays home.
+    // Nothing happened on Sunday, so ana's daily one stays home.
     await sendActivityDigests(dbm.db, MONDAY, BASE);
     expect(dbm.sent.map((e) => [e.to, e.subject])).toEqual([
-      ["bo@example.com", "Your weekly digest for acme on Doco"],
+      ["bo@example.com", "The Acme Times · Monday, September 14, 2026"],
     ]);
+    expect(dbm.sent[0].text).toContain("Weekly edition · Monday, September 14, 2026");
     expect(dbm.sent[0].text).toContain("1 query · 2 writes · 0 imports");
     expect(dbm.sent[0].text).toContain(`Switch to daily: ${BASE}/digest/daily?t=`);
   });
@@ -192,12 +244,12 @@ describe("sendActivityDigests", () => {
     await dbm.db.query(
       `INSERT INTO query_events (actor, workspace_id, doco_id, source, metadata, at)
          VALUES ('user_ana', 'workspace_ana', NULL, 'ui', '{"surface": "website"}', $1)`,
-      ["2026-09-10T10:00:00Z"],
+      ["2026-09-10T03:00:00Z"],
     );
     await sendActivityDigests(dbm.db, AT, BASE);
     expect(dbm.sent.map((e) => [e.to, e.subject])).toContainEqual([
       "ana@example.com",
-      "Your daily digest for ana on Doco",
+      "The ana Times · Thursday, September 10, 2026",
     ]);
   });
 });
@@ -219,7 +271,12 @@ describe("the digest's links", () => {
 
   it("switch the digest to weekly and back to daily in one click", async () => {
     const t = token();
-    expect(await open("weekly", t)).toEqual({ state: "weekly", workspaceHandle: "acme", token: t });
+    expect(await open("weekly", t)).toEqual({
+      state: "weekly",
+      workspaceHandle: "acme",
+      title: "The Acme Times",
+      token: t,
+    });
     expect(await setting()).toBe("weekly");
     expect(await open("daily", t)).toMatchObject({ state: "daily" });
     expect(await setting()).toBe("daily");

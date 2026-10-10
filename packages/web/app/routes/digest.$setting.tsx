@@ -1,8 +1,8 @@
-// GET|POST /digest/daily|weekly|unsubscribe?t=<token> — the activity digest's
-// links (lib/activity-digest.ts): the button that switches it between daily
-// and weekly, and the unsubscribe link. Opening one sets how often the person
-// gets that workspace's digest in one click, without signing in, and offers
-// the other choices. A mail client's one-click unsubscribe
+// GET|POST /digest/daily|weekly|unsubscribe?t=<token> — the links in a
+// workspace's newspaper, The <Workspace> Times (lib/activity-digest.ts): the
+// button that switches it between daily and weekly, and the unsubscribe link.
+// Opening one sets how often the person gets it in one click, without signing
+// in, and offers the other choices. A mail client's one-click unsubscribe
 // (List-Unsubscribe-Post) POSTs here.
 import { withClient } from "@doco/db";
 import { DigestSubscription, type DigestSubscriptionView } from "~/components/digest-subscription";
@@ -36,8 +36,8 @@ async function set({ request, params }: Args): Promise<DigestSubscriptionView> {
   const token = new URL(request.url).searchParams.get("t") ?? "";
   const membership = readDigestToken(token);
   if (!membership) return { state: "invalid" };
-  const workspaceHandle = await withClient((c) => setDigest(c, membership, setting));
-  return workspaceHandle ? { state: setting, workspaceHandle, token } : { state: "gone" };
+  const workspace = await withClient((c) => setDigest(c, membership, setting));
+  return workspace ? { state: setting, ...workspace, token } : { state: "gone" };
 }
 
 export default function Digest({

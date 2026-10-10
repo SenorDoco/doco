@@ -31,6 +31,7 @@ import { type RouteConfig, index, layout, route } from "@react-router/dev/routes
  *   /invite/:code                  Human-only invite landing — signed-in humans accept (adds them to doco_users); signed-out humans bounce through GitHub. Agents read the sibling /invite/:code/agent.txt for the MCP-OAuth path instead.
  *   /by-id/:docoId                 Stable Doco-id redirect to the current handle
  *   /digest/daily, /digest/weekly, /digest/unsubscribe  the activity digest email's one-click switch between daily and weekly, and its unsubscribe
+ *   /masthead.png?t=<token>        the activity digest email's masthead: The <Workspace> Times in Chomsky, as a PNG
  *   (agent self-service: install the hosted MCP connector at /mcp; OAuth dance kicks off automatically)
  *   /new-doco, /new-workspace            self-service create flows (ADR-067)
  *   /integrations                  group-chat integrations and channel-default authorization
@@ -198,7 +199,8 @@ export default [
   route("api/alerts/silence-check", "routes/api.alerts.silence-check.tsx"),
   // Vercel Cron: the reminder email 15 minutes into a workspace's steps.
   route("api/onboarding/reminders", "routes/api.onboarding.reminders.tsx"),
-  // Vercel Cron: the activity digest email, daily at 13:00 UTC.
+  // Vercel Cron: the activity digest email, each workspace's newspaper, at
+  // midnight Pacific Time.
   route("api/activity-digest", "routes/api.activity-digest.tsx"),
   // Vercel Cron, hourly: counts each ended day of activity for the Activity
   // calendars and top lists.
@@ -223,6 +225,8 @@ export default [
   route("invite/:code", "routes/invite.$code.tsx"),
   // The activity digest email's links: daily, weekly and unsubscribe.
   route("digest/:setting", "routes/digest.$setting.tsx"),
+  // The masthead at the top of the activity digest email, The <Workspace> Times.
+  route("masthead.png", "routes/masthead[.]png.tsx"),
   // Agent-readable companion to /invite/:code. Agents that get pasted
   // an invite URL ("redeem this") fetch this to learn the MCP-OAuth
   // path — the invite URL itself is browser-only.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { digestEmail } from "../activity-digest";
-import { emailHtml } from "../email-html";
+import { COLUMN_WIDTH, emailHtml } from "../email-html";
 import { reminderEmail, welcomeEmail } from "../onboarding-emails";
 import { alertEmail } from "../silence-alerts.server";
 
@@ -44,7 +44,7 @@ describe("emailHtml", () => {
     expect(html).not.toContain("Ubuntu+Mono");
   });
 
-  it("sets headings, lists (an item may end in a link), numbers and small print, escaped", () => {
+  it("sets section heads, lists (an item may end in a link), numbers and small print, escaped", () => {
     const html = emailHtml([
       { heading: "Top <queryers>" },
       { list: ["ana & bo", { text: "Ship <it>.", link: "https://doco.to/a?b&c", label: "acme" }] },
@@ -55,10 +55,9 @@ describe("emailHtml", () => {
         label: "Unsubscribe",
       },
     ]);
-    // A heading that opens the email sits flush with the top of the slab.
-    expect(html).toContain('<p style="margin:0 0 8px;font-weight:700">Top &lt;queryers&gt;</p>');
-    expect(emailHtml(["Hi.", { heading: "Top" }])).toContain(
-      '<p style="margin:24px 0 8px;font-weight:700">Top</p>',
+    // A section head is a newspaper's: small capitals under a thin rule.
+    expect(html).toMatch(
+      /<p style="[^"]*border-top:1px solid #171612[^"]*text-transform:uppercase[^"]*">Top &lt;queryers&gt;<\/p>/,
     );
     expect(html).toContain("<li>ana &amp; bo</li>");
     expect(html).toContain(
@@ -68,6 +67,55 @@ describe("emailHtml", () => {
     expect(html).toContain(
       'You get this as a member. <a href="https://doco.to/u?t=a&amp;b" style="color:#9c44a5">Unsubscribe</a>',
     );
+  });
+
+  // A newspaper's front page: a masthead image as wide as the text, a
+  // dateline between a thin rule and a double one, stories under a kicker and
+  // a linked headline, and columns side by side that stack on a phone.
+  it("lays out a front page: masthead, dateline, stories and columns", () => {
+    const html = emailHtml([
+      { image: "https://doco.to/m.png?t=a&b", alt: "The <Acme> Times" },
+      { dateline: ["Daily edition", "Monday, September 7, 2026", "Doco"] },
+      {
+        kicker: "Rule · acme",
+        headline: "Ship <it>",
+        text: "All of it.",
+        link: "https://doco.to/r",
+        lead: true,
+      },
+      {
+        columns: [
+          [{ kicker: "Idea · acme", headline: "Two", text: "", link: "https://doco.to/2" }],
+          [{ kicker: "Idea · acme", headline: "Three", text: "3.", link: "https://doco.to/3" }],
+        ],
+      },
+    ]);
+    expect(html).toMatch(
+      new RegExp(
+        `<img src="https://doco.to/m.png\\?t=a&amp;b" alt="The &lt;Acme&gt; Times" width="${COLUMN_WIDTH}" style="display:block;width:100%;max-width:${COLUMN_WIDTH}px;height:auto`,
+      ),
+    );
+    expect(html).toMatch(/border-top:1px solid #171612;border-bottom:3px double #171612/);
+    expect(html).toMatch(/text-align:center[^>]*>Monday, September 7, 2026<\/td>/);
+    expect(html).toMatch(
+      /font-size:26px[^>]*><a href="https:\/\/doco.to\/r" style="color:#171612;text-decoration:none">Ship &lt;it&gt;<\/a>/,
+    );
+    expect(html).toContain(">All of it.</p>");
+    // Only the stories after the lead stand under a rule, and smaller.
+    expect(html).toMatch(
+      /border-top:1px solid #171612[^>]*><p[^>]*>Idea · acme<\/p><p style="[^"]*font-size:19px/,
+    );
+    expect(
+      html.match(
+        /class="column" style="display:inline-block;vertical-align:top;width:100%;max-width:272px/g,
+      ),
+    ).toHaveLength(2);
+    // Stacked on a phone, each column takes the whole text.
+    expect(html).toContain(
+      "@media (max-width:631px){.column{max-width:100%!important}.gutter{padding-right:0!important}}",
+    );
+    // A story without a takeaway prints no empty paragraph.
+    expect(html).not.toContain('<p style="margin:0"></p>');
   });
 
   // The site's one clay (Alexander, 2026-10-03), as far as mail clients allow:
@@ -128,6 +176,9 @@ describe("Doco's emails", () => {
     digest: digestEmail({
       baseUrl: base,
       workspaceHandle: "acme",
+      title: "The Acme Times",
+      masthead: `${base}/masthead.png?t=seal`,
+      at: new Date("2026-09-07T07:00:00Z"),
       setting: "weekly",
       summary: {
         writes: 0,
@@ -137,7 +188,7 @@ describe("Doco's emails", () => {
         topQueryers: [],
         topIntegrations: [],
       },
-      top: [],
+      stories: [],
       token: "tok",
     }),
   };
